@@ -13,7 +13,40 @@ const APP = {
   drivers: [], technicians: [], assignments: [],
   filterOptions: { groups: [], equipmentIds: [], drivers: [] }, loaded: false
 };
-
+/* =========================================================
+   WEB WORKER TIMER (Prevents Mobile Background Throttling)
+   ========================================================= */
+(function initWorker() {
+  try {
+    const workerCode = `
+      let timer = null;
+      self.onmessage = function(e) {
+        if (e.data === 'start') {
+          if (timer) clearInterval(timer);
+          timer = setInterval(() => { self.postMessage('tick'); }, 60000); // 60 seconds
+        } else if (e.data === 'stop') {
+          if (timer) clearInterval(timer);
+          timer = null;
+        }
+      };
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    window.syncWorker = new Worker(URL.createObjectURL(blob));
+    
+    window.syncWorker.onmessage = function(e) {
+      if (e.data === 'tick') {
+        if (authToken && typeof syncAllData === 'function') {
+          console.log('[WebWorker] Triggering 60s auto-sync...');
+          syncAllData(true); // true = silent mode
+        }
+      }
+    };
+    window.syncWorker.postMessage('start');
+  } catch(e) {
+    console.warn('Web Worker not supported, falling back to setInterval', e);
+    setInterval(() => { if (authToken && typeof syncAllData === 'function') syncAllData(true); }, 60000);
+  }
+})();
 let currentUser = null;
 let authToken = LS.get('authToken', null);
 let currentApp = 'monthly'; // 'monthly' or 'daily'
@@ -477,12 +510,65 @@ function fetchExtendedData(silent) {
     .getExtendedData(authToken, opts);
 }
 
-function reloadAll(keepPage){
-  const cur = keepPage || ($('#bottomNav a.active').data('page') || 'home');
-  LS.del(BOOTSTRAP_CACHE_KEY);
-  showLoading('កំពុងធ្វើឱ្យថ្មី...');
-  fetchBothDatasets(false);
-}
+/* =========================================================
+   SILENT BACKGROUND SYNC
+   ========================================================= */
+window.syncAllData = function(silent) {
+  if (!authToken) return;
+
+  // If it's a silent sync, make sure we don't interrupt the user
+  if (silent && !safeToRefresh()) {
+    console.log('Sync postponed: User is busy (modal open or filling form)');
+    return;
+  }
+
+  // Call the backend. The polyfill will automatically attach the clientVersion.
+  // If the backend data hasn't changed, it will return { unchanged: true } instantly.
+  google.script.run
+    .withSuccessHandler(resM => {
+      if (!resM || !resM.success) return;
+      
+      // If the data is unchanged, we do absolutely nothing. No re-render, no flash.
+      if (resM.unchanged) {
+        console.log('[Sync] No changes detected on server.');
+        return;
+      }
+
+      // If we get here, data changed. Fetch Daily data too, then apply.
+      google.script.run
+        .withSuccessHandler(resD => {
+          applyBootstrap(resM, resD);
+          
+          if (silent) {
+            // Soft update: Only re-render if safe
+            if (safeToRefresh()) {
+              const page = $('#bottomNav a.active').data('page') || 'home';
+              if (page === 'home') renderHome();
+              else if (page === 'list') updateListResults();
+              else if (page === 'dashboard') { 
+                if (currentApp === 'daily') renderDailyDashboard(); else renderDashboard(); 
+              }
+            }
+          } else {
+            // Hard update (initial load or manual refresh)
+            try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+            showApp();
+            fetchExtendedData(true);
+          }
+        })
+        .withFailureHandler(console.error)
+        .getDailyBootstrapData(authToken);
+    })
+    .withFailureHandler(e => {
+      console.error("Sync failed:", e);
+    })
+    .getBootstrapData(authToken);
+};
+
+// Keep reloadAll as an alias so existing UI buttons don't break, but route them to silent sync
+window.reloadAll = function() {
+  syncAllData(true); 
+};
 
 function applyBootstrap(resM, resD){
   APP.user = resM.user; APP.scope = resM.scope || {}; 
