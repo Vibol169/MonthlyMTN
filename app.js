@@ -441,7 +441,7 @@ function bootLoad(){
 function fetchBothDatasets(silent){
   if (!authToken) return Promise.resolve();
   
-  // ★ FIX: If this is a hard load, clear the version so GAS returns full data, not { unchanged: true }
+  // If hard load, clear version to force a full fetch
   if (!silent) localStorage.removeItem('_gVersion'); 
   
   return new Promise((resolve) => {
@@ -453,6 +453,18 @@ function fetchBothDatasets(silent){
       
       if (!silent) hideLoading();
       
+      // ★ FIX: If BOTH are unchanged, we are perfectly up to date. Do nothing.
+      if (resM.unchanged && resD.unchanged) {
+         resolve(); return;
+      }
+      
+      // ★ FIX: If ONE is unchanged but the other changed, we are missing data. Force a fresh refetch.
+      if (resM.unchanged || resD.unchanged) {
+         localStorage.removeItem('_gVersion'); 
+         fetchBothDatasets(silent).then(resolve);
+         return;
+      }
+
       if (!resM.success) { 
         if(!silent) {
           showAlert('Load failed. Please check your internet or login again.', 'danger'); 
@@ -481,16 +493,22 @@ function fetchExtendedData(silent) {
     return;
   }
   
-  // Fetch up to 365 days and 3000 records
   const opts = { daysBack: 365, maxSubs: 3000 };
   
   google.script.run
     .withSuccessHandler(res => {
-      if (res && res.success && res.submissions) {
+      if (!res || !res.success) return;
+      
+      // ★ FIX: If unchanged, just exit silently
+      if (res.unchanged) {
+        console.log('[Sync] Extended data unchanged.');
+        return;
+      }
+
+      if (res.submissions) {
         const existingIds = new Set(APP.submissions.map(s => s.checkId));
         let added = 0;
         
-        // Merge the new submissions without duplicating
         res.submissions.forEach(s => {
           if (!existingIds.has(s.checkId)) {
             APP.submissions.push(s);
@@ -499,10 +517,7 @@ function fetchExtendedData(silent) {
         });
         
         if (added > 0) {
-          // Re-sort the array so the newest is at the top
           APP.submissions.sort((a, b) => subMs(b) - subMs(a));
-          
-          // Update the screen with the newly loaded data
           if (silent && safeToRefresh()) {
             refreshCurrentPage();
           }
@@ -513,7 +528,6 @@ function fetchExtendedData(silent) {
     .withFailureHandler(e => console.error("Extended load failed", e))
     .getExtendedData(authToken, opts);
 }
-
 /* =========================================================
    SILENT BACKGROUND SYNC
    ========================================================= */
