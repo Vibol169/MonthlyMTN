@@ -15,7 +15,7 @@
   // =========================================================
   // ⚠️ REPLACE THIS URL with your actual Cloudflare Worker URL
   // =========================================================
-  const WORKER_URL = window.__API_URL__ || 'https://checklist-api.YOUR-SUBDOMAIN.workers.dev';
+  const WORKER_URL = window.__API_URL__ || ' https://checklist-api-new.ppap-tec-2022.workers.dev';
 
   // 2. Chainable Proxy to mimic google.script.run
   function makeChain(successFn, failureFn) {
