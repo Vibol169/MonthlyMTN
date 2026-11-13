@@ -474,6 +474,13 @@ function fetchBothDatasets(silent){
       }
       
       applyBootstrap(resM, resD);
+
+            // Fetch Notifications
+      google.script.run.withSuccessHandler(notifs => {
+        APP.notifications = notifs || [];
+        updateNotifBadge();
+      }).getNotifications(authToken);
+      
       
       if (!silent) {
         try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
@@ -7598,3 +7605,37 @@ window.printMonthlyReport = function() {
 window.generateMonthlyReportPDF = function() {
   generateMonthlyReportOutput(homeReportMonth, 'pdf');
 };
+
+window.openNotificationsModal = function() {
+  if (!APP.notifications || APP.notifications.length === 0) {
+    showAlert('គ្មានការជូនដំណឹងថ្មីៗទេ (No new notifications)', 'info');
+    return;
+  }
+  let html = '<div class="list-group list-group-flush">';
+  APP.notifications.forEach(n => {
+    html += `<div class="list-group-item ${n.read === 'FALSE' ? 'bg-light' : ''}" style="border-left:4px solid ${n.read === 'FALSE' ? '#0d6efd' : 'transparent'};">
+      <div class="d-flex justify-content-between">
+        <strong>${esc(n.title)}</strong>
+        <small class="text-muted">${esc(n.time)}</small>
+      </div>
+      <div class="small mt-1">${esc(n.message)}</div>
+    </div>`;
+  });
+  html += '</div>';
+  
+  $('#modalTitle').text('ការជូនដំណឹង (Notifications)');
+  $('#modalActionButtons').addClass('d-none');
+  $('#modalBody').html(html);
+  currentDetailModal.show();
+  
+  // Mark as read in backend
+  google.script.run.markNotificationsRead(authToken);
+  APP.notifications.forEach(n => n.read = 'TRUE');
+  updateNotifBadge();
+};
+
+function updateNotifBadge() {
+  const unread = (APP.notifications || []).filter(n => n.read === 'FALSE').length;
+  const $badge = $('#notifBadge');
+  if (unread > 0) { $badge.text(unread).show(); } else { $badge.hide(); }
+}
