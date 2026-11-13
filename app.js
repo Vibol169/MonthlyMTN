@@ -439,16 +439,20 @@ function bootLoad(){
 }
 
 function fetchBothDatasets(silent){
-  if (!authToken) return Promise.resolve(); // ★ ADD THIS LINE
+  if (!authToken) return Promise.resolve();
+  
+  // ★ FIX: If this is a hard load, clear the version so GAS returns full data, not { unchanged: true }
+  if (!silent) localStorage.removeItem('_gVersion'); 
   
   return new Promise((resolve) => {
     const reqMonthly = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r({success:false})).getBootstrapData(authToken));
     const reqDaily = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r({success:false})).getDailyBootstrapData(authToken));
 
     Promise.all([reqMonthly, reqDaily]).then(([resM, resD]) => {
-      if (!authToken) { resolve(); return; } // ★ ADD THIS LINE
+      if (!authToken) { resolve(); return; }
       
       if (!silent) hideLoading();
+      
       if (!resM.success) { 
         if(!silent) {
           showAlert('Load failed. Please check your internet or login again.', 'danger'); 
