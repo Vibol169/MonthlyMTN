@@ -167,7 +167,29 @@ function showAlert(msg, type='info') {
   $('body').append('<div id="'+id+'" class="alert alert-'+type+' alert-dismissible fade show fixed-top m-3" style="z-index:12000;">'+esc(msg)+'<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>');
   setTimeout(()=>$('#'+id).alert('close'), 3500);
 }
-function handleError(e){ console.error(e); showAlert('កំហុស: '+(e.message||e), 'danger'); hideLoading(); }
+
+function handleError(err) {
+  console.error("API Error Details:", err);
+  hideLoading();
+  
+  const errMsg = String(err.message || err);
+  
+  // Only log out if the backend specifically rejects the token
+  if (errMsg.includes('Authentication required') || errMsg.includes('Invalid token') || errMsg.includes('No token')) {
+    if (authToken) {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('userInfo');
+      authToken = null;
+      showLogin();
+      showAlert('Session expired. Please log in again.', 'danger');
+    } else {
+      showLogin();
+    }
+  } else {
+    // For ANY other error, just show a warning toast and DO NOT log out.
+    showAlert('កំហុស (Error): ' + errMsg, 'warning');
+  }
+}
 
 const STATUS_OPTIONS = [
   { code: 'N',  label: 'N - Normal' },
