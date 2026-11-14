@@ -756,16 +756,19 @@ $(document).ready(function(){
     $('#loginError').text('');
     showLoading('កំពុងចូល...');
     
-    google.script.run.withSuccessHandler(res => {
+        google.script.run.withSuccessHandler(res => {
       if (res.success) {
         authToken = res.token; 
         LS.set('authToken', authToken);
         currentUser = { username: res.username };
         
-        // ★ ADD THIS LINE: Hide login form immediately
         $('#loginContainer').hide(); 
         
-        bootLoad(); 
+        // ★ NEW: Wait 1.5 seconds for Google Sheets to finish saving the token
+        showLoading('កំពុងចូល...');
+        setTimeout(() => {
+          bootLoad(); 
+        }, 1500);
         
       } else {
         hideLoading();
