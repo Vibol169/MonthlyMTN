@@ -41,7 +41,7 @@
   // google.script.run passes arguments positionally (e.g., fn(arg1, arg2)),
   // but our API expects { action, token, payload }. This maps them.
   const TOKEN_ARG_ACTIONS = new Set([
-    'logout', 'getUserFromToken', 'getBootstrapData', 'getDailyBootstrapData', 'getExtendedData'
+    'logout', 'getUserFromToken', 'getBootstrapData', 'getDailyBootstrapData', 'getExtendedData','getNotifications', 'markNotificationsRead' 
   ]);
 
   const ADAPTERS = {
