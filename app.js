@@ -7622,13 +7622,20 @@ window.generateMonthlyReportPDF = function() {
 };
 
 window.openNotificationsModal = function() {
-  if (!APP.notifications || APP.notifications.length === 0) {
+  // 🛡️ STRICT ARRAY CHECK
+  const notifications = Array.isArray(APP.notifications) ? APP.notifications : [];
+  
+  if (notifications.length === 0) {
     showAlert('គ្មានការជូនដំណឹងថ្មីៗទេ (No new notifications)', 'info');
     return;
   }
+  
   let html = '<div class="list-group list-group-flush">';
-  APP.notifications.forEach(n => {
-    html += `<div class="list-group-item ${n.read === 'FALSE' ? 'bg-light' : ''}" style="border-left:4px solid ${n.read === 'FALSE' ? '#0d6efd' : 'transparent'};">
+  notifications.forEach(n => {
+    // Ensure we handle both string 'FALSE' and boolean false
+    const isUnread = (n.read === 'FALSE' || n.read === false); 
+    
+    html += `<div class="list-group-item ${isUnread ? 'bg-light' : ''}" style="border-left:4px solid ${isUnread ? '#0d6efd' : 'transparent'};">
       <div class="d-flex justify-content-between">
         <strong>${esc(n.title)}</strong>
         <small class="text-muted">${esc(n.time)}</small>
@@ -7645,12 +7652,22 @@ window.openNotificationsModal = function() {
   
   // Mark as read in backend
   google.script.run.markNotificationsRead(authToken);
-  APP.notifications.forEach(n => n.read = 'TRUE');
+  
+  // Update local state safely
+  notifications.forEach(n => n.read = 'TRUE');
   updateNotifBadge();
 };
 
 function updateNotifBadge() {
-  const unread = (APP.notifications || []).filter(n => n.read === 'FALSE').length;
+  // 🛡️ STRICT ARRAY CHECK
+  const notifications = Array.isArray(APP.notifications) ? APP.notifications : [];
+  
+  const unread = notifications.filter(n => (n.read === 'FALSE' || n.read === false)).length;
   const $badge = $('#notifBadge');
-  if (unread > 0) { $badge.text(unread).show(); } else { $badge.hide(); }
+  
+  if (unread > 0) { 
+    $badge.text(unread).show(); 
+  } else { 
+    $badge.hide(); 
+  }
 }
