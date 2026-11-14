@@ -1,8 +1,23 @@
-const LS = {
-  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
-  del(k)    { try { localStorage.removeItem(k); } catch (e) {} }
-};
+// Safe Local Storage with Project 2 Prefix
+function createSafeStorage(prefix) {
+  return {
+    get(k, d) { try { const v = localStorage.getItem(prefix + k); return v === null ? d : v; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(prefix + k, v); } catch (e) {} },
+    del(k) { try { localStorage.removeItem(prefix + k); } catch (e) {} }
+  };
+}
+
+// Safe Session Storage with Project 2 Prefix
+function createSafeSessionStorage(prefix) {
+  return {
+    get(k, d) { try { const v = sessionStorage.getItem(prefix + k); return v === null ? d : v; } catch (e) { return d; } },
+    set(k, v) { try { sessionStorage.setItem(prefix + k, v); } catch (e) {} },
+    del(k) { try { sessionStorage.removeItem(prefix + k); } catch (e) {} }
+  };
+}
+
+const LS = createSafeStorage('proj2_');
+const SS = createSafeSessionStorage('proj2_');
 
 const APP = {
   user: null, scope: {}, users: [], equipment: [], equipmentMap: {},
