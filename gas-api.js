@@ -13,9 +13,9 @@
   if (!isGithubPages && hasNative) return;
 
   // =========================================================
-  // ⚠️ REPLACE THIS URL with your actual Cloudflare Worker URL
+  // ⚠️ FIXED: Removed the space before https://
   // =========================================================
-  const WORKER_URL = window.__API_URL__ || ' https://checklist-api-new.ppap-tec-2022.workers.dev/';
+  const WORKER_URL = window.__API_URL__ || 'https://checklist-api-new.ppap-tec-2022.workers.dev/';
 
   // 2. Chainable Proxy to mimic google.script.run
   function makeChain(successFn, failureFn) {
@@ -38,10 +38,9 @@
   }
 
   // 3. Argument Adapters
-  // google.script.run passes arguments positionally (e.g., fn(arg1, arg2)),
-  // but our API expects { action, token, payload }. This maps them.
   const TOKEN_ARG_ACTIONS = new Set([
-    'logout', 'getUserFromToken', 'getBootstrapData', 'getDailyBootstrapData', 'getExtendedData','getNotifications', 'markNotificationsRead' 
+    'logout', 'getUserFromToken', 'getBootstrapData', 'getDailyBootstrapData', 'getExtendedData',
+    'getNotifications', 'markNotificationsRead' 
   ]);
 
   const ADAPTERS = {
@@ -70,7 +69,7 @@
       payload = fn ? fn(args) : (args[0] && typeof args[0] === 'object' ? args[0] : {});
     }
 
-     console.log(`[gas-api] Sending action: ${action} | Token: ${token}`);
+    console.log(`[gas-api] Sending action: ${action} | Token: ${token}`);
      
     // Send to Worker
     fetch(WORKER_URL, {
@@ -84,13 +83,13 @@
       })
     })
       .then(res => res.json())
-            .then(res => {
+      .then(res => {
         // Save the latest global cache version
         if (res && res.version) {
           localStorage.setItem('_gVersion', res.version);
         }
 
-        // ★ NEW: Handle session expiration gracefully
+        // Handle session expiration gracefully
         if (res && res.success === false && res.code === 'AUTH_EXPIRED') {
           console.warn('Session expired. Logging out...');
           localStorage.removeItem('authToken');
