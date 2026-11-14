@@ -7674,21 +7674,53 @@ window.generateMonthlyReportPDF = function() {
   generateMonthlyReportOutput(homeReportMonth, 'pdf');
 };
 
+// Global variable for the modal limit
+let notifDisplayLimit = 10;
+
 window.openNotificationsModal = function() {
-  let html = '';
+  notifDisplayLimit = 10; // Reset to 10 every time they open it fresh
+  renderNotificationsModal();
   
-  // Only get unread ones (just in case)
+  if (!window.currentDetailModal) {
+    window.currentDetailModal = new bootstrap.Modal(document.getElementById('detailModal'));
+  }
+  window.currentDetailModal.show();
+  
+  // Mark unread as read
   const unreadNotifs = (APP.notifications || []).filter(n => String(n.read).toUpperCase() === 'FALSE');
+  if (unreadNotifs.length > 0) {
+    google.script.run.markNotificationsRead(authToken);
+    
+    // Update locally so the badge clears instantly
+    APP.notifications.forEach(n => { n.read = 'TRUE'; });
+    updateNotifBadge();
+    
+    // Re-render so the blue "unread" background disappears
+    renderNotificationsModal(); 
+  }
+};
+
+window.loadMoreNotifications = function() {
+  notifDisplayLimit += 10;
+  renderNotificationsModal();
+};
+
+function renderNotificationsModal() {
+  let html = '';
+  const allNotifs = APP.notifications || [];
   
-  if (unreadNotifs.length === 0) {
+  if (allNotifs.length === 0) {
     html = '<div class="text-center py-5">' +
            '<i class="bi bi-bell-slash" style="font-size: 3rem; color: #adb5bd;"></i>' +
-           '<div class="mt-3 text-muted">គ្មានការជូនដំណឹងថ្មីៗទេ<br>(No new notifications)</div>' +
+           '<div class="mt-3 text-muted">គ្មានការជូនដំណឹងថ្មីៗទេ<br>(No notifications)</div>' +
            '</div>';
   } else {
+    const visibleNotifs = allNotifs.slice(0, notifDisplayLimit);
     html = '<div class="list-group list-group-flush">';
-    unreadNotifs.forEach(n => {
-      html += `<div class="list-group-item bg-light" style="border-left:4px solid #0d6efd;">
+    
+    visibleNotifs.forEach(n => {
+      const isUnread = String(n.read).toUpperCase() === 'FALSE';
+      html += `<div class="list-group-item ${isUnread ? 'bg-light' : ''}" style="border-left:4px solid ${isUnread ? '#0d6efd' : 'transparent'};">
         <div class="d-flex justify-content-between">
           <strong>${esc(n.title)}</strong>
           <small class="text-muted">${esc(n.date)} ${esc(n.time)}</small>
@@ -7697,26 +7729,18 @@ window.openNotificationsModal = function() {
       </div>`;
     });
     html += '</div>';
+    
+    // Add View More button if there are more than 10
+    if (allNotifs.length > notifDisplayLimit) {
+      const remaining = allNotifs.length - notifDisplayLimit;
+      html += `<div class="text-center mt-3 mb-2"><button class="btn btn-sm btn-outline-primary" onclick="loadMoreNotifications()"><i class="bi bi-arrow-down-circle me-1"></i> View More (${remaining})</button></div>`;
+    }
   }
 
   $('#modalTitle').text('ការជូនដំណឹង (Notifications)');
   $('#modalActionButtons').addClass('d-none');
   $('#modalBody').html('<div class="p-3">' + html + '</div>');
-  
-  if (!window.currentDetailModal) {
-    window.currentDetailModal = new bootstrap.Modal(document.getElementById('detailModal'));
-  }
-  window.currentDetailModal.show();
-  
-  // If there are notifications, mark them as read on the server AND locally
-  if (unreadNotifs.length > 0) {
-    google.script.run.markNotificationsRead(authToken); // Server
-    
-    // Frontend: Clear them from memory so the badge updates instantly
-    APP.notifications = []; 
-    updateNotifBadge();
-  }
-};
+}
 
 function updateNotifBadge() {
   // 🛡️ STRICT ARRAY CHECK
