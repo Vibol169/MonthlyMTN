@@ -478,20 +478,28 @@ function bootLoad(){
 
 window.fetchNotifications = function() {
   if (!authToken) return;
+  console.log('🔔 [fetchNotifications] Fetching from server...');
+  
   google.script.run
     .withSuccessHandler(notifs => {
+      console.log('🔔 [fetchNotifications] Received data:', notifs);
       APP.notifications = notifs || [];
       updateNotifBadge();
     })
-    .withFailureHandler(console.error)
+    .withFailureHandler(err => {
+      console.error('🔔 [fetchNotifications] Error:', err);
+    })
     .getNotifications(authToken);
 };
 
 function updateNotifBadge() {
-  const unread = (APP.notifications || []).filter(n => n.read === 'FALSE').length;
+  const unread = (APP.notifications || []).filter(n => String(n.read).toUpperCase() === 'FALSE').length;
+  console.log('🔔 [updateNotifBadge] Unread count:', unread);
+  
   const $badge = $('#notifBadge');
   if (unread > 0) { $badge.text(unread).show(); } else { $badge.hide(); }
 }
+
 
 function fetchBothDatasets(silent){
   if (!authToken) return Promise.resolve();
