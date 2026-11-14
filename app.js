@@ -476,6 +476,23 @@ function bootLoad(){
   fetchBothDatasets(false).then(() => { fetchExtendedData(true); });
 }
 
+window.fetchNotifications = function() {
+  if (!authToken) return;
+  google.script.run
+    .withSuccessHandler(notifs => {
+      APP.notifications = notifs || [];
+      updateNotifBadge();
+    })
+    .withFailureHandler(console.error)
+    .getNotifications(authToken);
+};
+
+function updateNotifBadge() {
+  const unread = (APP.notifications || []).filter(n => n.read === 'FALSE').length;
+  const $badge = $('#notifBadge');
+  if (unread > 0) { $badge.text(unread).show(); } else { $badge.hide(); }
+}
+
 function fetchBothDatasets(silent){
   if (!authToken) return Promise.resolve();
   
@@ -491,8 +508,10 @@ function fetchBothDatasets(silent){
       
       if (!silent) hideLoading();
       
-      // ★ FIX: If BOTH are unchanged, we are perfectly up to date. Do nothing.
+      // ★ FIX: If BOTH are unchanged, we are perfectly up to date. 
+      // But we STILL need to check if there are new notifications!
       if (resM.unchanged && resD.unchanged) {
+         if (typeof fetchNotifications === 'function') fetchNotifications(); 
          resolve(); return;
       }
       
@@ -512,14 +531,10 @@ function fetchBothDatasets(silent){
       }
       
       applyBootstrap(resM, resD);
+      
+      // ★ FIX: Fetch notifications right after applying the main data
+      if (typeof fetchNotifications === 'function') fetchNotifications();
 
-            // Fetch Notifications
-      google.script.run.withSuccessHandler(notifs => {
-        APP.notifications = notifs || [];
-        updateNotifBadge();
-      }).getNotifications(authToken);
-      
-      
       if (!silent) {
         try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
         showApp();
@@ -573,8 +588,9 @@ function fetchExtendedData(silent) {
     .withFailureHandler(e => console.error("Extended load failed", e))
     .getExtendedData(authToken, opts);
 }
+
 /* =========================================================
-   SILENT BACKGROUND SYNC
+   SILENT BACKGROUND SYNC (Web Worker Timer)
    ========================================================= */
 window.syncAllData = function(silent) {
   if (!authToken) return;
@@ -585,14 +601,14 @@ window.syncAllData = function(silent) {
     return;
   }
 
-  // Call the backend. The polyfill will automatically attach the clientVersion.
-  // If the backend data hasn't changed, it will return { unchanged: true } instantly.
   google.script.run
     .withSuccessHandler(resM => {
       if (!resM || !resM.success) return;
       
-      // If the data is unchanged, we do absolutely nothing. No re-render, no flash.
+      // If the data is unchanged, we do absolutely nothing to the main UI. No re-render, no flash.
       if (resM.unchanged) {
+        // ★ FIX: Fetch notifications anyway!
+        if (typeof fetchNotifications === 'function') fetchNotifications();
         console.log('[Sync] No changes detected on server.');
         return;
       }
@@ -601,6 +617,9 @@ window.syncAllData = function(silent) {
       google.script.run
         .withSuccessHandler(resD => {
           applyBootstrap(resM, resD);
+          
+          // ★ FIX: Fetch notifications since data changed
+          if (typeof fetchNotifications === 'function') fetchNotifications();
           
           if (silent) {
             // Soft update: Only re-render if safe
@@ -7648,40 +7667,44 @@ window.generateMonthlyReportPDF = function() {
 };
 
 window.openNotificationsModal = function() {
-  // 🛡️ STRICT ARRAY CHECK
-  const notifications = Array.isArray(APP.notifications) ? APP.notifications : [];
+  let html = '';
   
-  if (notifications.length === 0) {
-    showAlert('គ្មានការជូនដំណឹងថ្មីៗទេ (No new notifications)', 'info');
-    return;
+  if (!APP.notifications || APP.notifications.length === 0) {
+    // Empty State UI
+    html = '<div class="text-center py-5">' +
+           '<i class="bi bi-bell-slash" style="font-size: 3rem; color: #adb5bd;"></i>' +
+           '<div class="mt-3 text-muted">គ្មានការជូនដំណឹងថ្មីៗទេ<br>(No new notifications)</div>' +
+           '</div>';
+  } else {
+    // List UI
+    html = '<div class="list-group list-group-flush">';
+    APP.notifications.forEach(n => {
+      html += `<div class="list-group-item ${n.read === 'FALSE' ? 'bg-light' : ''}" style="border-left:4px solid ${n.read === 'FALSE' ? '#0d6efd' : 'transparent'};">
+        <div class="d-flex justify-content-between">
+          <strong>${esc(n.title)}</strong>
+          <small class="text-muted">${esc(n.date)} ${esc(n.time)}</small>
+        </div>
+        <div class="small mt-1">${esc(n.message)}</div>
+      </div>`;
+    });
+    html += '</div>';
   }
-  
-  let html = '<div class="list-group list-group-flush">';
-  notifications.forEach(n => {
-    // Ensure we handle both string 'FALSE' and boolean false
-    const isUnread = (n.read === 'FALSE' || n.read === false); 
-    
-    html += `<div class="list-group-item ${isUnread ? 'bg-light' : ''}" style="border-left:4px solid ${isUnread ? '#0d6efd' : 'transparent'};">
-      <div class="d-flex justify-content-between">
-        <strong>${esc(n.title)}</strong>
-        <small class="text-muted">${esc(n.time)}</small>
-      </div>
-      <div class="small mt-1">${esc(n.message)}</div>
-    </div>`;
-  });
-  html += '</div>';
-  
+
   $('#modalTitle').text('ការជូនដំណឹង (Notifications)');
   $('#modalActionButtons').addClass('d-none');
-  $('#modalBody').html(html);
-  currentDetailModal.show();
+  $('#modalBody').html('<div class="p-3">' + html + '</div>');
   
-  // Mark as read in backend
-  google.script.run.markNotificationsRead(authToken);
+  if (!window.currentDetailModal) {
+    window.currentDetailModal = new bootstrap.Modal(document.getElementById('detailModal'));
+  }
+  window.currentDetailModal.show();
   
-  // Update local state safely
-  notifications.forEach(n => n.read = 'TRUE');
-  updateNotifBadge();
+  // Mark as read if there are any
+  if (APP.notifications && APP.notifications.length > 0) {
+    google.script.run.markNotificationsRead(authToken);
+    APP.notifications.forEach(n => n.read = 'TRUE');
+    updateNotifBadge();
+  }
 };
 
 function updateNotifBadge() {
