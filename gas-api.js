@@ -31,7 +31,7 @@
 
   const TOKEN_ARG_ACTIONS = new Set([
     'logout', 'getUserFromToken', 'getBootstrapData', 'getDailyBootstrapData', 'getExtendedData',
-    'getNotifications', 'markNotificationsRead' ,'savePushSubscription' 
+    'getNotifications', 'markNotificationsRead' 
   ]);
 
   const ADAPTERS = {
