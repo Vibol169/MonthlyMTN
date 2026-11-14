@@ -436,7 +436,6 @@ function showApp(){
   $('#currentAppTitle').text(currentApp === 'monthly' ? 'Monthly Check' : 'Daily Check');
   renderBottomNav(); 
   showPage('home');
-  registerWebPush();
   autoRegisterPush();
 }
 
