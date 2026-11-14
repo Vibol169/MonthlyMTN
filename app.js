@@ -392,14 +392,16 @@ window.doLogout = async function(){
 
   showLoading('កំពុងចាកចេញ...');
   
-  // 1. Unsubscribe from Web Push
+  // 1. Unsubscribe and delete the endpoint from the backend
   try {
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        await sub.unsubscribe();
-        google.script.run.deletePushSubscription(); // Tell backend to remove row
+        const endpoint = sub.endpoint;
+        await sub.unsubscribe(); // Unsubscribe on device
+        // Delete from sheet
+        google.script.run.deletePushSubscription({ endpoint: endpoint }); 
       }
     }
   } catch (e) {
@@ -7791,20 +7793,23 @@ window.checkPushStatus = async function() {
 
 window.autoRegisterPush = async function() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-  if (Notification.permission !== 'granted') return; // User hasn't allowed notifications
+  if (Notification.permission !== 'granted') return; 
 
   try {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
     
     if (sub) {
-      // Device is already subscribed. Silently link to this new user.
-      google.script.run.savePushSubscription({ subscription: sub });
+      // Save the subscription. Backend will automatically delete old devices for this user
+      // and remove this device from any old user.
+      google.script.run.savePushSubscription({ subscription: sub })
+        .withSuccessHandler(() => console.log('✅ Device auto-linked to user.'));
     }
   } catch (e) {
     console.error('Auto-register push failed:', e);
   }
 };
+
 window.togglePushSubscription = async function(isChecked) {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
