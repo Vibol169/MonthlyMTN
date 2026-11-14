@@ -31,7 +31,7 @@
 
   const TOKEN_ARG_ACTIONS = new Set([
     'logout', 'getUserFromToken', 'getBootstrapData', 'getDailyBootstrapData', 'getExtendedData',
-    'getNotifications', 'markNotificationsRead', 'deletePushSubscription'
+    'getNotifications', 'markNotificationsRead'
   ]);
 
   const ADAPTERS = {
@@ -40,7 +40,11 @@
     getPdfBase64:           (a) => ({ fileId: a[0] }),
     saveChecklistPdf:       (a) => ({ checkId: a[0], pdfBase64: a[1] }),
     updateUserEquipment:    (a) => ({ username: a[0], equipmentIds: a[1] }),
-    getMissingPdfsForMonth: (a) => ({ group: a[0], ym: a[1] })
+    getMissingPdfsForMonth: (a) => ({ group: a[0], ym: a[1] }),
+     
+    savePushSubscription:   (a) => ({ subscription: a[0].subscription }),
+    deletePushSubscription: (a) => ({ endpoint: a[0].endpoint })
+  }; 
   };
 
   function fireRequest(action, args, successFn, failureFn) {
