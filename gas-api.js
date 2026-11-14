@@ -85,7 +85,7 @@
           localStorage.setItem('_gVersion', res.version);
         }
 
-           if (res && res.success === false && res.code === 'AUTH_EXPIRED') {
+         if (res && res.success === false && res.code === 'AUTH_EXPIRED') {
           console.warn('Session expired. Logging out...');
           
           // Clear all local storage and cache
@@ -105,7 +105,10 @@
           if (typeof window.handleSessionExpired === 'function') {
             window.handleSessionExpired();
           } else {
-            // Fallback just in case app.js hasn't loaded yet
+            // Fallback: Force hide spinner and alert
+            if (typeof hideLoading === 'function') hideLoading();
+            else $('#loadingOverlay').hide();
+            
             alert('Your session has expired. Please log in again.');
             window.location.href = window.location.pathname; 
           }
