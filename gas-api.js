@@ -85,14 +85,31 @@
           localStorage.setItem('_gVersion', res.version);
         }
 
-        if (res && res.success === false && res.code === 'AUTH_EXPIRED') {
+           if (res && res.success === false && res.code === 'AUTH_EXPIRED') {
           console.warn('Session expired. Logging out...');
+          
+          // Clear all local storage and cache
           localStorage.removeItem('authToken');
           localStorage.removeItem('_gVersion');
-          _memoryToken = null;
-          alert('Your session has expired. Please log in again.');
-          window.location.reload();
-          return;
+          localStorage.removeItem('bootstrapCache_v2'); // Clear cached data
+          sessionStorage.clear();
+          
+          // Clear Service Worker Cache to prevent stale reloads
+          if ('caches' in window) {
+            caches.keys().then((names) => {
+              for (let name of names) caches.delete(name);
+            });
+          }
+
+          // Call the frontend function to show login form (No page reload!)
+          if (typeof window.handleSessionExpired === 'function') {
+            window.handleSessionExpired();
+          } else {
+            // Fallback just in case app.js hasn't loaded yet
+            alert('Your session has expired. Please log in again.');
+            window.location.href = window.location.pathname; 
+          }
+          return; // Stop processing further
         }
 
         if (successFn) successFn(res);
