@@ -82,11 +82,22 @@
       })
     })
       .then(res => res.json())
-      .then(res => {
+            .then(res => {
         // Save the latest global cache version
         if (res && res.version) {
           localStorage.setItem('_gVersion', res.version);
         }
+
+        // ★ NEW: Handle session expiration gracefully
+        if (res && res.success === false && res.code === 'AUTH_EXPIRED') {
+          console.warn('Session expired. Logging out...');
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('_gVersion');
+          alert('Your session has expired. Please log in again.');
+          window.location.reload();
+          return; // Stop processing further
+        }
+
         // Mimic GAS behavior: success handler gets the response, even if success:false
         if (successFn) successFn(res);
       })
