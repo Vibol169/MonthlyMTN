@@ -419,6 +419,7 @@ function showApp(){
   $('#currentAppTitle').text(currentApp === 'monthly' ? 'Monthly Check' : 'Daily Check');
   renderBottomNav(); 
   showPage('home');
+  registerWebPush();
 }
 
 function renderBottomNav(){
@@ -7695,4 +7696,56 @@ function updateNotifBadge() {
   } else { 
     $badge.hide(); 
   }
+}
+
+/* =========================================================
+   WEB PUSH NOTIFICATION SUBSCRIPTION
+   ========================================================= */
+window.registerWebPush = async function() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    console.log('Push notifications not supported on this browser.');
+    return;
+  }
+
+  try {
+    // 1. Ask for permission
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      console.log('Notification permission denied.');
+      return;
+    }
+
+    // 2. Get Service Worker Registration
+    const registration = await navigator.serviceWorker.ready;
+
+    // 3. Subscribe to Push
+    // 👇 REPLACE WITH YOUR VAPID PUBLIC KEY 👇
+    const VAPID_PUBLIC_KEY = 'BIkd7euBuAQQapXWp6MP_wQ07PHYzA4XmdDQLEa6xlF0V_z6vWz9HMTHM3YGsYu14LA5oYfL5LjKG2tbo927JzQ'; 
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+    });
+
+    // 4. Send to backend
+    google.script.run
+      .withSuccessHandler(res => console.log('Push subscription saved to server!'))
+      .withFailureHandler(err => console.error('Error saving push:', err))
+      .savePushSubscription({ subscription: subscription });
+
+  } catch (error) {
+    console.error('Error registering push:', error);
+  }
+};
+
+// Helper function for VAPID key
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
