@@ -7699,43 +7699,86 @@ function updateNotifBadge() {
 }
 
 /* =========================================================
-   WEB PUSH NOTIFICATION SUBSCRIPTION
+   WEB PUSH SUBSCRIPTION (Toggle Switch)
    ========================================================= */
-window.registerWebPush = async function() {
+window.checkPushStatus = async function() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    console.log('Push notifications not supported on this browser.');
+    $('#pushToggle').prop('disabled', true); // Not supported
     return;
   }
-
   try {
-    // 1. Ask for permission
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      console.log('Notification permission denied.');
-      return;
-    }
-
-    // 2. Get Service Worker Registration
-    const registration = await navigator.serviceWorker.ready;
-
-    // 3. Subscribe to Push
-    // 👇 REPLACE WITH YOUR VAPID PUBLIC KEY 👇
-    const VAPID_PUBLIC_KEY = 'BIkd7euBuAQQapXWp6MP_wQ07PHYzA4XmdDQLEa6xlF0V_z6vWz9HMTHM3YGsYu14LA5oYfL5LjKG2tbo927JzQ'; 
-
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-    });
-
-    // 4. Send to backend
-    google.script.run
-      .withSuccessHandler(res => console.log('Push subscription saved to server!'))
-      .withFailureHandler(err => console.error('Error saving push:', err))
-      .savePushSubscription({ subscription: subscription });
-
-  } catch (error) {
-    console.error('Error registering push:', error);
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    $('#pushToggle').prop('checked', !!sub);
+  } catch (e) {
+    console.error('Error checking push status:', e);
   }
+};
+
+window.togglePushSubscription = async function(isChecked) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+  const reg = await navigator.serviceWorker.ready;
+
+  if (isChecked) {
+    // 👉 SUBSCRIBE
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        showAlert('Notification permission denied. Please allow it in browser settings.', 'warning');
+        $('#pushToggle').prop('checked', false);
+        return;
+      }
+
+      // 👇 REPLACE WITH YOUR VAPID PUBLIC KEY 👇
+      const VAPID_PUBLIC_KEY = 'BIkd7euBuAQQapXWp6MP_wQ07PHYzA4XmdDQLEa6xlF0V_z6vWz9HMTHM3YGsYu14LA5oYfL5LjKG2tbo927JzQ'; 
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+
+      google.script.run
+        .withSuccessHandler(() => showAlert('Push notifications enabled!', 'success'))
+        .withFailureHandler(err => showAlert('Error saving subscription', 'danger'))
+        .savePushSubscription({ subscription: sub });
+
+    } catch (err) {
+      console.error('Subscribe Error:', err);
+      $('#pushToggle').prop('checked', false);
+    }
+  } else {
+    // 👉 UNSUBSCRIBE
+    try {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await sub.unsubscribe();
+        google.script.run
+          .withSuccessHandler(() => showAlert('Push notifications turned off.', 'info'))
+          .deletePushSubscription();
+      }
+    } catch (err) {
+      console.error('Unsubscribe Error:', err);
+    }
+  }
+};
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+// Call this when opening the account modal
+const _oldOpenAccountModal = window.openAccountModal;
+window.openAccountModal = function() {
+  _oldOpenAccountModal();
+  checkPushStatus(); // Check if the toggle should be ON or OFF
 };
 
 // Helper function for VAPID key
