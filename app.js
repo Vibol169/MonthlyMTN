@@ -454,7 +454,14 @@ window.handleSessionExpired = function() {
   $('#loginContainer').css('display', 'flex');
   $('#settingsPanel').removeClass('visible');
 
-  // 4. Show a warning to the user
+  // 👇 4. CRITICAL: Stop the loading spinner!
+  if (typeof hideLoading === 'function') {
+    hideLoading();
+  } else {
+    $('#loadingOverlay').hide(); // Fallback just in case
+  }
+
+  // 5. Show a warning to the user
   showAlert('Your session has expired. Please log in again.', 'warning');
 };
 
