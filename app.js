@@ -430,6 +430,34 @@ function showLogin(){
   $('#loginContainer').css('display', 'flex'); $('#settingsPanel').removeClass('visible'); 
 }
 
+window.handleSessionExpired = function() {
+  // 1. Clear global state
+  authToken = null;
+  currentUser = null;
+  APP.loaded = false;
+  if (APP.submissions) APP.submissions = [];
+  if (APP.dailySubmissions) APP.dailySubmissions = [];
+  if (window.pendingChecklist) window.pendingChecklist = null;
+
+  // 2. Close any open modals and sidebars
+  $('.modal').modal('hide');
+  $('.modal-backdrop').remove();
+  $('body').removeClass('modal-open').css('overflow', '');
+  $('#sideNav').removeClass('open');
+  $('#sideNavBackdrop').removeClass('show');
+  $('body').removeClass('sidebar-open');
+
+  // 3. Hide App & Show Login
+  $('#app').hide(); 
+  $('#bottomNav').hide(); 
+  $('#topHeader').hide();
+  $('#loginContainer').css('display', 'flex');
+  $('#settingsPanel').removeClass('visible');
+
+  // 4. Show a warning to the user
+  showAlert('Your session has expired. Please log in again.', 'warning');
+};
+
 function showApp(){
   $('#loginContainer').hide(); $('#app').show(); $('#bottomNav').show(); $('#topHeader').show();
   // Update title just in case
