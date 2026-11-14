@@ -382,7 +382,7 @@ window.openAccountModal = function() {
   accountModalInstance.show();
 };
 
-window.doLogout = function(){
+window.doLogout = async function(){
   if (accountModalInstance) accountModalInstance.hide();
   $('.modal-backdrop').remove();
   $('body').removeClass('modal-open');
@@ -390,10 +390,24 @@ window.doLogout = function(){
   $('#sideNavBackdrop').removeClass('show');
   $('body').removeClass('sidebar-open');
 
-  showLoading();
+  showLoading('កំពុងចាកចេញ...');
   
+  // 1. Unsubscribe from Web Push
+  try {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await sub.unsubscribe();
+        google.script.run.deletePushSubscription(); // Tell backend to remove row
+      }
+    }
+  } catch (e) {
+    console.error('Push unsub error:', e);
+  }
+
+  // 2. Clear Auth and Redirect
   const oldToken = authToken;
-  // ★ Set token to null immediately to stop background tasks
   authToken = null; 
 
   const done = () => { 
@@ -404,6 +418,7 @@ window.doLogout = function(){
     hideLoading(); 
     showLogin(); 
   };
+  
   google.script.run.withSuccessHandler(done).withFailureHandler(done).logout(oldToken);
 };
 
@@ -420,6 +435,7 @@ function showApp(){
   renderBottomNav(); 
   showPage('home');
   registerWebPush();
+  autoRegisterPush();
 }
 
 function renderBottomNav(){
@@ -7773,6 +7789,22 @@ window.checkPushStatus = async function() {
   }
 };
 
+window.autoRegisterPush = async function() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if (Notification.permission !== 'granted') return; // User hasn't allowed notifications
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    
+    if (sub) {
+      // Device is already subscribed. Silently link to this new user.
+      google.script.run.savePushSubscription({ subscription: sub });
+    }
+  } catch (e) {
+    console.error('Auto-register push failed:', e);
+  }
+};
 window.togglePushSubscription = async function(isChecked) {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
