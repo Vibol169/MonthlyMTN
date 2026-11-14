@@ -7677,17 +7677,18 @@ window.generateMonthlyReportPDF = function() {
 window.openNotificationsModal = function() {
   let html = '';
   
-  if (!APP.notifications || APP.notifications.length === 0) {
-    // Empty State UI
+  // Only get unread ones (just in case)
+  const unreadNotifs = (APP.notifications || []).filter(n => String(n.read).toUpperCase() === 'FALSE');
+  
+  if (unreadNotifs.length === 0) {
     html = '<div class="text-center py-5">' +
            '<i class="bi bi-bell-slash" style="font-size: 3rem; color: #adb5bd;"></i>' +
            '<div class="mt-3 text-muted">គ្មានការជូនដំណឹងថ្មីៗទេ<br>(No new notifications)</div>' +
            '</div>';
   } else {
-    // List UI
     html = '<div class="list-group list-group-flush">';
-    APP.notifications.forEach(n => {
-      html += `<div class="list-group-item ${n.read === 'FALSE' ? 'bg-light' : ''}" style="border-left:4px solid ${n.read === 'FALSE' ? '#0d6efd' : 'transparent'};">
+    unreadNotifs.forEach(n => {
+      html += `<div class="list-group-item bg-light" style="border-left:4px solid #0d6efd;">
         <div class="d-flex justify-content-between">
           <strong>${esc(n.title)}</strong>
           <small class="text-muted">${esc(n.date)} ${esc(n.time)}</small>
@@ -7707,10 +7708,12 @@ window.openNotificationsModal = function() {
   }
   window.currentDetailModal.show();
   
-  // Mark as read if there are any
-  if (APP.notifications && APP.notifications.length > 0) {
-    google.script.run.markNotificationsRead(authToken);
-    APP.notifications.forEach(n => n.read = 'TRUE');
+  // If there are notifications, mark them as read on the server AND locally
+  if (unreadNotifs.length > 0) {
+    google.script.run.markNotificationsRead(authToken); // Server
+    
+    // Frontend: Clear them from memory so the badge updates instantly
+    APP.notifications = []; 
     updateNotifBadge();
   }
 };
