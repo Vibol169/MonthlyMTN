@@ -70,6 +70,8 @@
       payload = fn ? fn(args) : (args[0] && typeof args[0] === 'object' ? args[0] : {});
     }
 
+     console.log(`[gas-api] Sending action: ${action} | Token: ${token}`);
+     
     // Send to Worker
     fetch(WORKER_URL, {
       method: 'POST',
