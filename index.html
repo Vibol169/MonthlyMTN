@@ -19,9 +19,6 @@
 </head>
 <body class="font-medium">
 
-</head>
-<body class="font-medium">
-
 <!-- Loading Overlay -->
 <div id="loadingOverlay" class="loading-overlay" style="display:none;">
   <div class="spinner-border text-primary" role="status"></div>
@@ -44,29 +41,32 @@
 </div>
 
 <!-- ==========================================
-     TOP HEADER: Hamburger & Profile
+     TOP HEADER: Hamburger, Notifications & Profile
      ========================================== -->
 <div id="topHeader" class="top-header" style="display:none;">
+  
+  <!-- Left Side: Hamburger & Title -->
   <div class="d-flex align-items-center gap-2">
     <button class="hamburger-btn" onclick="toggleSideNav()"><i class="bi bi-list"></i></button>
     <span class="fw-bold" id="currentAppTitle" style="font-size: 15px;">Monthly Check</span>
   </div>
-  <div class="user-profile" onclick="openAccountModal()">
-    <i class="bi bi-person-circle" style="font-size: 28px; color: var(--tab-active); cursor: pointer;"></i>
-  </div>
-</div>
   
+  <!-- Right Side: Notifications & Profile -->
   <div class="d-flex align-items-center gap-3">
+    
     <!-- Notifications Bell -->
     <div style="position:relative; cursor:pointer;" onclick="openNotificationsModal()">
       <i class="bi bi-bell" style="font-size: 22px; color: var(--text-color);"></i>
       <span id="notifBadge" class="badge bg-danger" style="display:none; position:absolute; top:-5px; right:-5px; font-size:10px; border-radius:50%;">0</span>
     </div>
+    
     <!-- User Profile -->
     <div class="user-profile" onclick="openAccountModal()">
       <i class="bi bi-person-circle" style="font-size: 28px; color: var(--tab-active); cursor: pointer;"></i>
     </div>
+
   </div>
+</div>
 
 <!-- ==========================================
      SIDE NAVIGATION (Vertical Tabs)
@@ -112,7 +112,7 @@
 </div>
 
 <!-- ==========================================
-     MODALS (Keep these exactly as they are)
+     MODALS
      ========================================== -->
 <!-- Detail Modal -->
 <div class="modal fade" id="detailModal" tabindex="-1">
@@ -259,16 +259,16 @@
 <!-- App Logic (Extracted) -->
 <script src="app.js"></script>
 
-  <!-- Project 2 Service Worker Registration -->
-  <script>
-    // Only register if NOT inside Google Apps Script
-    if (window.location.hostname.indexOf('google') === -1 && 'serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw-project2.js', { scope: './' })
-          .then(reg => console.log('Project 2 Service Worker registered!', reg))
-          .catch(err => console.log('Project 2 Service Worker registration failed:', err));
-      });
-    }
-  </script>
+<!-- Project 2 Service Worker Registration -->
+<script>
+  // Only register if NOT inside Google Apps Script
+  if (window.location.hostname.indexOf('google') === -1 && 'serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw-project2.js', { scope: './' })
+        .then(reg => console.log('Project 2 Service Worker registered!', reg))
+        .catch(err => console.log('Project 2 Service Worker registration failed:', err));
+    });
+  }
+</script>
 </body>
 </html>
