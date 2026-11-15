@@ -566,30 +566,30 @@ function updateNotifBadge() {
   if (unread > 0) { $badge.text(unread).show(); } else { $badge.hide(); }
 }
 
-
 function fetchBothDatasets(silent){
   if (!authToken) return Promise.resolve();
   
-  // If hard load, clear version to force a full fetch
   if (!silent) localStorage.removeItem('_gVersion'); 
   
   return new Promise((resolve) => {
+    // 👇 ADD the notification fetch to the Promise array
     const reqMonthly = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r({success:false})).getBootstrapData(authToken));
     const reqDaily = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r({success:false})).getDailyBootstrapData(authToken));
+    const reqNotifs = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r([])).getNotifications(authToken));
 
-    Promise.all([reqMonthly, reqDaily]).then(([resM, resD]) => {
+    Promise.all([reqMonthly, reqDaily, reqNotifs]).then(([resM, resD, notifs]) => {
       if (!authToken) { resolve(); return; }
       
       if (!silent) hideLoading();
       
-      // ★ FIX: If BOTH are unchanged, we are perfectly up to date. 
-      // But we STILL need to check if there are new notifications!
+      // 👇 UPDATE THE BADGE IMMEDIATELY
+      APP.notifications = notifs || [];
+      updateNotifBadge();
+      
       if (resM.unchanged && resD.unchanged) {
-         if (typeof fetchNotifications === 'function') fetchNotifications(); 
          resolve(); return;
       }
       
-      // ★ FIX: If ONE is unchanged but the other changed, we are missing data. Force a fresh refetch.
       if (resM.unchanged || resD.unchanged) {
          localStorage.removeItem('_gVersion'); 
          fetchBothDatasets(silent).then(resolve);
@@ -608,9 +608,6 @@ function fetchBothDatasets(silent){
 
       lastSyncTime = Date.now();
       LS.set('lastSyncTime', lastSyncTime);
-      
-      // ★ FIX: Fetch notifications right after applying the main data
-      if (typeof fetchNotifications === 'function') fetchNotifications();
 
       if (!silent) {
         try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
@@ -622,6 +619,7 @@ function fetchBothDatasets(silent){
     });
   });
 }
+
 
 function fetchExtendedData(silent) {
   if (!authToken) return;
@@ -672,32 +670,28 @@ function fetchExtendedData(silent) {
 window.syncAllData = function(silent) {
   if (!authToken) return;
 
-  // If it's a silent sync, make sure we don't interrupt the user
   if (silent && !safeToRefresh()) {
     console.log('Sync postponed: User is busy (modal open or filling form)');
     return;
   }
 
+  // 👇 FIRE THE NOTIFICATION FETCH IMMEDIATELY (In Parallel)
+  if (typeof fetchNotifications === 'function') fetchNotifications();
+
   google.script.run
     .withSuccessHandler(resM => {
       if (!resM || !resM.success) return;
       
-      // 1. If the data is unchanged, update the time and exit
       if (resM.unchanged) {
         lastSyncTime = Date.now();
         LS.set('lastSyncTime', lastSyncTime);
         updateLastSyncDisplay(); 
-
-        if (typeof fetchNotifications === 'function') fetchNotifications(); 
         console.log('[Sync] No changes detected on server.');
         return;
       }
 
-      // 2. If we get here, Monthly data changed. Fetch Daily data too.
       google.script.run
         .withSuccessHandler(resD => {
-          
-          // 👇 THIS IS THE resD SUCCESS HANDLER 👇
           
           applyBootstrap(resM, resD);
           
@@ -705,7 +699,6 @@ window.syncAllData = function(silent) {
           LS.set('lastSyncTime', lastSyncTime);
           
           if (silent) {
-            // Soft update: Only re-render if safe
             if (safeToRefresh()) {
               const page = $('#bottomNav a.active').data('page') || 'home';
               if (page === 'home') renderHome();
@@ -713,17 +706,13 @@ window.syncAllData = function(silent) {
               else if (page === 'dashboard') { 
                 if (currentApp === 'daily') renderDailyDashboard(); else renderDashboard(); 
               }
-              updateLastSyncDisplay(); // Updates time for silent sync
+              updateLastSyncDisplay(); 
             }
           } else {
-            // Hard update (manual refresh)
             try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
-            showApp(); // (showApp calls showPage, which handles the update)
+            showApp(); 
             fetchExtendedData(true);
           }
-          
-          // 👆 END OF resD SUCCESS HANDLER 👆
-          
         })
         .withFailureHandler(console.error)
         .getDailyBootstrapData(authToken);
