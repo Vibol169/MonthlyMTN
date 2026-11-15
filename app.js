@@ -572,21 +572,17 @@ function fetchBothDatasets(silent){
   if (!silent) localStorage.removeItem('_gVersion'); 
   
   return new Promise((resolve) => {
-    // 👇 ADD the notification fetch to the Promise array
     const reqMonthly = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r({success:false})).getBootstrapData(authToken));
     const reqDaily = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r({success:false})).getDailyBootstrapData(authToken));
-    const reqNotifs = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r([])).getNotifications(authToken));
 
-    Promise.all([reqMonthly, reqDaily, reqNotifs]).then(([resM, resD, notifs]) => {
+    Promise.all([reqMonthly, reqDaily]).then(([resM, resD]) => {
       if (!authToken) { resolve(); return; }
       
       if (!silent) hideLoading();
       
-      // 👇 UPDATE THE BADGE IMMEDIATELY
-      APP.notifications = notifs || [];
-      updateNotifBadge();
-      
       if (resM.unchanged && resD.unchanged) {
+         // 👇 If unchanged, resM still has notifications now!
+         if (resM.notifications) { APP.notifications = resM.notifications; updateNotifBadge(); }
          resolve(); return;
       }
       
@@ -604,7 +600,7 @@ function fetchBothDatasets(silent){
         resolve(); return; 
       }
       
-      applyBootstrap(resM, resD);
+      applyBootstrap(resM, resD); // 👈 This handles the notifications automatically now!
 
       lastSyncTime = Date.now();
       LS.set('lastSyncTime', lastSyncTime);
@@ -667,38 +663,50 @@ function fetchExtendedData(silent) {
 /* =========================================================
    SILENT BACKGROUND SYNC (Web Worker Timer)
    ========================================================= */
+/* =========================================================
+   SILENT BACKGROUND SYNC (Web Worker Timer)
+   ========================================================= */
 window.syncAllData = function(silent) {
   if (!authToken) return;
 
+  // If it's a silent sync, make sure we don't interrupt the user
   if (silent && !safeToRefresh()) {
     console.log('Sync postponed: User is busy (modal open or filling form)');
     return;
   }
 
-  // 👇 FIRE THE NOTIFICATION FETCH IMMEDIATELY (In Parallel)
-  if (typeof fetchNotifications === 'function') fetchNotifications();
-
   google.script.run
     .withSuccessHandler(resM => {
       if (!resM || !resM.success) return;
       
+      // 1. If the data is unchanged, update the time, check bundled notifications, and exit
       if (resM.unchanged) {
         lastSyncTime = Date.now();
         LS.set('lastSyncTime', lastSyncTime);
         updateLastSyncDisplay(); 
+
+        // 👇 FETCH BUNDLED NOTIFICATIONS
+        if (resM.notifications) {
+          APP.notifications = resM.notifications;
+          updateNotifBadge();
+        }
+        
         console.log('[Sync] No changes detected on server.');
         return;
       }
 
+      // 2. If we get here, Monthly data changed. Fetch Daily data too.
       google.script.run
         .withSuccessHandler(resD => {
           
+          // (applyBootstrap automatically applies resM.notifications now)
           applyBootstrap(resM, resD);
           
           lastSyncTime = Date.now();
           LS.set('lastSyncTime', lastSyncTime);
           
           if (silent) {
+            // Soft update: Only re-render if safe
             if (safeToRefresh()) {
               const page = $('#bottomNav a.active').data('page') || 'home';
               if (page === 'home') renderHome();
@@ -706,13 +714,15 @@ window.syncAllData = function(silent) {
               else if (page === 'dashboard') { 
                 if (currentApp === 'daily') renderDailyDashboard(); else renderDashboard(); 
               }
-              updateLastSyncDisplay(); 
+              updateLastSyncDisplay(); // Updates time for silent sync
             }
           } else {
+            // Hard update (manual refresh or initial load)
             try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
-            showApp(); 
+            showApp(); // (showApp calls showPage, which handles the UI update)
             fetchExtendedData(true);
           }
+          
         })
         .withFailureHandler(console.error)
         .getDailyBootstrapData(authToken);
@@ -740,7 +750,11 @@ function applyBootstrap(resM, resD){
   APP.drivers = resM.drivers || []; APP.technicians = resM.technicians || [];
   APP.assignments = resM.assignments || [];
   APP.filterOptions = resM.filterOptions || { groups: [], equipmentIds: [], drivers: [] };
-  
+
+    if (resM.notifications) {
+    APP.notifications = resM.notifications;
+    updateNotifBadge();
+  }
   // Daily Data
   if (resD && resD.success) {
     APP.dailySubmissions = resD.dailySubmissions || [];
