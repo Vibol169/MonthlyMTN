@@ -518,6 +518,7 @@ function showPage(page){
     if (currentApp === 'daily') renderDailyDashboard();
     else renderDashboard();
   }
+  updateLastSyncDisplay();
 }
 
 const BOOTSTRAP_CACHE_KEY = 'bootstrapCache_v2';
@@ -607,7 +608,6 @@ function fetchBothDatasets(silent){
 
       lastSyncTime = Date.now();
       LS.set('lastSyncTime', lastSyncTime);
-      updateLastSyncDisplay();
       
       // ★ FIX: Fetch notifications right after applying the main data
       if (typeof fetchNotifications === 'function') fetchNotifications();
@@ -682,30 +682,27 @@ window.syncAllData = function(silent) {
     .withSuccessHandler(resM => {
       if (!resM || !resM.success) return;
       
-      // If the data is unchanged, we do absolutely nothing to the main UI. No re-render, no flash.
+      // 1. If the data is unchanged, update the time and exit
       if (resM.unchanged) {
-
         lastSyncTime = Date.now();
         LS.set('lastSyncTime', lastSyncTime);
-        updateLastSyncDisplay();
-        
-        // ★ FIX: Fetch notifications anyway!
-        if (typeof fetchNotifications === 'function') fetchNotifications();
+        updateLastSyncDisplay(); 
+
+        if (typeof fetchNotifications === 'function') fetchNotifications(); 
         console.log('[Sync] No changes detected on server.');
         return;
       }
 
-      // If we get here, data changed. Fetch Daily data too, then apply.
+      // 2. If we get here, Monthly data changed. Fetch Daily data too.
       google.script.run
         .withSuccessHandler(resD => {
+          
+          // 👇 THIS IS THE resD SUCCESS HANDLER 👇
+          
           applyBootstrap(resM, resD);
-
+          
           lastSyncTime = Date.now();
           LS.set('lastSyncTime', lastSyncTime);
-          updateLastSyncDisplay();
-          
-          // ★ FIX: Fetch notifications since data changed
-          if (typeof fetchNotifications === 'function') fetchNotifications();
           
           if (silent) {
             // Soft update: Only re-render if safe
@@ -716,16 +713,21 @@ window.syncAllData = function(silent) {
               else if (page === 'dashboard') { 
                 if (currentApp === 'daily') renderDailyDashboard(); else renderDashboard(); 
               }
+              updateLastSyncDisplay(); // Updates time for silent sync
             }
           } else {
-            // Hard update (initial load or manual refresh)
+            // Hard update (manual refresh)
             try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
-            showApp();
+            showApp(); // (showApp calls showPage, which handles the update)
             fetchExtendedData(true);
           }
+          
+          // 👆 END OF resD SUCCESS HANDLER 👆
+          
         })
         .withFailureHandler(console.error)
         .getDailyBootstrapData(authToken);
+        
     })
     .withFailureHandler(e => {
       console.error("Sync failed:", e);
@@ -776,6 +778,7 @@ function refreshCurrentPage(){
     if (currentApp === 'daily') renderDailyDashboard();
     else renderDashboard();
   }
+  updateLastSyncDisplay();
 }
 
 function safeToRefresh(){
