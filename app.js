@@ -41,6 +41,11 @@ function getSyncTimeText() {
 function updateLastSyncDisplay() {
   $('.last-sync-text').text(getSyncTimeText());
 }
+
+function isViewer() {
+  return currentUser.role && currentUser.role.includes('viewer');
+}
+
 /* =========================================================
    WEB WORKER TIMER (Prevents Mobile Background Throttling)
    ========================================================= */
@@ -490,11 +495,15 @@ function showApp(){
 function renderBottomNav(){
   const role = currentUser.role;
   let nav = '<a href="#" data-page="home"><i class="bi bi-house-door"></i>Home</a>';
+  
   if (role === 'driver' && currentApp === 'monthly') { 
     nav += '<a href="#" data-page="list"><i class="bi bi-clock-history"></i>History</a>'; 
   } else {
     nav += '<a href="#" data-page="list"><i class="bi bi-list-ul"></i>List</a>';
-    if (role === 'admin' || role === 'manager') nav += '<a href="#" data-page="dashboard"><i class="bi bi-bar-chart"></i>Dashboard</a>';
+    // Allow viewers to see the dashboard
+    if (role === 'admin' || role === 'manager' || role === 'admin-viewer' || role === 'manager-viewer') {
+      nav += '<a href="#" data-page="dashboard"><i class="bi bi-bar-chart"></i>Dashboard</a>';
+    }
   }
   
   $('#bottomNav').html(nav);
@@ -903,17 +912,15 @@ $(document).ready(function(){
 function renderHome(){
   if (!APP.loaded) { bootLoad(); return; }
   
-  // Route based on the top switcher
   if (currentApp === 'daily') {
     renderDailyHome();
     return;
   }
 
-  // Monthly App Routing
   if (currentUser.role === 'technician')   renderTechnicianHome();
   else if (currentUser.role === 'driver')  renderMonthlyDriverHome();
-  else if (currentUser.role === 'admin')   renderManagerHome();
-  else                                     renderDirectorHome();
+  else if (currentUser.role === 'admin' || currentUser.role === 'admin-viewer')   renderManagerHome();
+  else if (currentUser.role === 'manager' || currentUser.role === 'manager-viewer') renderDirectorHome();
 }
 
 /* =========================================================
@@ -1005,11 +1012,13 @@ function renderLastCheckLine(equipmentId){
    MONTHLY HOME VIEWS
    ========================================================= */
 function renderHomeViewToggle(){
-  const isTech = currentUser && currentUser.role === 'technician';
+  const role = currentUser.role;
+  const showReport = (role === 'technician' || role === 'admin-viewer');
+  
   return '<div class="tab-bar mb-3" style="border-radius:10px;overflow:visible;">' +
     '<div class="tab ' + (homeViewMode === 'cards' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setHomeView(\'cards\')"><i class="bi bi-grid me-1"></i>Cards</div>' +
     '<div class="tab ' + (homeViewMode === 'history' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setHomeView(\'history\')"><i class="bi bi-table me-1"></i>History</div>' +
-    (isTech ? '<div class="tab ' + (homeViewMode === 'report' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setHomeView(\'report\')"><i class="bi bi-file-earmark-text me-1"></i>Report</div>' : '') +
+    (showReport ? '<div class="tab ' + (homeViewMode === 'report' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setHomeView(\'report\')"><i class="bi bi-file-earmark-text me-1"></i>Report</div>' : '') +
     '</div>';
 }
 
@@ -1312,6 +1321,11 @@ function renderManagerHome(){
     return;
   }
 
+  if (homeViewMode === 'report') {
+    $('#app').html('<div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0">Monthly Report</h5><small class="text-muted">' + esc(currentUser.fullName) + ' · ' + esc(currentUser.group) + '</small></div></div>' + renderHomeViewToggle() + renderTechnicianReportTab());
+    return;
+  }
+
   const myGroup   = currentUser.group;
   const monthSubs = APP.submissions.filter(s => isThisMonth(s.date) && s.group === myGroup);
   const myEqList  = APP.equipment || [];
@@ -1345,7 +1359,11 @@ function renderManagerHome(){
       const timeMatch = (activeAssign.createdAt || '').match(/(\d{1,2}:\d{2})/);
       const assignTime = timeMatch ? timeMatch[0] : '';
       actionHtml = '<div class="alert alert-secondary py-2 px-3 mb-0 mt-3 small" style="border-left:4px solid #ffc107; background:rgba(255,193,7,.08);"><div class="mb-1"><i class="bi bi-person-check-fill text-warning me-1"></i> Assigned to <strong>' + esc(activeAssign.driverName || activeAssign.driverUsername) + '</strong></div><div class="text-muted"><i class="bi bi-clock-history me-1"></i> Date: ' + esc(activeAssign.date) + (assignTime ? ' · Time: ' + esc(assignTime) : '') + '</div></div>';
-    } else { actionHtml = '<button class="btn btn-sm btn-primary mt-2" onclick="openAssignDialog(\'' + escAttr(eq.equipmentId) + '\')"><i class="bi bi-person-plus me-1"></i>Assign to Driver</button>'; }
+    } else if (!isViewer()) { 
+      actionHtml = '<button class="btn btn-sm btn-primary mt-2" onclick="openAssignDialog(\'' + escAttr(eq.equipmentId) + '\')"><i class="bi bi-person-plus me-1"></i>Assign to Driver</button>'; 
+    } else {
+      actionHtml = '<div class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Not assigned</div>';
+    }
     return '<div class="card mb-2"><div class="group-header d-flex justify-content-between align-items-center"><span><i class="bi bi-truck text-primary me-2"></i><strong>' + esc(eq.shortName) + '</strong></span><span class="status-badge status-pending">Pending</span></div><div class="card-body py-2">' + renderLastCheckLine(eq.equipmentId) + '<div class="small text-muted mb-2">' + esc(eq.equipmentId) + ' · ' + esc(eq.model || '') + '</div>' + actionHtml + '</div></div>';
   };
 
@@ -3586,6 +3604,11 @@ function buildConfirmSection(s, editMode){
   const isAdminRole = (currentUser.role === 'admin');
   const isDriverRole = (currentUser.role === 'driver');
 
+   if (isViewer()) {
+     // Just show the status, no action buttons
+     return '<div class="card mb-3"><div class="card-body"><div class="small text-muted">You are in Viewer mode. No actions allowed.</div></div></div>';
+  }
+
   const mgrStatus = s.confirmStatus || 'Pending'; 
   const dirStatus = s.directorStatus || '';
   const drvStatus = s.driverConfirmStatus || 'Pending';
@@ -3888,6 +3911,7 @@ function renderDetailModal(s, editConfirm){
 
       // 2. Edit Button
       (function(){ 
+        if (isViewer()) return ''; 
         if (currentUser.role !== 'technician') return ''; 
         if (s.username !== currentUser.username) return ''; 
         if ((s.confirmStatus || 'Pending') !== 'Pending') return ''; 
@@ -4452,6 +4476,7 @@ function _applyLocalItemUpdate(checkId, itemId, status, remark){
 }
 
 window.markIssueItemFixed = function(checkId, itemId){
+  if (isViewer()) return; 
   askRemark({ title: 'Mark Item Fixed', label: 'បញ្ជាក់ការជួសជុល / Remark (optional):', placeholder: 'បានជួសជុលរួច...' }, function(remark){
     if (remark === null) return;
     showLoading('កំពុងរក្សាទុក...');
@@ -4478,6 +4503,7 @@ window.reopenIssueItem = function(checkId, itemId){
 };
 
 window.markAllIssuesFixed = function(checkId){
+  if (isViewer()) return; 
   const sub = APP.submissions.find(x => x.checkId === checkId); if (!sub) return;
   const items = getIssueItems(sub).filter(i => i.mtnStatus !== 'Completed'); if (items.length === 0) return;
   askRemark({ title: 'Mark All Fixed', label: 'សម្គាល់ទាំង ' + items.length + ' បញ្ហាថាជួសជុលរួច? / Remark (optional):', placeholder: 'បានជួសជុលរួច...' }, function(remark){
