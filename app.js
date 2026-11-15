@@ -28,6 +28,19 @@ const APP = {
   drivers: [], technicians: [], assignments: [],
   filterOptions: { groups: [], equipmentIds: [], drivers: [] }, loaded: false
 };
+
+let lastSyncTime = parseInt(LS.get('lastSyncTime', '0')) || 0;
+
+function getSyncTimeText() {
+  if (!lastSyncTime) return '--:--:--';
+  const d = new Date(lastSyncTime);
+  // Formats as 24-hour time: 16:52:09
+  return d.toLocaleTimeString('en-GB', { hour12: false });
+}
+
+function updateLastSyncDisplay() {
+  $('.last-sync-text').text(getSyncTimeText());
+}
 /* =========================================================
    WEB WORKER TIMER (Prevents Mobile Background Throttling)
    ========================================================= */
@@ -591,6 +604,10 @@ function fetchBothDatasets(silent){
       }
       
       applyBootstrap(resM, resD);
+
+      lastSyncTime = Date.now();
+      LS.set('lastSyncTime', lastSyncTime);
+      updateLastSyncDisplay();
       
       // ★ FIX: Fetch notifications right after applying the main data
       if (typeof fetchNotifications === 'function') fetchNotifications();
@@ -667,6 +684,11 @@ window.syncAllData = function(silent) {
       
       // If the data is unchanged, we do absolutely nothing to the main UI. No re-render, no flash.
       if (resM.unchanged) {
+
+        lastSyncTime = Date.now();
+        LS.set('lastSyncTime', lastSyncTime);
+        updateLastSyncDisplay();
+        
         // ★ FIX: Fetch notifications anyway!
         if (typeof fetchNotifications === 'function') fetchNotifications();
         console.log('[Sync] No changes detected on server.');
@@ -677,6 +699,10 @@ window.syncAllData = function(silent) {
       google.script.run
         .withSuccessHandler(resD => {
           applyBootstrap(resM, resD);
+
+          lastSyncTime = Date.now();
+          LS.set('lastSyncTime', lastSyncTime);
+          updateLastSyncDisplay();
           
           // ★ FIX: Fetch notifications since data changed
           if (typeof fetchNotifications === 'function') fetchNotifications();
@@ -859,6 +885,7 @@ $(document).ready(function(){
       $('#loginError').text(e.message || e); 
     }).validateLogin(u, p);
   });
+  updateLastSyncDisplay();
 });
 
 
