@@ -3804,36 +3804,38 @@ function renderDetailModal(s, editConfirm){
     const isTCC = (sg === 'TCC');
     window.include4thSignature = isTCC; 
 
-    // 👇 2. Handle Form Toggle (ONLY FOR TRUCK)
+        // 👇 Toggle Buttons
     let toggleHtml = '';
     if (String(s.group || '').trim() === 'រថយន្ត') {
       window.activeReportForm = 'standard'; // Reset to standard when opening
       toggleHtml = 
-        '<div class="btn-group btn-group-sm me-2" role="group">' +
+        '<div class="btn-group btn-group-sm me-1 mb-1" role="group">' +
           '<button type="button" id="btnFormStandard" class="btn btn-primary" onclick="setReportForm(\'standard\')">Standard</button>' +
-          '<button type="button" id="btnFormTable" class="btn btn-outline-secondary" onclick="setReportForm(\'table\')">After Inspection</button>' +
+          '<button type="button" id="btnFormTable" class="btn btn-outline-secondary" onclick="setReportForm(\'table\')">After Insp.</button>' +
         '</div>';
     } else {
-      window.activeReportForm = 'standard'; // Force standard for other groups
+      window.activeReportForm = 'standard'; 
     }
 
-    // 3. Action Buttons
+    // 👇 Action Buttons
     let actionHtml = toggleHtml + 
-      '<button class="btn btn-sm btn-outline-primary" onclick="printCurrentReport()" title="Print">' +
-        '<i class="bi bi-printer"></i><span class="d-none d-md-inline ms-1">Print</span>' +
-      '</button>' +
-      '<button class="btn btn-sm btn-outline-danger" onclick="saveCurrentReportImage()" title="Download image">' +
-        '<i class="bi bi-file-earmark-image"></i><span class="d-none d-md-inline ms-1">Image</span>' +
-      '</button>' +
-      '<button class="btn btn-sm btn-outline-dark" onclick="saveCurrentReportPDF()" title="Download PDF">' +
-        '<i class="bi bi-file-earmark-pdf"></i><span class="d-none d-md-inline ms-1">PDF</span>' +
-      '</button>';
+      '<div class="btn-group btn-group-sm mb-1" role="group">' +
+        '<button class="btn btn-outline-primary" onclick="printCurrentReport()" title="Print">' +
+          '<i class="bi bi-printer"></i><span class="d-none d-sm-inline ms-1">Print</span>' +
+        '</button>' +
+        '<button class="btn btn-outline-danger" onclick="saveCurrentReportImage()" title="Download image">' +
+          '<i class="bi bi-file-earmark-image"></i><span class="d-none d-sm-inline ms-1">Image</span>' +
+        '</button>' +
+        '<button class="btn btn-outline-dark" onclick="saveCurrentReportPDF()" title="Download PDF">' +
+          '<i class="bi bi-file-earmark-pdf"></i><span class="d-none d-sm-inline ms-1">PDF</span>' +
+        '</button>' +
+      '</div>';
 
     if (s.group === 'TCC&FCC') {
       const btnClass = window.include4thSignature ? 'btn-info' : 'btn-outline-info';
       const btnLabel = window.include4thSignature ? 'PPAP' : 'Other Company';
       actionHtml = 
-        '<button class="btn btn-sm ' + btnClass + '" onclick="toggleSignatureVisibility(this)" style="white-space:nowrap;">' +
+        '<button class="btn btn-sm ' + btnClass + ' mb-1 me-1" onclick="toggleSignatureVisibility(this)" style="white-space:nowrap;">' +
           '<i class="bi bi-person-check"></i> ' + btnLabel +
         '</button>' + actionHtml;
     }
