@@ -78,18 +78,10 @@ function buildAfterInspectionTable() {
         <tbody>
           <tr>
             <td style="text-align: center; height: 50px; border: 1px solid #000; font-size: 14px;">1</td>
-            <td style="text-align: left; padding-left: 10px; border: 1px solid #000; font-size: 14px;">បន្ថែមទៀត</td>
+            <td style="text-align: left; padding-left: 10px; border: 1px solid #000; font-size: 14px;">បាញ់ខ្លាញ់គោ</td>
             <td style="border: 1px solid #000;"></td>
             <td style="border: 1px solid #000;"></td>
             <td style="text-align: center; border: 1px solid #000; font-size: 14px;">✓</td>
-            <td style="border: 1px solid #000;"></td>
-          </tr>
-          <tr>
-            <td style="text-align: center; height: 50px; border: 1px solid #000;"></td>
-            <td style="border: 1px solid #000;"></td>
-            <td style="border: 1px solid #000;"></td>
-            <td style="border: 1px solid #000;"></td>
-            <td style="border: 1px solid #000;"></td>
             <td style="border: 1px solid #000;"></td>
           </tr>
         </tbody>
@@ -6672,16 +6664,18 @@ function buildTruckReportBody(sub) {
       '</div>' +
     '</div>' +
 
-    '<table class="legend-table">' +
-      '<tr><td colspan="2" class="legend-title">MONTHLY INSPECTION</td></tr>' +
-      '<tr><td colspan="2" class="legend-text">' +
-        '<u><b>Acronym:</b></u> <b>N</b>=Normal, <b>UF</b>=Urgent Fixing, <b>NF</b>=Need Fixing, <b>NA</b>=Need Adjust, <b>Ad</b>=Added, <b>T</b>=Tightened, <b>&#10004;</b>=Location-(Left or Right)' +
-      '</td></tr>' +
-      '<tr><td class="legend-text">' +
-        '<u><b>អក្សរកាត់:</b></u> <b>N</b>=ធម្មតា, <b>UF</b>=ត្រូវការជួសជុលបន្ទាន់, <b>NF</b>=ត្រូវការជួសជុល (អាចប្រើប្រាស់បណ្តោះអាសន្នបាន),<br>' +
-        '<b>NA</b>=ត្រូវការតម្រូវ, <b>Ad</b>=បានបន្ថែម, <b>T</b>=បានរឹតបន្តឹង, <b>&#10004;</b>=បញ្ជាក់អំពីទីតាំង-(ឆ្វេង ឬស្តាំ)' +
-      '</td></tr>' +
-    '</table>' +
+         (window.activeReportForm === 'table' ? '' : 
+      '<table class="legend-table">' +
+        '<tr><td colspan="2" class="legend-title">MONTHLY INSPECTION</td></tr>' +
+        '<tr><td colspan="2" class="legend-text">' +
+          '<u><b>Acronym:</b></u> <b>N</b>=Normal, <b>UF</b>=Urgent Fixing, <b>NF</b>=Need Fixing, <b>NA</b>=Need Adjust, <b>Ad</b>=Added, <b>T</b>=Tightened, <b>&#10004;</b>=Location-(Left or Right)' +
+        '</td></tr>' +
+        '<tr><td class="legend-text">' +
+          '<u><b>អក្សរកាត់:</b></u> <b>N</b>=ធម្មតា, <b>UF</b>=ត្រូវការជួសជុលបន្ទាន់, <b>NF</b>=ត្រូវការជួសជុល (អាចប្រើប្រាស់បណ្តោះអាសន្នបាន),<br>' +
+          '<b>NA</b>=ត្រូវការតម្រូវ, <b>Ad</b>=បានបន្ថែម, <b>T</b>=បានរឹតបន្តឹង, <b>&#10004;</b>=បញ្ជាក់អំពីទីតាំង-(ឆ្វេង ឬស្តាំ)' +
+        '</td></tr>' +
+      '</table>'
+    ) +
 
         (window.activeReportForm === 'table' ? buildAfterInspectionTable() : 
       (isVehicle ? '<div class="section-banner">Tractor / រថយន្ត</div>' : '') +
