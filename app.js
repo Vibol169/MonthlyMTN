@@ -72,8 +72,8 @@ function buildAfterInspectionTable() {
             </th>
           </tr>
           <tr>
-            <th style="width: 8%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">No.</th>
-            <th style="width: 40%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: left;">Items</th>
+            <th style="width: 5%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">No.</th>
+            <th style="width: 43%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: left;">Items</th>
             <th style="width: 18%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Part number/Code</th>
             <th style="width: 10%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Quantity</th>
             <th style="width: 10%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Task</th>
