@@ -63,7 +63,11 @@ window.setReportForm = function(form) {
 function buildAfterInspectionTable() {
   return `
     <div style="margin-top: 20px; margin-bottom: 20px;">
-      <div style="text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 10px;">AFTER INSPECTION</div>
+      <!-- 👇 ADDED BORDER AND UNDERLINE HERE 👇 -->
+      <div style="text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 10px; border: 1px solid #000; padding: 6px; text-decoration: underline; background-color: #f8f9fa;">
+        AFTER INSPECTION
+      </div>
+      
       <table style="table-layout: fixed; width: 100%; border-collapse: collapse;">
         <thead>
           <tr>
