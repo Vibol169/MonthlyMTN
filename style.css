@@ -7,7 +7,9 @@
 /* =========================================================
    BASE UI & VARIABLES
    ========================================================= */
-body, .form-control, .form-select, .btn, .tab, .group-header, .status-badge { font-family: "Khmer OS Battambang", Arial, sans-serif; }
+body, .form-control, .form-select, .btn, .tab, .group-header, .status-badge, .modal-body { 
+  font-family: "Battambang", "Hanuman", "Khmer OS Battambang", Arial, sans-serif; 
+}
 :root {
   --bg-color:#f8f9fa; --card-bg:#fff; --text-color:#212529; --border-color:#dee2e6;
   --header-bg:#e9ecef; --tab-active:#0d6efd; --tab-text:#6c757d;
