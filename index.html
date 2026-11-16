@@ -122,7 +122,6 @@
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content" style="background:var(--card-bg);color:var(--text-color);">
       
-      <!-- 👇 CHANGED TO FLEX-COLUMN FOR 2 ROWS 👇 -->
       <div class="modal-header d-flex flex-column align-items-stretch pb-2" style="border-bottom:1px solid var(--border-color);">
         
         <!-- Row 1: Title and Close Button -->
@@ -133,18 +132,10 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" style="flex-shrink: 0;"></button>
         </div>
         
-        <!-- Row 2: Action Buttons (Injected by app.js) -->
-        <div class="d-flex flex-wrap gap-1" id="modalActionButtons">
-          <!-- These default buttons will be overwritten by JavaScript -->
-          <button class="btn btn-sm btn-outline-primary" onclick="printCurrentReport()" title="Print">
-            <i class="bi bi-printer"></i><span class="d-none d-sm-inline ms-1">Print</span>
-          </button>
-          <button class="btn btn-sm btn-outline-danger" onclick="saveCurrentReportImage()" title="Download image">
-            <i class="bi bi-file-earmark-image"></i><span class="d-none d-sm-inline ms-1">Image</span>
-          </button>
-          <button class="btn btn-sm btn-outline-dark" onclick="saveCurrentReportPDF()" title="Download PDF">
-            <i class="bi bi-file-earmark-pdf"></i><span class="d-none d-sm-inline ms-1">PDF</span>
-          </button>
+        <!-- Row 2: Action Buttons -->
+        <!-- 👇 Added justify-content-center here 👇 -->
+        <div class="d-flex flex-wrap gap-1 justify-content-center w-100" id="modalActionButtons">
+          <!-- Buttons are injected here by app.js -->
         </div>
         
       </div>
