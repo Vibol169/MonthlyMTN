@@ -46,6 +46,55 @@ function isViewer() {
   return String(currentUser?.role || '').toLowerCase().includes('viewer');
 }
 
+window.activeReportForm = 'standard'; // 'standard' or 'table'
+
+window.setReportForm = function(form) {
+  window.activeReportForm = form;
+  
+  if (form === 'standard') {
+    $('#btnFormStandard').addClass('btn-primary').removeClass('btn-outline-secondary');
+    $('#btnFormTable').removeClass('btn-primary').addClass('btn-outline-secondary');
+  } else {
+    $('#btnFormTable').addClass('btn-primary').removeClass('btn-outline-secondary');
+    $('#btnFormStandard').removeClass('btn-primary').addClass('btn-outline-secondary');
+  }
+};
+
+function buildAfterInspectionTable() {
+  return `
+    <div style="text-align: center; font-weight: bold; font-size: 14px; margin: 20px 0 10px 0;">AFTER INSPECTION</div>
+    <table class="data-table" style="table-layout: fixed; width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr>
+          <th style="width: 8%; border: 1px solid #000; padding: 5px;">No.</th>
+          <th style="width: 40%; border: 1px solid #000; padding: 5px;">Items</th>
+          <th style="width: 18%; border: 1px solid #000; padding: 5px;">Part number/Code</th>
+          <th style="width: 10%; border: 1px solid #000; padding: 5px;">Quantity</th>
+          <th style="width: 10%; border: 1px solid #000; padding: 5px;">Task</th>
+          <th style="width: 14%; border: 1px solid #000; padding: 5px;">Other</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="text-align: center; height: 50px; border: 1px solid #000;">1</td>
+          <td style="text-align: left; padding-left: 10px; border: 1px solid #000;">បន្ថែមទៀត</td>
+          <td style="border: 1px solid #000;"></td>
+          <td style="border: 1px solid #000;"></td>
+          <td style="text-align: center; border: 1px solid #000;">✓</td>
+          <td style="border: 1px solid #000;"></td>
+        </tr>
+        <tr>
+          <td style="text-align: center; height: 50px; border: 1px solid #000;"></td>
+          <td style="border: 1px solid #000;"></td>
+          <td style="border: 1px solid #000;"></td>
+          <td style="border: 1px solid #000;"></td>
+          <td style="border: 1px solid #000;"></td>
+          <td style="border: 1px solid #000;"></td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+}
 /* =========================================================
    WEB WORKER TIMER (Prevents Mobile Background Throttling)
    ========================================================= */
@@ -3744,12 +3793,23 @@ function renderDetailModal(s, editConfirm){
     const eqData = (APP.equipmentMap && APP.equipmentMap[s.equipmentId]) ? APP.equipmentMap[s.equipmentId] : {};
     const sg = String(eqData.specificGroup || '').trim().toUpperCase();
     const isTCC = (sg === 'TCC');
-    
-    // Set default: TCC = true (4 sigs), FCC = false (3 sigs)
     window.include4thSignature = isTCC; 
 
-    // Restore original print buttons
-    let actionHtml = 
+    // 👇 2. Handle Form Toggle (ONLY FOR TRUCK)
+    let toggleHtml = '';
+    if (String(s.group || '').trim() === 'រថយន្ត') {
+      window.activeReportForm = 'standard'; // Reset to standard when opening
+      toggleHtml = 
+        '<div class="btn-group btn-group-sm me-2" role="group">' +
+          '<button type="button" id="btnFormStandard" class="btn btn-primary" onclick="setReportForm(\'standard\')">Standard</button>' +
+          '<button type="button" id="btnFormTable" class="btn btn-outline-secondary" onclick="setReportForm(\'table\')">After Inspection</button>' +
+        '</div>';
+    } else {
+      window.activeReportForm = 'standard'; // Force standard for other groups
+    }
+
+    // 3. Action Buttons
+    let actionHtml = toggleHtml + 
       '<button class="btn btn-sm btn-outline-primary" onclick="printCurrentReport()" title="Print">' +
         '<i class="bi bi-printer"></i><span class="d-none d-md-inline ms-1">Print</span>' +
       '</button>' +
@@ -3760,10 +3820,8 @@ function renderDetailModal(s, editConfirm){
         '<i class="bi bi-file-earmark-pdf"></i><span class="d-none d-md-inline ms-1">PDF</span>' +
       '</button>';
 
-    // If TCC&FCC, add the toggle button
     if (s.group === 'TCC&FCC') {
       const btnClass = window.include4thSignature ? 'btn-info' : 'btn-outline-info';
-      // --- CHANGED LABEL HERE ---
       const btnLabel = window.include4thSignature ? 'PPAP' : 'Other Company';
       actionHtml = 
         '<button class="btn btn-sm ' + btnClass + '" onclick="toggleSignatureVisibility(this)" style="white-space:nowrap;">' +
@@ -3772,7 +3830,6 @@ function renderDetailModal(s, editConfirm){
     }
     
     $('#modalActionButtons').html(actionHtml).removeClass('d-none');
-    // ----------------------------------------------
 
     detailItemFilter = 'all'; detailIssueCode  = 'all';
     
@@ -3780,15 +3837,14 @@ function renderDetailModal(s, editConfirm){
     const tplList = APP.templates[s.group + '|' + sg] || APP.templates[s.group + '|'] || APP.templates[s.group] || [];
     tplList.forEach(t => { tplMap[t.itemId] = t; });
 
-        // ★ SORT: Move EXT-TRK right after 22, and EXT-TRL right after 30
     const sortedChecks = (s.checks || []).slice().sort((a, b) => {
       const getRank = (id) => {
         if (id.startsWith('EXT-TRK')) return 3;
         if (id.startsWith('EXT-TRL')) return 5;
         const num = parseInt(String(id).split(/[-\.]/)[0]);
         if (!isNaN(num)) {
-          if (num >= 1 && num <= 22) return 1;  // Truck
-          if (num >= 23 && num <= 30) return 4; // Trailer
+          if (num >= 1 && num <= 22) return 1;
+          if (num >= 23 && num <= 30) return 4;
         }
         return 2;
       };
@@ -3827,7 +3883,6 @@ function renderDetailModal(s, editConfirm){
     const headerBySec = {};
     tplList.forEach(t => { if (String(t.inputType).toLowerCase() === 'header') headerBySec[String(t.itemId).trim()] = t; });
     
-    // ★ Inject Extra Headers so they show in the View Modal
     headerBySec['EXT-TRK'] = { itemKhmer: 'ផ្នែកផ្សេងៗទៀត', itemEng: 'Others' };
     headerBySec['EXT-TRL'] = { itemKhmer: 'ផ្នែកផ្សេងៗទៀត', itemEng: 'Others' };
 
@@ -3851,12 +3906,10 @@ function renderDetailModal(s, editConfirm){
       currentBlock.items.push({ c: c, label: label });
     });
 
-    // ★ Resolve Technician (Inspector)
     const techObj = (APP.users || []).find(u => u.username === s.username);
     const techName = techObj ? techObj.fullName : (s.driverName || s.username || '—');
     const techPhone = techObj ? (techObj.phone || '') : '';
 
-    // ★ Resolve Driver and Trailer Names
     const drvObj = (APP.users || []).find(d => d.username === s.driverUsername);
     const driverFullName = drvObj ? drvObj.fullName : (s.driverUsername || '—');
     const driverPhone = drvObj ? (drvObj.phone || '') : ''; 
@@ -3867,49 +3920,37 @@ function renderDetailModal(s, editConfirm){
     const isTruck = String(s.group || '').trim() === 'រថយន្ត';
     const showTrailer = isTruck && s.trailerPlateNo;
 
-        // ★ Modern UI Cell Generator
     const infoBlockCell = (icon, label, value, color) => `
       <div class="col-6">
         <div class="p-3 border rounded-3 bg-white h-100 shadow-sm">
           <div class="d-flex align-items-center mb-2">
             <i class="bi bi-${icon} text-${color} me-2" style="font-size: 1.1rem;"></i>
-            <span class="text-muted small" style="letter-spacing: 0.5px; font-family: 'Battambang', sans-serif; font-weight: 400;">${label}</span>
+            <span class="text-muted small" style="letter-spacing: 0.5px; font-family: 'Battambang', 'Kantumruy Pro', sans-serif; font-weight: 400;">${label}</span>
           </div>
-          <div class="text-dark" style="font-size: 1rem; font-family: 'Battambang', sans-serif; font-weight: 700;">${value || '-'}</div>
+          <div class="text-dark" style="font-size: 1rem; font-family: 'Battambang', 'Kantumruy Pro', sans-serif; font-weight: 700;">${value || '-'}</div>
         </div>
       </div>
     `;
     
-    // ★ Build the Technician Cell with Phone Number
     const techCellHtml = `
       <div>${esc(techName)}</div>
       ${techPhone ? `<div class="small text-muted fw-normal mt-1" style="font-size: 0.85rem;"><i class="bi bi-telephone me-1"></i>${esc(techPhone)}</div>` : ''}
     `;
 
-    // ★ Build the Driver Cell with Phone Number
     const driverCellHtml = `
       <div>${esc(driverFullName)}</div>
       ${driverPhone ? `<div class="small text-muted fw-normal mt-1" style="font-size: 0.85rem;"><i class="bi bi-telephone me-1"></i>${esc(driverPhone)}</div>` : ''}
     `;
 
-    // ★ Combine EVERYTHING into the info block
     const info = '<div class="p-3">' +
-      
-      // 1. New Info Cards
       '<div class="row g-2 mb-3">' +
         infoBlockCell('bi-truck', s.group || 'ឧបករណ៍', eqShort(s.equipmentId), 'primary') +
         (showTrailer ? infoBlockCell('bi-link', 'រ៉ឺម៉ក', trailerShortName, 'secondary') : '') +
-        
-        // ★ Use the new techCellHtml here
         infoBlockCell('bi-person', 'អ្នកត្រួតពិនិត្យ', techCellHtml, 'success') +
-        
-        // Driver Cell
         infoBlockCell('bi-person-badge', 'អ្នកបើកបរ', driverCellHtml, 'info') + 
-        
         infoBlockCell('bi-calendar', 'កាលបរិច្ឆេទ', (s.date || '') + ' ' + (s.time || ''), 'warning') +
       '</div>' +
 
-      // 2. Edit Button
       (function(){ 
         if (isViewer()) return ''; 
         if (currentUser.role !== 'technician') return ''; 
@@ -3919,33 +3960,27 @@ function renderDetailModal(s, editConfirm){
         return '<div class="mb-3 text-end"><button class="btn btn-sm btn-warning" onclick="editChecklist(\''+escAttr(s.checkId)+'\')"><i class="bi bi-pencil-square me-1"></i>Edit</button></div>'; 
       })() +
 
-      // 3. Stat Cards (OK / Issues)
       '<div class="row g-2 mb-3">' +
         '<div class="col-6"><div class="stat-card" data-filter="N" onclick="filterDetailItems(\'N\')"><div class="num text-success">'+okCount+'</div><div class="lbl">N – Normal</div></div></div>' +
         '<div class="col-6"><div class="stat-card" data-filter="X" onclick="filterDetailItems(\'X\')"><div class="num text-danger">'+nokCount+'</div><div class="lbl">Issues</div></div></div>' +
       '</div>' +
 
-      // 4. Issue Sub-tabs
       (function(){
         const { counts, fixed } = countIssueCodes(s); const codes = ['UF','NF','NA','Ad','T'];
         const cell = (value, label, count, fixedCount, active) => { const allFixed = count > 0 && fixedCount === count; return '<div class="tab list-tab issue-subtab ' + (active ? 'active' : '') + '" data-value="' + value + '" onclick="setDetailIssueCode(\'' + value + '\')"><div class="subtab-code">' + label + (allFixed ? ' <i class="bi bi-check-circle-fill pill-check"></i>' : '') + '</div><div class="subtab-count">' + count + '</div></div>'; };
         return '<div id="detailIssueSubtabs" class="tab-bar mb-3" style="display:none;justify-content:center;">' + cell('all', 'ទាំងអស់', counts.all, fixed.all, true) + codes.map(c => cell(c, c, counts[c], fixed[c], false)).join('') + '</div>';
       })() +
 
-      // 5. Confirm Sections (Driver, Admin, Manager)
       buildConfirmSection(s, !!editConfirm) +
 
-      // 6. Items List Container (CRITICAL: Restored)
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center"><span><i class="bi bi-list-check me-2"></i>Items</span><small class="text-muted" id="detailItemCount">'+enriched.length+' shown</small></div><div class="card-body p-2" id="detailItemsList"></div></div>' +
 
-      // 7. Remark
       (s.remark ? '<div class="card mb-3"><div class="card-body"><div class="small text-muted">Remark</div><div>'+esc(s.remark)+'</div></div></div>' : '') + 
     '</div>';
 
     $('#modalBody').html(info);
     renderDetailItemsList(s);
     
-    // Safe Modal logic
     let modalEl = document.getElementById('detailModal');
     if (!modalEl) throw new Error("detailModal element not found in DOM");
     
@@ -6646,13 +6681,13 @@ function buildTruckReportBody(sub) {
       '</td></tr>' +
     '</table>' +
 
-    (isVehicle ? '<div class="section-banner">Tractor / រថយន្ត</div>' : '') +
-
-    '<table class="data-table">' + thead + '<tbody>' + renderRows(tractorSections) + '</tbody></table>' +
-
-    (trailerSections.length > 0 ? 
-    '<div class="section-banner">Trailer / រ៉ឺម៉ក</div>' +
-    '<table class="data-table">' + thead + '<tbody>' + renderRows(trailerSections) + '</tbody></table>' : '') +
+        (window.activeReportForm === 'table' ? buildAfterInspectionTable() : 
+      (isVehicle ? '<div class="section-banner">Tractor / រថយន្ត</div>' : '') +
+      '<table class="data-table">' + thead + '<tbody>' + renderRows(tractorSections) + '</tbody></table>' +
+      (trailerSections.length > 0 ? 
+      '<div class="section-banner">Trailer / រ៉ឺម៉ក</div>' +
+      '<table class="data-table">' + thead + '<tbody>' + renderRows(trailerSections) + '</tbody></table>' : '')
+    ) +
 
     '<div class="signature-container">' +
       '<div class="sig-column">' +
