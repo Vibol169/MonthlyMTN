@@ -62,37 +62,39 @@ window.setReportForm = function(form) {
 
 function buildAfterInspectionTable() {
   return `
-    <div style="text-align: center; font-weight: bold; font-size: 14px; margin: 20px 0 10px 0;">AFTER INSPECTION</div>
-    <table class="data-table" style="table-layout: fixed; width: 100%; border-collapse: collapse;">
-      <thead>
-        <tr>
-          <th style="width: 8%; border: 1px solid #000; padding: 5px;">No.</th>
-          <th style="width: 40%; border: 1px solid #000; padding: 5px;">Items</th>
-          <th style="width: 18%; border: 1px solid #000; padding: 5px;">Part number/Code</th>
-          <th style="width: 10%; border: 1px solid #000; padding: 5px;">Quantity</th>
-          <th style="width: 10%; border: 1px solid #000; padding: 5px;">Task</th>
-          <th style="width: 14%; border: 1px solid #000; padding: 5px;">Other</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="text-align: center; height: 50px; border: 1px solid #000;">1</td>
-          <td style="text-align: left; padding-left: 10px; border: 1px solid #000;">បន្ថែមទៀត</td>
-          <td style="border: 1px solid #000;"></td>
-          <td style="border: 1px solid #000;"></td>
-          <td style="text-align: center; border: 1px solid #000;">✓</td>
-          <td style="border: 1px solid #000;"></td>
-        </tr>
-        <tr>
-          <td style="text-align: center; height: 50px; border: 1px solid #000;"></td>
-          <td style="border: 1px solid #000;"></td>
-          <td style="border: 1px solid #000;"></td>
-          <td style="border: 1px solid #000;"></td>
-          <td style="border: 1px solid #000;"></td>
-          <td style="border: 1px solid #000;"></td>
-        </tr>
-      </tbody>
-    </table>
+    <div style="margin-top: 20px; margin-bottom: 20px;">
+      <div style="text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 10px;">AFTER INSPECTION</div>
+      <table style="table-layout: fixed; width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr>
+            <th style="width: 8%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">No.</th>
+            <th style="width: 40%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: left;">Items</th>
+            <th style="width: 18%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Part number/Code</th>
+            <th style="width: 10%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Quantity</th>
+            <th style="width: 10%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Task</th>
+            <th style="width: 14%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Other</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="text-align: center; height: 50px; border: 1px solid #000; font-size: 14px;">1</td>
+            <td style="text-align: left; padding-left: 10px; border: 1px solid #000; font-size: 14px;">បន្ថែមទៀត</td>
+            <td style="border: 1px solid #000;"></td>
+            <td style="border: 1px solid #000;"></td>
+            <td style="text-align: center; border: 1px solid #000; font-size: 14px;">✓</td>
+            <td style="border: 1px solid #000;"></td>
+          </tr>
+          <tr>
+            <td style="text-align: center; height: 50px; border: 1px solid #000;"></td>
+            <td style="border: 1px solid #000;"></td>
+            <td style="border: 1px solid #000;"></td>
+            <td style="border: 1px solid #000;"></td>
+            <td style="border: 1px solid #000;"></td>
+            <td style="border: 1px solid #000;"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   `;
 }
 /* =========================================================
