@@ -3867,18 +3867,19 @@ function renderDetailModal(s, editConfirm){
     const isTruck = String(s.group || '').trim() === 'រថយន្ត';
     const showTrailer = isTruck && s.trailerPlateNo;
 
-        // ★ Modern UI Cell Generator
+       // ★ Modern UI Cell Generator
     const infoBlockCell = (icon, label, value, color) => `
       <div class="col-6">
         <div class="p-3 border rounded-3 bg-white h-100 shadow-sm">
           <div class="d-flex align-items-center mb-2">
             <i class="bi bi-${icon} text-${color} me-2" style="font-size: 1.1rem;"></i>
-            <span class="text-muted small fw-bold" style="letter-spacing: 0.5px; font-family: 'Battambang', 'Hanuman', sans-serif;">${label}</span>
+            <span class="text-muted small" style="letter-spacing: 0.5px; font-family: 'Kantumruy Pro', 'Battambang', sans-serif; font-weight: 600;">${label}</span>
           </div>
-          <div class="fw-bold text-dark" style="font-size: 1rem; font-family: 'Battambang', 'Hanuman', sans-serif;">${value || '-'}</div>
+          <div class="text-dark" style="font-size: 1rem; font-family: 'Kantumruy Pro', 'Battambang', sans-serif; font-weight: 700;">${value || '-'}</div>
         </div>
       </div>
     `;
+    
     // ★ Build the Technician Cell with Phone Number
     const techCellHtml = `
       <div>${esc(techName)}</div>
