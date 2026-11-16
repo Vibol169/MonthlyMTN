@@ -6464,7 +6464,15 @@ function truckReportStyles() {
 .report-title-main { position: absolute; left: 50%; transform: translateX(-50%); bottom: 15px; white-space: nowrap; text-align: center; font-size: 18px; font-weight: 900; font-style: italic; color: #000; text-transform: uppercase; letter-spacing: 1px; margin: 0; line-height: 1.1; }
 .address-block { width: 33%; text-align: right; color: #0056b3; font-size: 11px; font-weight: 700; line-height: 1.25; }
 
-.divider-bar { height: 3.5px; background-color: #3b82f6; width: 100%; margin-bottom: 15px; }
+    .divider-bar { 
+      width: 100%; 
+      height: 0; 
+      border-top: 4px solid #3b82f6; 
+      margin-bottom: 15px; 
+      display: block !important; 
+      flex-shrink: 0; 
+    }
+    
 .form-grid { display: flex; position: relative; padding-left: 12px; }
 .form-grid::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3.5px; background-color: #3b82f6; }
 .form-column { flex: 1; padding-right: 25px; }
