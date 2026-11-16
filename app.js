@@ -3686,9 +3686,9 @@ function buildConfirmSection(s, editMode){
     
     if (isDriverRole && currentUser.username === s.driverUsername) {
       if (editMode) {
-        html += '<textarea class="form-control form-control-sm mb-2" id="confirmRemarkInput" rows="2" placeholder="Remark (optional)..."></textarea><div class="d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-success flex-fill" onclick="saveConfirm(\''+escAttr(s.checkId)+'\',\'Confirmed\',\'driver\')"><i class="bi bi-check-circle me-1"></i>Confirm as Driver</button><button class="btn btn-sm btn-outline-secondary" onclick="renderDetailModalById(\''+escAttr(s.checkId)+'\', false)">Cancel</button></div>';
+        html += '<textarea class="form-control form-control-sm mb-2" id="confirmRemarkInput" rows="2" placeholder="Remark (optional)..."></textarea><div class="d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-success flex-fill" onclick="saveConfirm(\''+escAttr(s.checkId)+'\',\'Confirmed\',\'driver\')"><i class="bi bi-check-circle me-1"></i>Confirm</button><button class="btn btn-sm btn-outline-secondary" onclick="renderDetailModalById(\''+escAttr(s.checkId)+'\', false)">Cancel</button></div>';
       } else {
-        html += '<button class="btn btn-sm btn-primary w-100" onclick="renderDetailModalById(\''+escAttr(s.checkId)+'\', true)"><i class="bi bi-pencil-square me-1"></i>Confirm as Driver</button>';
+        html += '<button class="btn btn-sm btn-primary w-100" onclick="renderDetailModalById(\''+escAttr(s.checkId)+'\', true)"><i class="bi bi-pencil-square me-1"></i>Confirm</button>';
       }
     } else {
       html += '<div class="small text-warning fw-bold"><i class="bi bi-hourglass-split me-1"></i>Waiting for Driver to confirm</div>';
@@ -3706,7 +3706,7 @@ function buildConfirmSection(s, editMode){
       if (editMode) {
         html += '<textarea class="form-control form-control-sm mb-2" id="confirmRemarkInput" rows="2" placeholder="Remark (optional)...">'+esc(s.confirmRemark||'')+'</textarea><div class="d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-success flex-fill" onclick="saveConfirm(\''+escAttr(s.checkId)+'\',\'Confirmed\',\'admin\')"><i class="bi bi-check-circle me-1"></i>Confirm</button><button class="btn btn-sm btn-outline-secondary" onclick="renderDetailModalById(\''+escAttr(s.checkId)+'\', false)">Cancel</button></div>';
       } else {
-        html += '<button class="btn btn-sm btn-primary w-100" onclick="renderDetailModalById(\''+escAttr(s.checkId)+'\', true)"><i class="bi bi-pencil-square me-1"></i>Confirm as Admin</button>';
+        html += '<button class="btn btn-sm btn-primary w-100" onclick="renderDetailModalById(\''+escAttr(s.checkId)+'\', true)"><i class="bi bi-pencil-square me-1"></i>Confirm</button>';
       }
     } else {
       html += '<div class="small text-warning fw-bold"><i class="bi bi-hourglass-split me-1"></i>Waiting for Admin to confirm</div>';
@@ -3721,7 +3721,7 @@ function buildConfirmSection(s, editMode){
     html += '<div class="card mb-3 confirm-box border-primary" style="border-left: 4px solid #0d6efd;"><div class="group-header d-flex justify-content-between align-items-center" style="background:transparent;border-bottom:1px solid var(--border-color);"><span><i class="bi bi-patch-check me-2 text-primary"></i>Manager Confirmation</span><span class="status-badge status-pending">Pending</span></div><div class="card-body">';
     
     if (isManagerRole) {
-      html += '<textarea class="form-control form-control-sm mb-2" id="confirmRemarkInput" rows="2" placeholder="Remark (optional)..."></textarea><div class="d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-success flex-fill" onclick="saveConfirm(\''+escAttr(s.checkId)+'\',\'Confirmed\',\'manager\')"><i class="bi bi-check-circle me-1"></i>Confirm as Manager</button></div>';
+      html += '<textarea class="form-control form-control-sm mb-2" id="confirmRemarkInput" rows="2" placeholder="Remark (optional)..."></textarea><div class="d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-success flex-fill" onclick="saveConfirm(\''+escAttr(s.checkId)+'\',\'Confirmed\',\'manager\')"><i class="bi bi-check-circle me-1"></i>Confirm</button></div>';
     } else {
       html += '<div class="small text-warning fw-bold"><i class="bi bi-hourglass-split me-1"></i>Waiting for Manager to confirm</div>';
     }
@@ -3810,8 +3810,8 @@ function renderDetailModal(s, editConfirm){
       window.activeReportForm = 'standard'; // Reset to standard when opening
       toggleHtml = 
         '<div class="btn-group btn-group-sm me-1 mb-1" role="group">' +
-          '<button type="button" id="btnFormStandard" class="btn btn-primary" onclick="setReportForm(\'standard\')">Standard</button>' +
-          '<button type="button" id="btnFormTable" class="btn btn-outline-secondary" onclick="setReportForm(\'table\')">After Insp.</button>' +
+          '<button type="button" id="btnFormStandard" class="btn btn-primary" onclick="setReportForm(\'standard\')">ថែទាំ</button>' +
+          '<button type="button" id="btnFormTable" class="btn btn-outline-secondary" onclick="setReportForm(\'table\')">បាញ់ខ្លាញ់គោ</button>' +
         '</div>';
     } else {
       window.activeReportForm = 'standard'; 
