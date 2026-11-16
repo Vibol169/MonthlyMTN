@@ -63,13 +63,14 @@ window.setReportForm = function(form) {
 function buildAfterInspectionTable() {
   return `
     <div style="margin-top: 20px; margin-bottom: 20px;">
-      <!-- 👇 ADDED BORDER AND UNDERLINE HERE 👇 -->
-      <div style="text-align: center; font-weight: bold; font-size: 14px; margin-bottom: 10px; border: 1px solid #000; padding: 6px; text-decoration: underline; background-color: #f8f9fa;">
-        AFTER INSPECTION
-      </div>
-      
       <table style="table-layout: fixed; width: 100%; border-collapse: collapse;">
         <thead>
+          <!-- 👇 MOVED TITLE INSIDE THE TABLE 👇 -->
+          <tr>
+            <th colspan="6" style="text-align: center; font-weight: bold; font-size: 14px; border: 1px solid #000; padding: 6px; text-decoration: underline; background-color: #f8f9fa;">
+              AFTER INSPECTION
+            </th>
+          </tr>
           <tr>
             <th style="width: 8%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">No.</th>
             <th style="width: 40%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: left;">Items</th>
