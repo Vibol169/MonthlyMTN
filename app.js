@@ -62,22 +62,32 @@ window.setReportForm = function(form) {
 
 function buildAfterInspectionTable() {
   return `
-    <div style="margin-top: 20px; margin-bottom: 20px;">
-      <table style="table-layout: fixed; width: 100%; border-collapse: collapse;">
+    <div style="margin-top: 20px; margin-bottom: 20px; width: 100%; box-sizing: border-box;">
+      <table style="table-layout: fixed; width: 100%; min-width: 100%; max-width: 100%; border-collapse: collapse; word-wrap: break-word;">
+        
+        <!-- 👇 ADDED COLGROUP FOR FIXED WIDTHS 👇 -->
+        <colgroup>
+          <col style="width: 5%;">
+          <col style="width: 43%;">
+          <col style="width: 18%;">
+          <col style="width: 10%;">
+          <col style="width: 10%;">
+          <col style="width: 14%;">
+        </colgroup>
+
         <thead>
-          <!-- 👇 MOVED TITLE INSIDE THE TABLE 👇 -->
           <tr>
             <th colspan="6" style="text-align: center; font-weight: bold; font-size: 14px; border: 1px solid #000; padding: 6px; text-decoration: underline; background-color: #f8f9fa;">
               AFTER INSPECTION
             </th>
           </tr>
           <tr>
-            <th style="width: 5%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">No.</th>
-            <th style="width: 43%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: left;">Items</th>
-            <th style="width: 18%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Part number/Code</th>
-            <th style="width: 10%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Quantity</th>
-            <th style="width: 10%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Task</th>
-            <th style="width: 14%; border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Other</th>
+            <th style="border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">No.</th>
+            <th style="border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: left;">Items</th>
+            <th style="border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Part number/Code</th>
+            <th style="border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Quantity</th>
+            <th style="border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Task</th>
+            <th style="border: 1px solid #000; padding: 5px; background-color: #f8f9fa; font-size: 12px; text-align: center;">Other</th>
           </tr>
         </thead>
         <tbody>
