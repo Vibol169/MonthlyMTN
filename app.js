@@ -1319,13 +1319,22 @@ window.onReportDateChange = function(value){ if (!value) return; homeReportDate 
 window.reportPrevMonth = function(){ homeReportMonth = shiftMonth(homeReportMonth, -1); renderHome(); };
 window.reportNextMonth = function(){ const next = shiftMonth(homeReportMonth, 1); const cur = isoToday().slice(0, 7); if (next > cur) return; homeReportMonth = next; renderHome(); };
 
+// Global queue to hold checklists waiting to generate
+window._pdfQueue = [];
+
 window.generatePdfsForSingleChecklist = async function(s, silent = false) {
   if (!s) return;
   
+  // 👇 NEW: If already generating, add to queue instead of skipping 👇
   if (window._isGeneratingPdfs) {
-     console.log('[Auto-PDF] Already generating another PDF, skipping to avoid overlap.');
+     console.log(`[Auto-PDF] Currently busy. Adding ${s.checkId} to the queue...`);
+     // Avoid adding duplicates to the queue
+     if (!window._pdfQueue.find(item => item.s.checkId === s.checkId)) {
+        window._pdfQueue.push({ s: s, silent: silent });
+     }
      return;
   }
+  
   window._isGeneratingPdfs = true;
 
   if (!silent) showLoading(`Generating PDFs for ${s.checkId}...`);
@@ -1388,6 +1397,17 @@ window.generatePdfsForSingleChecklist = async function(s, silent = false) {
      } else {
         console.log(`[Auto-PDF] Finished generating for ${s.checkId}. Count: ${successCount}`);
         if (successCount > 0 && safeToRefresh()) refreshCurrentPage();
+     }
+
+     // 👇 NEW: Process the next item in the queue 👇
+     if (window._pdfQueue && window._pdfQueue.length > 0) {
+         const nextItem = window._pdfQueue.shift();
+         console.log(`[Auto-PDF] Processing next in queue: ${nextItem.s.checkId}`);
+         
+         // Small delay to let the browser free up memory before the next heavy generation
+         setTimeout(() => {
+            generatePdfsForSingleChecklist(nextItem.s, nextItem.silent);
+         }, 1000); 
      }
   }
 };
