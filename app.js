@@ -7453,10 +7453,19 @@ function buildMonthlyReportBody(ym){
     const tdC    = tdBase + 'text-align:center;';
 
     const pdfFileId = sub ? String(sub.pdfFileId || '').trim() : '';
-
-    const stdPdfId = pdfFileId ? String(pdfFileId).split(',')[0].trim() : '';
-    const pdfHref = stdPdfId ? ('https://drive.google.com/file/d/' + stdPdfId + '/view') : '';
+    let targetPdfId = '';
     
+    // 👇 Dynamically pick the ID based on the active form
+    if (pdfFileId) {
+      const ids = pdfFileId.split(',').map(s => s.trim());
+      if (window.techReportForm === 'after') {
+        targetPdfId = ids[1] || ''; // Use After Inspection ID (2nd)
+      } else {
+        targetPdfId = ids[0] || ''; // Use Standard ID (1st)
+      }
+    }
+    
+    const pdfHref = targetPdfId ? ('https://drive.google.com/file/d/' + targetPdfId + '/view') : '';
     const qrDataUrl = pdfHref ? getQrDataUrl(pdfHref) : '';
 
     const qrCell = qrDataUrl
