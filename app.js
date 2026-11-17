@@ -1323,23 +1323,52 @@ window.generateMissingPdfs = async function(ym) {
   showLoading('Checking for missing PDFs...');
   try {
     const res = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r({ success: false, message: e.message })).getMissingPdfsForMonth(currentUser.group, ym));
+    
     if (!res || !res.success) { hideLoading(); showAlert('Failed to check: ' + (res.message || ''), 'danger'); return; }
-    const missingIds = res.checkIds || [];
-    if (missingIds.length === 0) { hideLoading(); showAlert('All confirmed checklists already have PDFs saved to Drive!', 'success'); return; }
+    const missingItems = res.missing || [];
+    if (missingItems.length === 0) { hideLoading(); showAlert('All checklists already have both PDFs saved to Drive!', 'success'); return; }
+    
     let successCount = 0; let failCount = 0;
-    for (let i = 0; i < missingIds.length; i++) {
-      const checkId = missingIds[i];
-      $('#loadingMessage').text('Generating PDF ' + (i + 1) + ' of ' + missingIds.length + '...');
-      const s = APP.submissions.find(x => x.checkId === checkId);
+    const originalForm = window.techReportForm; // Save current toggle state
+
+    for (let i = 0; i < missingItems.length; i++) {
+      const item = missingItems[i];
+      const s = APP.submissions.find(x => x.checkId === item.checkId);
       if (!s) continue;
-      try {
-        const base64 = await generateChecklistPdfBase64(s);
-        const up = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).saveChecklistPdf(checkId, base64));
-        if (up && up.success) { s.pdfFileId = up.fileId; successCount++; } else { failCount++; }
-      } catch (err) { console.error('Failed to generate', checkId, err); failCount++; }
+
+      // 1. Generate Standard PDF if missing
+      if (item.missingStd) {
+        $('#loadingMessage').text(`Generating Standard PDF ${i + 1} of ${missingItems.length}...`);
+        window.techReportForm = 'standard';
+        window.activeReportForm = 'standard'; 
+        try {
+          const base64 = await generateChecklistPdfBase64(s);
+          const up = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).saveChecklistPdf(item.checkId, base64, 'standard'));
+          if (up && up.success) { s.pdfFileId = String(s.pdfFileId || '').split(',')[0] + ',' + (up.fileId || ''); successCount++; } 
+          else { failCount++; }
+        } catch (err) { console.error('Failed std PDF', err); failCount++; }
+      }
+
+      // 2. Generate After Inspection PDF if missing
+      if (item.missingAfter) {
+        $('#loadingMessage').text(`Generating After Insp. PDF ${i + 1} of ${missingItems.length}...`);
+        window.techReportForm = 'after';
+        window.activeReportForm = 'after'; 
+        try {
+          const base64 = await generateChecklistPdfBase64(s);
+          const up = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).saveChecklistPdf(item.checkId, base64, 'after'));
+          if (up && up.success) { s.pdfFileId = (String(s.pdfFileId || '').split(',')[0] || '') + ',' + (up.fileId || ''); successCount++; } 
+          else { failCount++; }
+        } catch (err) { console.error('Failed after PDF', err); failCount++; }
+      }
     }
+
+    // Restore toggle state
+    window.techReportForm = originalForm;
+    window.activeReportForm = originalForm === 'after' ? 'table' : 'standard';
+
     hideLoading();
-    showAlert('Saved ' + successCount + ' PDFs to Drive. (' + failCount + ' failed)', successCount > 0 ? 'success' : 'warning');
+    showAlert(`Saved ${successCount} PDFs to Drive. (${failCount} failed)`, successCount > 0 ? 'success' : 'warning');
     refreshCurrentPage();
   } catch (err) { hideLoading(); showAlert('Error: ' + (err.message || err), 'danger'); }
 };
@@ -7424,7 +7453,10 @@ function buildMonthlyReportBody(ym){
     const tdC    = tdBase + 'text-align:center;';
 
     const pdfFileId = sub ? String(sub.pdfFileId || '').trim() : '';
-    const pdfHref   = pdfFileId ? ('https://drive.google.com/file/d/' + pdfFileId + '/view') : '';
+
+    const stdPdfId = pdfFileId ? String(pdfFileId).split(',')[0].trim() : '';
+    const pdfHref = stdPdfId ? ('https://drive.google.com/file/d/' + stdPdfId + '/view') : '';
+    
     const qrDataUrl = pdfHref ? getQrDataUrl(pdfHref) : '';
 
     const qrCell = qrDataUrl
