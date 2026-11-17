@@ -170,6 +170,13 @@ let mtnFilter       = 'pending';
 let homeReportMonth = isoToday().slice(0, 7);
 let homeReportDate  = isoToday();
 
+
+window.techReportForm = 'standard'; // 'standard' or 'after'
+
+window.setTechReportForm = function(form) {
+  window.techReportForm = form;
+  renderHome(); // Re-render the tab to show the new preview
+};
 /* =========================================================
    HELPERS & UTILITIES
    ========================================================= */
@@ -1295,7 +1302,13 @@ function renderTechnicianReportTab(){
     '<div class="row g-2 align-items-center mb-2"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +
     '<div class="row g-2 align-items-center mb-3"><div class="col-12"><label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label><input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)"></div></div>' +
     '<div class="dash-bar mb-3"><div class="track"><div class="fill" style="width:' + pct + '%;background:' + (pct === 100 ? '#28a745' : '#0d6efd') + '"></div></div><span class="val">' + pct + '%</span></div>' +
+
+    '<div class="btn-group w-100 mb-2" role="group">' +
+      '<button type="button" class="btn ' + (window.techReportForm === 'standard' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i> Standard</button>' +
+      '<button type="button" class="btn ' + (window.techReportForm === 'after' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'after\')"><i class="bi bi-table me-1"></i> After Inspection</button>' +
+    '</div>' +
     '<div class="d-flex gap-2 flex-wrap mb-2"><button class="btn btn-primary flex-fill" onclick="generateMonthlyReportPDF()"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</button><button class="btn btn-outline-primary flex-fill" onclick="printMonthlyReport()"><i class="bi bi-printer me-1"></i>Print</button></div>' +
+    
     '<div class="d-flex gap-2 flex-wrap"><button class="btn btn-success flex-fill" onclick="generateMissingPdfs(\'' + ym + '\')"><i class="bi bi-cloud-arrow-up me-1"></i>Generate Missing PDFs to Drive</button></div></div></div>' +
     '<div style="background:#e9ecef;padding:20px 10px;border-radius:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;"><div id="mrptPageSimulator" style="width:210mm;min-width:210mm;max-width:210mm;padding:10mm;background:#ffffff;margin:0 auto;box-shadow:0 4px 16px rgba(0,0,0,.18);box-sizing:border-box;">' + (typeof buildMonthlyReportBody !== 'undefined' ? buildMonthlyReportBody(ym) : '') + '</div></div>';
 }
@@ -7357,6 +7370,11 @@ function monthlyReportStyles(){
 function buildMonthlyReportBody(ym){
   const myGroup = currentUser.group;
 
+  const isAfter = window.techReportForm === 'after';
+  const reportTitleKh = isAfter ? 'តារាងបូកសរុបការងារក្នុងកញ្ចប់ទី២' : 'តារាងបូកសរុបការងារក្នុងកញ្ចប់ទី១';
+  const tableHeadKh = isAfter ? 'ទិន្នន័យក្នុង កញ្ចប់ទី2' : 'ទិន្នន័យក្នុង កញ្ចប់ទី1';
+  const tableHeadEn = isAfter ? 'After Inspection' : 'Monthly Inspection';
+
   const rawEqList = APP.equipment || [];
   const seen = new Set();
   const eqList = [];
@@ -7527,7 +7545,9 @@ function buildMonthlyReportBody(ym){
     '</div>' +
 
     '<div style="text-align: center; padding: 4px 0 8px 0;">' +
-      '<span style="font-family: \'Moul\', cursive; font-size: 14px; color: #000000; line-height: 1.6;">តារាងបូកសរុបការងារក្នុងកញ្ចប់ទី១</span>' +
+      '<div style="text-align: center; padding: 4px 0 8px 0;">' +
+      '<span style="font-family: \'Moul\', cursive; font-size: 14px; color: #000000; line-height: 1.6;">' + reportTitleKh + '</span>' +
+      '</div>' +
     '</div>' +
 
     '<div class="mrpt-customer" style="' + customerStyle + '">' +
@@ -7556,8 +7576,8 @@ function buildMonthlyReportBody(ym){
       '<thead>' +
         '<tr>' +
           '<th colspan="6" class="mrpt-head-bar" style="background:#8B3A62;color:#ffffff;text-align:center;font-weight:900;padding:6px 6px;line-height:1.4;' + cellBorder + '">' +
-            '<span style="display:block;font-size:13px;font-weight:900;color:#ffffff;">ទិន្នន័យក្នុង កញ្ចប់ទី1</span>' +
-            '<span style="display:block;font-size:12px;font-weight:900;color:#ffffff;margin-top:2px;">Monthly Inspection</span>' +
+            '<span style="display:block;font-size:13px;font-weight:900;color:#ffffff;">' + tableHeadKh + '</span>' +
+            '<span style="display:block;font-size:12px;font-weight:900;color:#ffffff;margin-top:2px;">' + tableHeadEn + '</span>' +
           '</th>' +
         '</tr>' +
         '<tr class="mrpt-colhead">' +
