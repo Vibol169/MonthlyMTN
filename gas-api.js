@@ -44,7 +44,7 @@
     validateLogin:          (a) => ({ username: a[0], password: a[1] }),
     getPhotoDataUrls:       (a) => ({ fileIds: a[0] }),
     getPdfBase64:           (a) => ({ fileId: a[0] }),
-    saveChecklistPdf:       (a) => ({ checkId: a[0], pdfBase64: a[1] }),
+    saveChecklistPdf:       (a) => ({ checkId: a[0], pdfBase64: a[1], pdfType: a[2] }),
     updateUserEquipment:    (a) => ({ username: a[0], equipmentIds: a[1] }),
     getMissingPdfsForMonth: (a) => ({ group: a[0], ym: a[1] }),
     savePushSubscription:   (a) => ({ subscription: a[0].subscription }),
