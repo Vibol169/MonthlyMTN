@@ -1329,7 +1329,7 @@ window.generateMissingPdfs = async function(ym) {
     if (missingItems.length === 0) { hideLoading(); showAlert('All checklists already have both PDFs saved to Drive!', 'success'); return; }
     
     let successCount = 0; let failCount = 0;
-    const originalForm = window.techReportForm; // Save current toggle state
+    const originalForm = window.techReportForm; 
 
     for (let i = 0; i < missingItems.length; i++) {
       const item = missingItems[i];
@@ -1340,11 +1340,11 @@ window.generateMissingPdfs = async function(ym) {
       if (item.missingStd) {
         $('#loadingMessage').text(`Generating Standard PDF ${i + 1} of ${missingItems.length}...`);
         window.techReportForm = 'standard';
-        window.activeReportForm = 'standard'; 
+        window.activeReportForm = 'standard'; // 👈 Correct
         try {
           const base64 = await generateChecklistPdfBase64(s);
           const up = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).saveChecklistPdf(item.checkId, base64, 'standard'));
-          if (up && up.success) { s.pdfFileId = String(s.pdfFileId || '').split(',')[0] + ',' + (up.fileId || ''); successCount++; } 
+          if (up && up.success) { successCount++; } 
           else { failCount++; }
         } catch (err) { console.error('Failed std PDF', err); failCount++; }
       }
@@ -1353,11 +1353,11 @@ window.generateMissingPdfs = async function(ym) {
       if (item.missingAfter) {
         $('#loadingMessage').text(`Generating After Insp. PDF ${i + 1} of ${missingItems.length}...`);
         window.techReportForm = 'after';
-        window.activeReportForm = 'after'; 
+        window.activeReportForm = 'table'; // 👈 CRITICAL FIX: Must be 'table'!
         try {
           const base64 = await generateChecklistPdfBase64(s);
           const up = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).saveChecklistPdf(item.checkId, base64, 'after'));
-          if (up && up.success) { s.pdfFileId = (String(s.pdfFileId || '').split(',')[0] || '') + ',' + (up.fileId || ''); successCount++; } 
+          if (up && up.success) { successCount++; } 
           else { failCount++; }
         } catch (err) { console.error('Failed after PDF', err); failCount++; }
       }
