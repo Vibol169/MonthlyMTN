@@ -104,6 +104,32 @@ function buildAfterInspectionTable() {
     </div>
   `;
 }
+
+window.currentReportZoom = 'fit'; // 'fit' or 'actual'
+
+window.toggleReportZoom = function() {
+  window.currentReportZoom = window.currentReportZoom === 'fit' ? 'actual' : 'fit';
+  applyReportZoom();
+};
+
+window.applyReportZoom = function() {
+  const wrapper = document.getElementById('reportPreviewWrapper');
+  const simulator = document.getElementById('mrptPageSimulator');
+  if (!wrapper || !simulator) return;
+  
+  if (window.currentReportZoom === 'fit') {
+    const availableWidth = wrapper.clientWidth - 20; // minus padding
+    const actualWidth = 793; // 210mm in pixels (approx)
+    let zoomLevel = availableWidth / actualWidth;
+    if (zoomLevel > 1) zoomLevel = 1; // Max 100% on desktop
+    
+    simulator.style.zoom = zoomLevel;
+    $('#btnZoomToggle').html('<i class="bi bi-arrows-fullscreen"></i>');
+  } else {
+    simulator.style.zoom = 1;
+    $('#btnZoomToggle').html('<i class="bi bi-arrows-angle-contract"></i>');
+  }
+};
 /* =========================================================
    WEB WORKER TIMER (Prevents Mobile Background Throttling)
    ========================================================= */
@@ -1298,19 +1324,32 @@ function renderTechnicianReportTab(){
     document.head.appendChild(s);
   })();
 
+  // Reset zoom when loading the tab
+  window.currentReportZoom = 'fit';
+
   return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span><div class="d-flex gap-1"><span class="badge bg-success">' + checkedCount + ' checked</span><span class="badge bg-warning text-dark">' + pendingCount + ' pending</span></div></div><div class="card-body">' +
     '<div class="row g-2 align-items-center mb-2"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +
     '<div class="row g-2 align-items-center mb-3"><div class="col-12"><label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label><input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)"></div></div>' +
     '<div class="dash-bar mb-3"><div class="track"><div class="fill" style="width:' + pct + '%;background:' + (pct === 100 ? '#28a745' : '#0d6efd') + '"></div></div><span class="val">' + pct + '%</span></div>' +
-
-    '<div class="btn-group w-100 mb-2" role="group">' +
-      '<button type="button" class="btn ' + (window.techReportForm === 'standard' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i> Standard</button>' +
-      '<button type="button" class="btn ' + (window.techReportForm === 'after' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'after\')"><i class="bi bi-table me-1"></i> After Inspection</button>' +
-    '</div>' +
-    '<div class="d-flex gap-2 flex-wrap mb-2"><button class="btn btn-primary flex-fill" onclick="generateMonthlyReportPDF()"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</button><button class="btn btn-outline-primary flex-fill" onclick="printMonthlyReport()"><i class="bi bi-printer me-1"></i>Print</button></div>' +
     
-    '<div class="d-flex gap-2 flex-wrap"><button class="btn btn-success flex-fill" onclick="generateMissingPdfs(\'' + ym + '\')"><i class="bi bi-cloud-arrow-up me-1"></i>Generate Missing PDFs to Drive</button></div></div></div>' +
-    '<div style="background:#e9ecef;padding:20px 10px;border-radius:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;"><div id="mrptPageSimulator" style="width:210mm;min-width:210mm;max-width:210mm;padding:10mm;background:#ffffff;margin:0 auto;box-shadow:0 4px 16px rgba(0,0,0,.18);box-sizing:border-box;">' + (typeof buildMonthlyReportBody !== 'undefined' ? buildMonthlyReportBody(ym) : '') + '</div></div>';
+    // 👇 ADDED ZOOM TOGGLE BUTTON HERE 👇
+    '<div class="d-flex gap-2 flex-wrap mb-2">' +
+      '<button class="btn btn-primary flex-fill" onclick="generateMonthlyReportPDF()"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</button>' +
+      '<button class="btn btn-outline-primary flex-fill" onclick="printMonthlyReport()"><i class="bi bi-printer me-1"></i>Print</button>' +
+      '<button class="btn btn-outline-secondary" id="btnZoomToggle" onclick="toggleReportZoom()" title="Toggle Zoom"><i class="bi bi-arrows-fullscreen"></i></button>' +
+    '</div>' +
+
+    '<div class="d-flex gap-2 flex-wrap mb-3"><button class="btn btn-success flex-fill" onclick="generateMissingPdfs(\'' + ym + '\')"><i class="bi bi-cloud-arrow-up me-1"></i>Generate Missing PDFs to Drive</button></div></div></div>' +
+    
+    // 👇 UPDATED PREVIEW WRAPPER FOR MOBILE RESPONSIVENESS 👇
+    '<div id="reportPreviewWrapper" style="background:#e9ecef; padding: 10px 0; border-radius:8px; overflow: auto; -webkit-overflow-scrolling: touch; text-align: center;">' +
+      '<div id="mrptPageSimulator" style="width:210mm; padding:10mm; background:#ffffff; margin:0 auto; box-shadow:0 4px 16px rgba(0,0,0,.18); box-sizing:border-box; transition: zoom 0.2s;">' + 
+        (typeof buildMonthlyReportBody !== 'undefined' ? buildMonthlyReportBody(ym) : '') + 
+      '</div>' +
+    '</div>' +
+    
+    // 👇 CALL applyReportZoom AFTER RENDER 👇
+    '<script>setTimeout(applyReportZoom, 100);</script>';
 }
 
 window.setReportMonth = function(ym){ homeReportMonth = ym; renderHome(); };
