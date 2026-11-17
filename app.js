@@ -1319,6 +1319,79 @@ window.onReportDateChange = function(value){ if (!value) return; homeReportDate 
 window.reportPrevMonth = function(){ homeReportMonth = shiftMonth(homeReportMonth, -1); renderHome(); };
 window.reportNextMonth = function(){ const next = shiftMonth(homeReportMonth, 1); const cur = isoToday().slice(0, 7); if (next > cur) return; homeReportMonth = next; renderHome(); };
 
+window.generatePdfsForSingleChecklist = async function(s, silent = false) {
+  if (!s) return;
+  
+  if (window._isGeneratingPdfs) {
+     console.log('[Auto-PDF] Already generating another PDF, skipping to avoid overlap.');
+     return;
+  }
+  window._isGeneratingPdfs = true;
+
+  if (!silent) showLoading(`Generating PDFs for ${s.checkId}...`);
+
+  const originalForm = window.techReportForm;
+  let successCount = 0;
+
+  try {
+     // Check local memory to see if they are already generated
+     const pdfVal = String(s.pdfFileId || '').trim();
+     let ids = pdfVal ? pdfVal.split(',').map(x => x.trim()) : ['', ''];
+     if (ids.length < 2) ids.push('');
+
+     // 1. Generate Standard PDF
+     if (!ids[0]) {
+        if (!silent) $('#loadingMessage').text(`Generating Standard PDF...`);
+        window.techReportForm = 'standard';
+        window.activeReportForm = 'standard';
+        try {
+           const base64 = await generateChecklistPdfBase64(s);
+           const up = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).saveChecklistPdf(s.checkId, base64, 'standard'));
+           if (up && up.success) {
+               ids[0] = up.fileId;
+               successCount++;
+           }
+        } catch(e) { console.error('Std PDF error', e); }
+     }
+
+     // 2. Generate After Inspection PDF
+     if (!ids[1]) {
+        if (!silent) $('#loadingMessage').text(`Generating After Inspection PDF...`);
+        window.techReportForm = 'after';
+        window.activeReportForm = 'table';
+        try {
+           const base64 = await generateChecklistPdfBase64(s);
+           const up = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).saveChecklistPdf(s.checkId, base64, 'after'));
+           if (up && up.success) {
+               ids[1] = up.fileId;
+               successCount++;
+           }
+        } catch(e) { console.error('After PDF error', e); }
+     }
+
+     // Update local memory instantly so QR codes update
+     if (successCount > 0) {
+         s.pdfFileId = ids.join(',');
+         const localSub = APP.submissions.find(x => x.checkId === s.checkId);
+         if (localSub) localSub.pdfFileId = s.pdfFileId;
+     }
+
+  } finally {
+     window.techReportForm = originalForm;
+     window.activeReportForm = originalForm === 'after' ? 'table' : 'standard';
+     window._isGeneratingPdfs = false;
+     
+     if (!silent) {
+        hideLoading();
+        if (successCount > 0) showAlert(`Generated ${successCount} PDFs successfully.`, 'success');
+        refreshCurrentPage();
+     } else {
+        console.log(`[Auto-PDF] Finished generating for ${s.checkId}. Count: ${successCount}`);
+        if (successCount > 0 && safeToRefresh()) refreshCurrentPage();
+     }
+  }
+};
+
 window.generateMissingPdfs = async function(ym, silent = false) {
   if (window._isGeneratingPdfs) return;
   window._isGeneratingPdfs = true;
@@ -3880,21 +3953,14 @@ window.saveConfirm = function(checkId, status, role){
     if (s) renderDetailModal(s, false);
     refreshCurrentPage();
 
-    // 👇 NEW: Trigger PDF generation in background ONLY when Manager confirms 👇
-    if (role === 'manager' && status === 'Confirmed' && s && s.date) {
+    // 👇 NEW LOGIC: Bypass sheet check, generate directly for this checklist 👇
+    if (role === 'manager' && status === 'Confirmed' && s) {
+      console.log(`[Auto-PDF] Manager confirmed. Generating PDFs for ${s.checkId} silently...`);
       
-      // Extract the month from the checklist date (dd/MM/yyyy -> yyyy-MM)
-      const match = String(s.date).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-      if (match) {
-        const targetYM = match[3] + '-' + match[2].padStart(2, '0');
-        
-        console.log(`[Auto-PDF] Manager confirmed. Generating missing PDFs for ${targetYM} silently in background...`);
-        
-        // Wait 2 seconds so the Manager's UI updates instantly, then run in background
-        setTimeout(() => {
-          generateMissingPdfs(targetYM, true); 
-        }, 60000);
-      }
+      // Wait 1.5 seconds so the UI finishes updating and the backend saves the status
+      setTimeout(() => {
+        generatePdfsForSingleChecklist(s, true); 
+      }, 1500);
     }
     // 👆 END OF NEW LOGIC 👆
 
