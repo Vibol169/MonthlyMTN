@@ -3893,7 +3893,7 @@ window.saveConfirm = function(checkId, status, role){
         // Wait 2 seconds so the Manager's UI updates instantly, then run in background
         setTimeout(() => {
           generateMissingPdfs(targetYM, true); 
-        }, 4000);
+        }, 10000);
       }
     }
     // 👆 END OF NEW LOGIC 👆
