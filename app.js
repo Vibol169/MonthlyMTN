@@ -118,15 +118,34 @@ window.applyReportZoom = function() {
   if (!wrapper || !simulator) return;
   
   if (window.currentReportZoom === 'fit') {
-    const availableWidth = wrapper.clientWidth - 20; // minus padding
-    const actualWidth = 793; // 210mm in pixels (approx)
-    let zoomLevel = availableWidth / actualWidth;
-    if (zoomLevel > 1) zoomLevel = 1; // Max 100% on desktop
+    wrapper.style.overflow = 'hidden';
+    wrapper.style.justifyContent = 'center';
     
-    simulator.style.zoom = zoomLevel;
+    // Get the exact width of the mobile screen
+    const availableWidth = wrapper.clientWidth - 16; 
+    const actualWidth = 793; // 210mm in pixels
+    
+    let scale = availableWidth / actualWidth;
+    if (scale > 1) scale = 1; // Don't zoom in larger than 100% on desktop
+    
+    // Apply the visual scale
+    simulator.style.transform = `scale(${scale})`;
+    simulator.style.transformOrigin = 'top center';
+    
+    // Adjust the wrapper's height so there is no huge empty space below
+    setTimeout(() => {
+      const realHeight = simulator.offsetHeight;
+      wrapper.style.height = (realHeight * scale + 16) + 'px'; 
+    }, 50);
+    
     $('#btnZoomToggle').html('<i class="bi bi-arrows-fullscreen"></i>');
   } else {
-    simulator.style.zoom = 1;
+    // Actual size (100%)
+    wrapper.style.overflow = 'auto';
+    wrapper.style.justifyContent = 'flex-start';
+    wrapper.style.height = 'auto';
+    simulator.style.transform = 'none';
+    
     $('#btnZoomToggle').html('<i class="bi bi-arrows-angle-contract"></i>');
   }
 };
@@ -1324,7 +1343,7 @@ function renderTechnicianReportTab(){
     document.head.appendChild(s);
   })();
 
-  // Reset zoom when loading the tab
+  // Reset zoom to 'fit' every time the tab loads
   window.currentReportZoom = 'fit';
 
   return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span><div class="d-flex gap-1"><span class="badge bg-success">' + checkedCount + ' checked</span><span class="badge bg-warning text-dark">' + pendingCount + ' pending</span></div></div><div class="card-body">' +
@@ -1332,7 +1351,13 @@ function renderTechnicianReportTab(){
     '<div class="row g-2 align-items-center mb-3"><div class="col-12"><label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label><input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)"></div></div>' +
     '<div class="dash-bar mb-3"><div class="track"><div class="fill" style="width:' + pct + '%;background:' + (pct === 100 ? '#28a745' : '#0d6efd') + '"></div></div><span class="val">' + pct + '%</span></div>' +
     
-    // 👇 ADDED ZOOM TOGGLE BUTTON HERE 👇
+    // 👇 1. TOGGLE SWITCH FOR 2 REPORT TYPES 👇
+    '<div class="btn-group w-100 mb-2" role="group">' +
+      '<button type="button" class="btn ' + (window.techReportForm === 'standard' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i> Standard</button>' +
+      '<button type="button" class="btn ' + (window.techReportForm === 'after' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'after\')"><i class="bi bi-table me-1"></i> After Inspection</button>' +
+    '</div>' +
+
+    // 👇 2. ACTION BUTTONS + ZOOM TOGGLE 👇
     '<div class="d-flex gap-2 flex-wrap mb-2">' +
       '<button class="btn btn-primary flex-fill" onclick="generateMonthlyReportPDF()"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</button>' +
       '<button class="btn btn-outline-primary flex-fill" onclick="printMonthlyReport()"><i class="bi bi-printer me-1"></i>Print</button>' +
@@ -1341,15 +1366,15 @@ function renderTechnicianReportTab(){
 
     '<div class="d-flex gap-2 flex-wrap mb-3"><button class="btn btn-success flex-fill" onclick="generateMissingPdfs(\'' + ym + '\')"><i class="bi bi-cloud-arrow-up me-1"></i>Generate Missing PDFs to Drive</button></div></div></div>' +
     
-    // 👇 UPDATED PREVIEW WRAPPER FOR MOBILE RESPONSIVENESS 👇
-    '<div id="reportPreviewWrapper" style="background:#e9ecef; padding: 10px 0; border-radius:8px; overflow: auto; -webkit-overflow-scrolling: touch; text-align: center;">' +
-      '<div id="mrptPageSimulator" style="width:210mm; padding:10mm; background:#ffffff; margin:0 auto; box-shadow:0 4px 16px rgba(0,0,0,.18); box-sizing:border-box; transition: zoom 0.2s;">' + 
+    // 👇 3. RESPONSIVE PREVIEW WRAPPER (100% Print Fidelity) 👇
+    '<div id="reportPreviewWrapper" style="background:#e9ecef; padding: 8px; border-radius:8px; width: 100%; display: flex; align-items: flex-start; overflow: hidden; transition: height 0.2s; position: relative;">' +
+      '<div id="mrptPageSimulator" style="width:210mm; min-width:210mm; max-width:210mm; padding:10mm; background:#ffffff; box-shadow:0 4px 16px rgba(0,0,0,.18); box-sizing:border-box; margin: 0 auto; transform-origin: top center;">' + 
         (typeof buildMonthlyReportBody !== 'undefined' ? buildMonthlyReportBody(ym) : '') + 
       '</div>' +
     '</div>' +
     
-    // 👇 CALL applyReportZoom AFTER RENDER 👇
-    '<script>setTimeout(applyReportZoom, 100);</script>';
+    // 👇 4. TRIGGER AUTO-FIT ON LOAD 👇
+    '<script>setTimeout(applyReportZoom, 150);</script>';
 }
 
 window.setReportMonth = function(ym){ homeReportMonth = ym; renderHome(); };
