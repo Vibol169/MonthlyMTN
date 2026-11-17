@@ -1319,58 +1319,82 @@ window.onReportDateChange = function(value){ if (!value) return; homeReportDate 
 window.reportPrevMonth = function(){ homeReportMonth = shiftMonth(homeReportMonth, -1); renderHome(); };
 window.reportNextMonth = function(){ const next = shiftMonth(homeReportMonth, 1); const cur = isoToday().slice(0, 7); if (next > cur) return; homeReportMonth = next; renderHome(); };
 
-window.generateMissingPdfs = async function(ym) {
-  showLoading('Checking for missing PDFs...');
+window.generateMissingPdfs = async function(ym, silent = false) {
+  // Prevent running multiple times at once
+  if (window._isGeneratingPdfs) return;
+  window._isGeneratingPdfs = true;
+
+  if (!silent) showLoading('Checking for missing PDFs...');
+  
   try {
     const res = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r({ success: false, message: e.message })).getMissingPdfsForMonth(currentUser.group, ym));
     
-    if (!res || !res.success) { hideLoading(); showAlert('Failed to check: ' + (res.message || ''), 'danger'); return; }
+    if (!res || !res.success) { 
+      if (!silent) { hideLoading(); showAlert('Failed to check: ' + (res.message || ''), 'danger'); } 
+      window._isGeneratingPdfs = false;
+      return; 
+    }
+    
     const missingItems = res.missing || [];
-    if (missingItems.length === 0) { hideLoading(); showAlert('All checklists already have both PDFs saved to Drive!', 'success'); return; }
+    if (missingItems.length === 0) { 
+      if (!silent) { hideLoading(); showAlert('All checklists already have both PDFs saved to Drive!', 'success'); } 
+      window._isGeneratingPdfs = false;
+      return; 
+    }
     
     let successCount = 0; let failCount = 0;
     const originalForm = window.techReportForm; 
+
+    if (silent) console.log(`[Auto-PDF] Found ${missingItems.length} missing PDFs. Generating in background...`);
 
     for (let i = 0; i < missingItems.length; i++) {
       const item = missingItems[i];
       const s = APP.submissions.find(x => x.checkId === item.checkId);
       if (!s) continue;
 
-      // 1. Generate Standard PDF if missing
+      // 1. Generate Standard PDF
       if (item.missingStd) {
-        $('#loadingMessage').text(`Generating Standard PDF ${i + 1} of ${missingItems.length}...`);
+        if (!silent) $('#loadingMessage').text(`Generating Standard PDF ${i + 1} of ${missingItems.length}...`);
         window.techReportForm = 'standard';
-        window.activeReportForm = 'standard'; // 👈 Correct
+        window.activeReportForm = 'standard'; 
         try {
           const base64 = await generateChecklistPdfBase64(s);
           const up = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).saveChecklistPdf(item.checkId, base64, 'standard'));
-          if (up && up.success) { successCount++; } 
-          else { failCount++; }
+          if (up && up.success) successCount++; else failCount++;
         } catch (err) { console.error('Failed std PDF', err); failCount++; }
       }
 
-      // 2. Generate After Inspection PDF if missing
+      // 2. Generate After Inspection PDF
       if (item.missingAfter) {
-        $('#loadingMessage').text(`Generating After Insp. PDF ${i + 1} of ${missingItems.length}...`);
+        if (!silent) $('#loadingMessage').text(`Generating After Insp. PDF ${i + 1} of ${missingItems.length}...`);
         window.techReportForm = 'after';
-        window.activeReportForm = 'table'; // 👈 CRITICAL FIX: Must be 'table'!
+        window.activeReportForm = 'table'; // Must be 'table' for the After Inspection layout
         try {
           const base64 = await generateChecklistPdfBase64(s);
           const up = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).saveChecklistPdf(item.checkId, base64, 'after'));
-          if (up && up.success) { successCount++; } 
-          else { failCount++; }
+          if (up && up.success) successCount++; else failCount++;
         } catch (err) { console.error('Failed after PDF', err); failCount++; }
       }
     }
 
-    // Restore toggle state
+    // Restore the toggle state
     window.techReportForm = originalForm;
     window.activeReportForm = originalForm === 'after' ? 'table' : 'standard';
 
-    hideLoading();
-    showAlert(`Saved ${successCount} PDFs to Drive. (${failCount} failed)`, successCount > 0 ? 'success' : 'warning');
-    refreshCurrentPage();
-  } catch (err) { hideLoading(); showAlert('Error: ' + (err.message || err), 'danger'); }
+    if (!silent) {
+      hideLoading();
+      showAlert(`Saved ${successCount} PDFs to Drive. (${failCount} failed)`, successCount > 0 ? 'success' : 'warning');
+      refreshCurrentPage();
+    } else {
+      console.log(`[Auto-PDF] Background generation complete. Saved: ${successCount}, Failed: ${failCount}`);
+      if (successCount > 0 && safeToRefresh()) refreshCurrentPage(); // Silently refresh UI to update QR codes
+    }
+    
+  } catch (err) { 
+    if (!silent) { hideLoading(); showAlert('Error: ' + (err.message || err), 'danger'); } 
+  } finally {
+    window._isGeneratingPdfs = false;
+  }
 };
 
 function renderMonthlyDriverHome(){
@@ -3810,19 +3834,48 @@ window.saveConfirm = function(checkId, status, role){
   role = role || 'admin';
   const remark = $('#confirmRemarkInput').val() || '';
   showLoading('កំពុងរក្សាទុក...');
+  
   google.script.run.withSuccessHandler(res => {
     hideLoading();
     if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); return; }
+    
     const s = APP.submissions.find(x => x.checkId === checkId);
+    
     if (s) {
       if (role === 'manager') { s.directorStatus = status; s.directorBy = currentUser.username; s.directorAt = dmyToday() + ' ' + nowTimeStr(); s.directorRemark = remark; }
       else if (role === 'driver') { s.driverConfirmStatus = status; s.driverConfirmedBy = currentUser.username; s.driverConfirmedAt = dmyToday() + ' ' + nowTimeStr(); s.driverConfirmRemark = remark; }
       else { s.confirmStatus = status; s.confirmedBy = currentUser.username; s.confirmedAt = dmyToday() + ' ' + nowTimeStr(); s.confirmRemark = remark; }
     }
+    
     showAlert('បានបញ្ជាក់', 'success');
     if (s) renderDetailModal(s, false);
     refreshCurrentPage();
-  }).withFailureHandler(handleError).confirmSubmission({ checkId: checkId, managerUsername: currentUser.username, status: status, remark: remark, role: role });
+
+    // 👇 NEW: Trigger PDF generation in background ONLY when Manager confirms 👇
+    if (role === 'manager' && status === 'Confirmed' && s && s.date) {
+      
+      // Extract the month from the checklist date (dd/MM/yyyy -> yyyy-MM)
+      const match = String(s.date).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (match) {
+        const targetYM = match[3] + '-' + match[2].padStart(2, '0');
+        
+        console.log(`[Auto-PDF] Manager confirmed. Generating missing PDFs for ${targetYM} silently in background...`);
+        
+        // Wait 2 seconds so the Manager's UI updates instantly, then run in background
+        setTimeout(() => {
+          generateMissingPdfs(targetYM, true); 
+        }, 2000);
+      }
+    }
+    // 👆 END OF NEW LOGIC 👆
+
+  }).withFailureHandler(handleError).confirmSubmission({ 
+    checkId: checkId, 
+    managerUsername: currentUser.username, 
+    status: status, 
+    remark: remark, 
+    role: role 
+  });
 };
 
 window.toggleSignatureVisibility = function(btn) {
