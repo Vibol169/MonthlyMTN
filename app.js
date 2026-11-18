@@ -2298,7 +2298,7 @@ function renderChecklistForm(){
         return '<div class="photo-tile" data-photo-idx="' + idx + '" onclick="openLightboxFromForm(\'' + escAttr(it.itemId) + '\',' + idx + ')">' + (src ? '<img src="' + src + '" loading="lazy" decoding="async" alt="">' : '<div style="width:90px;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="bi bi-image"></i></div>') + '<button type="button" class="photo-remove-btn" onclick="event.stopPropagation();removeItemPhoto(\'' + escAttr(it.itemId) + '\',' + idx + ')">×</button></div>';
       }).join('');
 
-      const addPhotoTile = (photos.length < 10) ? '<div class="photo-tile photo-add-tile" onclick="document.getElementById(\'photo-input-' + escAttr(it.itemId) + '\').click()"><i class="bi bi-plus-lg"></i></div>' : '';
+      const addPhotoTile = (photos.length < 10) ? '<div class="photo-tile photo-add-tile" onclick="showPhotoOptions(\'' + escAttr(it.itemId) + '\')"><i class="bi bi-plus-lg"></i></div>' : '';
       const numHtml = it.isExtra ? '' : '<span class="item-num">' + esc(label) + '.</span>';
 
       let extraActions = '';
