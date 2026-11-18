@@ -2483,28 +2483,47 @@ window.showPhotoOptions = function(itemId) {
 window.triggerCamera = function() {
   if (_photoSourceModal) _photoSourceModal.hide();
   
-  // Fix 2: Recreate the input to clear Android's memory
-  const oldInput = document.getElementById('cameraPhotoInput');
-  const newInput = oldInput.cloneNode(true);
-  oldInput.parentNode.replaceChild(newInput, oldInput);
-  
-  // Wait for the modal to fully close before opening the camera
+  // Wait for the modal animation to finish (500ms)
   setTimeout(() => {
-    newInput.click();
-  }, 400); 
+    // 👇 CREATE A FRESH INPUT ELEMENT DYNAMICALLY 👇
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment'; // Force Camera
+    input.style.display = 'none';
+    
+    input.onchange = function(e) {
+      handlePhotoSourceSelection(e.target);
+    };
+    
+    document.body.appendChild(input);
+    input.click();
+    
+    // Clean up the input after the user takes the photo
+    setTimeout(() => { document.body.removeChild(input); }, 5000);
+  }, 500);
 };
 
 window.triggerGallery = function() {
   if (_photoSourceModal) _photoSourceModal.hide();
   
-  // Fix 2: Recreate the input to clear Android's memory
-  const oldInput = document.getElementById('galleryPhotoInput');
-  const newInput = oldInput.cloneNode(true);
-  oldInput.parentNode.replaceChild(newInput, oldInput);
-  
   setTimeout(() => {
-    newInput.click();
-  }, 400);
+    // 👇 CREATE A FRESH INPUT ELEMENT DYNAMICALLY 👇
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true; // Allow multiple gallery photos
+    input.style.display = 'none';
+    
+    input.onchange = function(e) {
+      handlePhotoSourceSelection(e.target);
+    };
+    
+    document.body.appendChild(input);
+    input.click();
+    
+    setTimeout(() => { document.body.removeChild(input); }, 5000);
+  }, 500);
 };
 
 window.handlePhotoSourceSelection = function(inputEl) {
@@ -2517,7 +2536,6 @@ window.handlePhotoSourceSelection = function(inputEl) {
     onItemPhotoPick(_currentPhotoItemId, inputEl);
   }
   
-  // Completely clear the input value and reset the DOM node
   inputEl.value = ''; 
 };
 
