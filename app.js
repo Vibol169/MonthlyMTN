@@ -2459,6 +2459,37 @@ function drawAndEncode(img, maxSize, quality){
   return c.toDataURL('image/jpeg', quality);
 }
 
+let _photoSourceModal = null;
+let _currentPhotoItemId = null;
+
+window.showPhotoOptions = function(itemId) {
+  _currentPhotoItemId = itemId;
+  if (!_photoSourceModal) {
+    _photoSourceModal = new bootstrap.Modal(document.getElementById('photoSourceModal'));
+  }
+  _photoSourceModal.show();
+};
+
+window.triggerCamera = function() {
+  if (_photoSourceModal) _photoSourceModal.hide();
+  document.getElementById('cameraPhotoInput').click();
+};
+
+window.triggerGallery = function() {
+  if (_photoSourceModal) _photoSourceModal.hide();
+  document.getElementById('galleryPhotoInput').click();
+};
+
+window.handlePhotoSourceSelection = function(inputEl) {
+  if (!inputEl.files || inputEl.files.length === 0 || !_currentPhotoItemId) return;
+  
+  // Pass it to your existing onItemPhotoPick function
+  onItemPhotoPick(_currentPhotoItemId, inputEl);
+  
+  // Reset so the user can take/select the same photo again if needed
+  inputEl.value = ''; 
+};
+
 window.onItemPhotoPick = async function(itemId, inputEl){
   const files = Array.from(inputEl.files || []); inputEl.value = '';
   if (files.length === 0 || !pendingChecklist) return;
@@ -2992,7 +3023,7 @@ function renderChecklistFormFCC(){
       return '<div class="photo-tile" data-photo-idx="' + idx + '" onclick="openLightboxFromForm(\'' + escAttr(it.itemId) + '\',' + idx + ')">' + (src ? '<img src="' + src + '" loading="lazy" decoding="async" alt="">' : '<div style="width:90px;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="bi bi-image"></i></div>') + '<button type="button" class="photo-remove-btn" onclick="event.stopPropagation();removeItemPhoto(\'' + escAttr(it.itemId) + '\',' + idx + ')">×</button></div>';
     }).join('');
 
-    const addPhotoTile = (photos.length < 10) ? '<div class="photo-tile photo-add-tile" onclick="document.getElementById(\'photo-input-' + escAttr(it.itemId) + '\').click()"><i class="bi bi-plus-lg"></i></div>' : '';
+    const addPhotoTile = (photos.length < 10) ? '<div class="photo-tile photo-add-tile" onclick="showPhotoOptions(\'' + escAttr(it.itemId) + '\')"><i class="bi bi-plus-lg"></i></div>' : '';
 
     itemsHtml += headerHtml + '<div class="check-item" data-item="' + escAttr(it.itemId) + '" data-freq="' + escAttr(freq) + '" data-status="' + escAttr(statusVal) + '" ' + displayStyle + '><div class="row-line"><div class="label-part"><span class="item-num">' + esc(label) + '.</span><div class="item-text"><span class="item-name-kh">' + esc(it.itemKhmer) + '</span>' + (it.itemEng ? '<span class="item-name-en">' + esc(it.itemEng) + '</span>' : '') + '</div></div><div class="controls-group">' + 
       '<select class="form-select form-select-sm status-select" onchange="setStatus(\'' + escAttr(it.itemId) + '\', this.value)">' + optsHtml + '</select>' + 
