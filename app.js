@@ -2472,13 +2472,17 @@ window.takePhotoDirectly = function(itemId) {
   input.style.display = 'none';
   
   input.onchange = function(e) {
+    // 1. Send the files to the handler
     handlePhotoSourceSelection(e.target, itemId);
+    
+    // 2. Safely remove the input AFTER the file is selected
+    setTimeout(() => { 
+      if (input.parentNode) input.parentNode.removeChild(input); 
+    }, 1000);
   };
   
   document.body.appendChild(input);
   input.click();
-  
-  setTimeout(() => { document.body.removeChild(input); }, 5000);
 };
 
 // Direct Gallery Trigger
@@ -2491,17 +2495,24 @@ window.pickFromGalleryDirectly = function(itemId) {
   
   input.onchange = function(e) {
     handlePhotoSourceSelection(e.target, itemId);
+    
+    setTimeout(() => { 
+      if (input.parentNode) input.parentNode.removeChild(input); 
+    }, 1000);
   };
   
   document.body.appendChild(input);
   input.click();
-  
-  setTimeout(() => { document.body.removeChild(input); }, 5000);
 };
 
-// Shared handler (Receives the itemId directly)
+// Shared Handler
 window.handlePhotoSourceSelection = function(inputEl, itemId) {
-  if (!inputEl.files || inputEl.files.length === 0) return;
+  if (!inputEl.files || inputEl.files.length === 0) {
+    console.log("No file selected.");
+    return;
+  }
+  
+  console.log("File selected successfully. Sending to handler...");
   
   if (itemId === 'DAILY') {
     nokPhotos = Array.from(inputEl.files || []);
@@ -2509,8 +2520,6 @@ window.handlePhotoSourceSelection = function(inputEl, itemId) {
   } else {
     onItemPhotoPick(itemId, inputEl);
   }
-  
-  inputEl.value = ''; 
 };
 
 window.onItemPhotoPick = async function(itemId, inputEl){
