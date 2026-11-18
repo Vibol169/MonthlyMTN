@@ -2464,29 +2464,60 @@ let _currentPhotoItemId = null;
 
 window.showPhotoOptions = function(itemId) {
   _currentPhotoItemId = itemId;
-  if (!_photoSourceModal) {
-    _photoSourceModal = new bootstrap.Modal(document.getElementById('photoSourceModal'));
+  
+  const modalEl = document.getElementById('photoSourceModal');
+  
+  // Fix 1: Ensure the modal is fully reset before showing it again
+  if (_photoSourceModal) {
+    _photoSourceModal.dispose();
   }
+  
+  _photoSourceModal = new bootstrap.Modal(modalEl, {
+    backdrop: true,
+    keyboard: true
+  });
+  
   _photoSourceModal.show();
 };
 
 window.triggerCamera = function() {
   if (_photoSourceModal) _photoSourceModal.hide();
-  document.getElementById('cameraPhotoInput').click();
+  
+  // Fix 2: Recreate the input to clear Android's memory
+  const oldInput = document.getElementById('cameraPhotoInput');
+  const newInput = oldInput.cloneNode(true);
+  oldInput.parentNode.replaceChild(newInput, oldInput);
+  
+  // Wait for the modal to fully close before opening the camera
+  setTimeout(() => {
+    newInput.click();
+  }, 400); 
 };
 
 window.triggerGallery = function() {
   if (_photoSourceModal) _photoSourceModal.hide();
-  document.getElementById('galleryPhotoInput').click();
+  
+  // Fix 2: Recreate the input to clear Android's memory
+  const oldInput = document.getElementById('galleryPhotoInput');
+  const newInput = oldInput.cloneNode(true);
+  oldInput.parentNode.replaceChild(newInput, oldInput);
+  
+  setTimeout(() => {
+    newInput.click();
+  }, 400);
 };
 
 window.handlePhotoSourceSelection = function(inputEl) {
   if (!inputEl.files || inputEl.files.length === 0 || !_currentPhotoItemId) return;
   
-  // Pass it to your existing onItemPhotoPick function
-  onItemPhotoPick(_currentPhotoItemId, inputEl);
+  if (_currentPhotoItemId === 'DAILY') {
+    nokPhotos = Array.from(inputEl.files || []);
+    renderCheckPhotos();
+  } else {
+    onItemPhotoPick(_currentPhotoItemId, inputEl);
+  }
   
-  // Reset so the user can take/select the same photo again if needed
+  // Completely clear the input value and reset the DOM node
   inputEl.value = ''; 
 };
 
