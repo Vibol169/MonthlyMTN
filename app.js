@@ -2298,7 +2298,11 @@ function renderChecklistForm(){
         return '<div class="photo-tile" data-photo-idx="' + idx + '" onclick="openLightboxFromForm(\'' + escAttr(it.itemId) + '\',' + idx + ')">' + (src ? '<img src="' + src + '" loading="lazy" decoding="async" alt="">' : '<div style="width:90px;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="bi bi-image"></i></div>') + '<button type="button" class="photo-remove-btn" onclick="event.stopPropagation();removeItemPhoto(\'' + escAttr(it.itemId) + '\',' + idx + ')">×</button></div>';
       }).join('');
 
-      const addPhotoTile = (photos.length < 10) ? '<div class="photo-tile photo-add-tile" onclick="showPhotoOptions(\'' + escAttr(it.itemId) + '\')"><i class="bi bi-plus-lg"></i></div>' : '';
+      const addPhotoTile = (photos.length < 10) ? 
+  '<div class="photo-tile photo-add-tile" onclick="takePhotoDirectly(\'' + escAttr(it.itemId) + '\')" style="color: #0d6efd; border-color: #0d6efd;" title="Take Photo"><i class="bi bi-camera"></i></div>' +
+  '<div class="photo-tile photo-add-tile" onclick="pickFromGalleryDirectly(\'' + escAttr(it.itemId) + '\')" title="Gallery"><i class="bi bi-image"></i></div>' 
+  : '';
+      
       const numHtml = it.isExtra ? '' : '<span class="item-num">' + esc(label) + '.</span>';
 
       let extraActions = '';
@@ -2462,68 +2466,54 @@ function drawAndEncode(img, maxSize, quality){
 let _photoSourceModal = null;
 let _currentPhotoItemId = null;
 
-window.showPhotoOptions = function(itemId) {
-  _currentPhotoItemId = itemId;
+// Direct Camera Trigger
+window.takePhotoDirectly = function(itemId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.capture = 'environment'; // Forces camera
+  input.style.display = 'none';
   
-  const modalEl = document.getElementById('photoSourceModal');
+  input.onchange = function(e) {
+    handlePhotoSourceSelection(e.target, itemId);
+  };
   
-  // Fix 1: Ensure the modal is fully reset before showing it again
-  if (_photoSourceModal) {
-    _photoSourceModal.dispose();
+  document.body.appendChild(input);
+  input.click();
+  
+  setTimeout(() => { document.body.removeChild(input); }, 5000);
+};
+
+// Direct Gallery Trigger
+window.pickFromGalleryDirectly = function(itemId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.multiple = true; // Allow multiple photos
+  input.style.display = 'none';
+  
+  input.onchange = function(e) {
+    handlePhotoSourceSelection(e.target, itemId);
+  };
+  
+  document.body.appendChild(input);
+  input.click();
+  
+  setTimeout(() => { document.body.removeChild(input); }, 5000);
+};
+
+// Shared handler
+window.handlePhotoSourceSelection = function(inputEl, itemId) {
+  if (!inputEl.files || inputEl.files.length === 0) return;
+  
+  if (itemId === 'DAILY') {
+    nokPhotos = Array.from(inputEl.files || []);
+    renderCheckPhotos();
+  } else {
+    onItemPhotoPick(itemId, inputEl);
   }
   
-  _photoSourceModal = new bootstrap.Modal(modalEl, {
-    backdrop: true,
-    keyboard: true
-  });
-  
-  _photoSourceModal.show();
-};
-
-window.triggerCamera = function() {
-  if (_photoSourceModal) _photoSourceModal.hide();
-  
-  // Wait for the modal animation to finish (500ms)
-  setTimeout(() => {
-    // 👇 CREATE A FRESH INPUT ELEMENT DYNAMICALLY 👇
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.capture = 'environment'; // Force Camera
-    input.style.display = 'none';
-    
-    input.onchange = function(e) {
-      handlePhotoSourceSelection(e.target);
-    };
-    
-    document.body.appendChild(input);
-    input.click();
-    
-    // Clean up the input after the user takes the photo
-    setTimeout(() => { document.body.removeChild(input); }, 5000);
-  }, 500);
-};
-
-window.triggerGallery = function() {
-  if (_photoSourceModal) _photoSourceModal.hide();
-  
-  setTimeout(() => {
-    // 👇 CREATE A FRESH INPUT ELEMENT DYNAMICALLY 👇
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.multiple = true; // Allow multiple gallery photos
-    input.style.display = 'none';
-    
-    input.onchange = function(e) {
-      handlePhotoSourceSelection(e.target);
-    };
-    
-    document.body.appendChild(input);
-    input.click();
-    
-    setTimeout(() => { document.body.removeChild(input); }, 5000);
-  }, 500);
+  inputEl.value = ''; 
 };
 
 window.handlePhotoSourceSelection = function(inputEl) {
