@@ -2463,9 +2463,6 @@ function drawAndEncode(img, maxSize, quality){
   return c.toDataURL('image/jpeg', quality);
 }
 
-let _photoSourceModal = null;
-let _currentPhotoItemId = null;
-
 // Direct Camera Trigger
 window.takePhotoDirectly = function(itemId) {
   const input = document.createElement('input');
@@ -2502,7 +2499,7 @@ window.pickFromGalleryDirectly = function(itemId) {
   setTimeout(() => { document.body.removeChild(input); }, 5000);
 };
 
-// Shared handler
+// Shared handler (Receives the itemId directly)
 window.handlePhotoSourceSelection = function(inputEl, itemId) {
   if (!inputEl.files || inputEl.files.length === 0) return;
   
@@ -2511,19 +2508,6 @@ window.handlePhotoSourceSelection = function(inputEl, itemId) {
     renderCheckPhotos();
   } else {
     onItemPhotoPick(itemId, inputEl);
-  }
-  
-  inputEl.value = ''; 
-};
-
-window.handlePhotoSourceSelection = function(inputEl) {
-  if (!inputEl.files || inputEl.files.length === 0 || !_currentPhotoItemId) return;
-  
-  if (_currentPhotoItemId === 'DAILY') {
-    nokPhotos = Array.from(inputEl.files || []);
-    renderCheckPhotos();
-  } else {
-    onItemPhotoPick(_currentPhotoItemId, inputEl);
   }
   
   inputEl.value = ''; 
