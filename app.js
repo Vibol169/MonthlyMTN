@@ -2580,7 +2580,12 @@ function renderItemPhotoPreviews(itemId){
     const src = photoSrc(p, 200); const uploading = p._uploading;
     return '<div class="photo-tile" data-photo-idx="' + idx + '" onclick="openLightboxFromForm(\'' + escAttr(itemId) + '\',' + idx + ')">' + (src ? '<img src="' + src + '" loading="lazy" decoding="async" alt="">' : '<div style="width:90px;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="bi bi-image"></i></div>') + (uploading ? '<div class="photo-uploading-spinner"><div class="spinner-border spinner-border-sm text-light"></div></div>' : '') + '<button type="button" class="photo-remove-btn" onclick="event.stopPropagation();removeItemPhoto(\'' + escAttr(itemId) + '\',' + idx + ')">×</button></div>';
   }).join('');
-  const addTile = photos.length < 10 ? '<div class="photo-tile photo-add-tile" onclick="document.getElementById(\'photo-input-' + itemId + '\').click()"><i class="bi bi-plus-lg"></i></div>' : '';
+
+    const addTile = (photos.length < 10) ? 
+    '<div class="photo-tile photo-add-tile" onclick="takePhotoDirectly(\'' + itemId + '\')" style="color: #0d6efd; border-color: #0d6efd;" title="Take Photo"><i class="bi bi-camera"></i></div>' +
+    '<div class="photo-tile photo-add-tile" onclick="pickFromGalleryDirectly(\'' + itemId + '\')" title="Gallery"><i class="bi bi-image"></i></div>' 
+    : '';
+  
   $container.html(tiles + addTile);
 }
 
