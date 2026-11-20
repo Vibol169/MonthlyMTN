@@ -7948,7 +7948,7 @@ function buildTCCMonthlyReportBody(ym) {
   const myGroup = currentUser.group;
   const monthSubs = (APP.submissions || []).filter(s => 
     s.group === myGroup && isInMonth(s.date, ym)
-  ).sort((a, b) => parseDmyToMs(a.date) - parseDmyToMs(b.date)); // Sort by date oldest to newest
+  ).sort((a, b) => parseDmyToMs(a.date) - parseDmyToMs(b.date)); 
 
   const [y, m]   = ym.split('-');
   const khMonths = ['មករា','កុម្ភៈ','មីនា','មេសា','ឧសភា','មិថុនា','កក្កដា','សីហា','កញ្ញា','តុលា','វិច្ឆិកា','ធ្នូ'];
@@ -7956,72 +7956,133 @@ function buildTCCMonthlyReportBody(ym) {
   const lastDay  = new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate();
   const periodStr = '01 ដល់ ' + String(lastDay).padStart(2, '0') + ' ខែ ' + monthKh + ' ឆ្នាំ ' + y;
 
+  const rptDate = parseDmyToDate(formatIsoToDmy(homeReportDate));
+  const monEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const dateStr = String(rptDate.getDate()).padStart(2,'0') + '-' + monEn[rptDate.getMonth()] + '-' + rptDate.getFullYear();
+
   const rowsHtml = monthSubs.map((sub, i) => {
-    // Look up the equipment to get the Serial Number (S/N)
     const eqData = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
     const serialNo = eqData.serialNumber || sub.equipmentId;
-    
-    // Count the number of checks (or you can just hardcode a number if it means something else)
     const checkCount = sub.checks ? sub.checks.length : 0;
-    
-    // Get the specific group (e.g., FCC1, FCC2)
     const otherInfo = eqData.specificGroup || sub.equipmentId;
 
-    return '<tr style="height: 30px;">' +
-      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">' + (i + 1) + '</td>' +
-      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">' + esc(sub.date) + '</td>' +
-      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">S/N: ' + esc(serialNo) + '</td>' +
-      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">' + checkCount + '</td>' +
-      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">មុន</td>' +
-      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">' + esc(otherInfo) + '</td>' +
+    // QR Code Logic (Uses Standard PDF)
+    const pdfFileId = sub ? String(sub.pdfFileId || '').trim() : '';
+    const stdPdfId = pdfFileId ? String(pdfFileId).split(',')[0].trim() : '';
+    const pdfHref = stdPdfId ? ('https://drive.google.com/file/d/' + stdPdfId + '/view') : '';
+    const qrDataUrl = pdfHref ? getQrDataUrl(pdfHref) : '';
+    
+    const qrCell = qrDataUrl
+      ? '<a href="' + escAttr(pdfHref) + '" target="_blank" rel="noopener" style="display:block;text-decoration:none;">' +
+          '<img src="' + escAttr(qrDataUrl) + '" alt="QR" style="display:block;width:15mm;height:15mm;margin:0 auto;object-fit:contain;">' +
+        '</a>'
+      : '<span style="color:#6c757d;">-</span>';
+
+    const cellBorder = 'border: 1px solid #333 !important; padding: 4px; vertical-align: middle;';
+
+    return '<tr style="height: 20mm;">' +
+      '<td style="' + cellBorder + ' text-align: center;">' + (i + 1) + '</td>' +
+      '<td style="' + cellBorder + ' text-align: center;">' + esc(sub.date) + '</td>' +
+      '<td style="' + cellBorder + ' text-align: center;">S/N: ' + esc(serialNo) + '</td>' +
+      '<td style="' + cellBorder + ' text-align: center;">' + checkCount + '</td>' +
+      '<td style="' + cellBorder + ' text-align: center;">មុន</td>' +
+      '<td style="' + cellBorder + ' text-align: center;">' + esc(otherInfo) + '</td>' +
+      '<td style="' + cellBorder + ' text-align: center; padding: 2px;">' + qrCell + '</td>' +
     '</tr>';
   }).join('');
 
+  // Signature Generation (Copied from FCC Checklist)
+  const makeSig = (title, role1, role2) => {
+    const colWidth = '23%';
+    const dotLine = '...............................';
+    return '<div class="sig-column" style="flex: 0 0 ' + colWidth + '; max-width: ' + colWidth + ';">' +
+      '<div style="font-weight:700; font-size:14px; text-align:center; margin-bottom:85px;">' + title + '</div>' +
+      '<div style="overflow:hidden; white-space:nowrap; color:#000; text-align:center; font-weight:700; letter-spacing:1px; margin-bottom:5px; font-size:12px;">' + dotLine + '</div>' +
+      '<div style="font-size:12px; text-align:center; margin-bottom:20px;">ហត្ថលេខា</div>' +
+      '<div style="display:flex; align-items:flex-end; font-size:12px; margin-bottom:8px;">' +
+        '<span style="white-space:nowrap; flex-shrink:0;">' + role1 + '</span>' +
+        '<div style="flex:1; overflow:hidden; white-space:nowrap; color:#000; margin-left:5px; font-weight:700; letter-spacing:1px; font-size:12px; text-align:center;">' + dotLine + '</div>' +
+      '</div>' +
+      '<div style="display:flex; align-items:flex-end; font-size:12px;">' +
+        '<span style="white-space:nowrap; flex-shrink:0;">' + role2 + '</span>' +
+        '<div style="flex:1; overflow:hidden; white-space:nowrap; color:#000; margin-left:5px; font-weight:700; letter-spacing:1px; font-size:12px; text-align:center;">' + dotLine + '</div>' +
+      '</div>' +
+    '</div>';
+  };
+
+  const signaturesHTML = 
+    '<div class="signature-container" style="margin-top: 30px;">' +
+      '<div class="signature-row" style="display:flex; justify-content:space-between; width:100%; align-items:flex-start;">' +
+        makeSig('ត្រួតពិនិត្យដោយ', 'ឈ្មោះ:', 'តួនាទី:') +
+        makeSig('អ្នកបើកបរ', 'ឈ្មោះ:', 'ទូរស័ព្ទ:') +
+        makeSig('អតិថិជន', 'ឈ្មោះ:', 'តួនាទី:') +
+        makeSig('អនុញ្ញាតដោយ', 'ឈ្មោះ:', 'តួនាទី:') +
+      '</div>' +
+    '</div>';
+
   return '' +
   '<div class="mrpt" style="font-family: \'Hanuman\', sans-serif;">' +
-    // Header (Same as Truck report)
-    '<div class="mrpt-header" style="text-align: center; margin-bottom: 20px;">' +
-      '<div style="font-family: \'Moul\', cursive; font-size: 16px; color: #1d4370;">ក្រុមហ៊ុន ផត អេឃ្វីបមិន ឯ.ក</div>' +
-      '<div style="font-weight: 700; font-size: 16px; color: #1d4370;">PORT EQUIPMENT CO., LTD.</div>' +
+    // 1. Header (Copied from Truck)
+    '<div class="mrpt-header" style="position:relative; text-align:center; padding: 5px 0; min-height: 75px; display: flex; align-items: center; justify-content: center;">' +
+      '<div style="position:absolute; left:0; top:50%; transform:translateY(-50%);">' +
+        (APP.logoDataUrl
+          ? '<img class="mrpt-logo-img" src="' + APP.logoDataUrl + '" alt="Pec" style="display:block;height:65px;width:auto;max-height:65px;max-width:120px;object-fit:contain;">'
+          : '<div class="mrpt-logo-pec" style="font-size:65px; line-height:1;">Pec</div>') +
+      '</div>' +
+      '<div class="mrpt-company" style="display:block;">' +
+        '<div style="font-family: \'Moul\', cursive; font-size: 16px; line-height: 1.6; padding: 2px 0; margin-bottom: 2px; color: #1d4370;">ក្រុមហ៊ុន ផត អេឃ្វីបមិន ឯ.ក</div>' +
+        '<div style="font-family: \'Roboto\', \'Times New Roman\', serif; font-weight: 700; font-size: 16px; letter-spacing: 0.5px; color: #1d4370;">PORT EQUIPMENT CO., LTD.</div>' +
+      '</div>' +
     '</div>' +
 
-    // Report Title
+    '<div class="mrpt-company-details" style="padding:2px 0 4px;font-size:9px;line-height:1.4;">' +
+      '<div><b>លេខ អតប/VAT TIN:</b> L001-902202480</div>' +
+      '<div><b>អាស័យដ្ឋាន:</b> អគារលេខ៦៤៩ បន្ទប់លេខ៣០៨ តិរវិថីព្រះស៊ីសុវត្ថិ សង្កាត់ស្រះចក ខណ្ឌដូនពេញ រាជធានីភ្នំពេញ</div>' +
+      '<div><b>Address:</b> #649, Room 308, Preah Sisowath St, Sras Chork, Daunpenh, Phnom Penh</div>' +
+      '<div><b>ទូរស័ព្ទ:</b> +៨៥៥ ៦១ ៤៤៤ ៥៥៥ / ១០ ៤៤៤ ៨៦៨</div>' +
+      '<div><b>Phone:</b> +855 61 444 555 / 10 444 868</div>' +
+    '</div>' +
+
+    // 2. Report Title
     '<div style="text-align: center; padding: 4px 0 8px 0;">' +
       '<span style="font-family: \'Moul\', cursive; font-size: 14px; color: #000000;">តារាងបូកសរុបការងារក្នុងកញ្ចប់ TCC & FCC</span>' +
     '</div>' +
 
-    // Customer Info
+    // 3. Customer Info
     '<div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 10px;">' +
       '<div>' +
         '<div><b>ឈ្មោះក្រុមហ៊ុន ឬអតិថិជន:</b> កំពង់ផែស្វយ័តភ្នំពេញ</div>' +
         '<div><b>Company Name/Customer:</b> PHNOM PENH AUTONOMOUS PORT</div>' +
+        '<div><b>លេខ អតប(VAT TIN):</b> L001-100044999</div>' +
       '</div>' +
       '<div style="text-align: right;">' +
-        '<div><b>កាលបរិច្ឆេទ/Date on:</b> ' + esc(formatIsoToDmy(homeReportDate)) + '</div>' +
+        '<div><b>កាលបរិច្ឆេទ/Date on:</b> ' + esc(dateStr) + '</div>' +
         '<div><b>ផ្តល់សេវាកម្ម ចាប់ពី:</b> ' + esc(periodStr) + '</div>' +
       '</div>' +
     '</div>' +
 
-    // Data Table
+    // 4. Data Table with QR Code
     '<table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;">' +
       '<thead>' +
-        '<tr style="background: #f0f0f0; font-weight: bold;">' +
-          '<th style="border: 1px solid #000; padding: 6px; width: 5%;">ល.រ</th>' +
-          '<th style="border: 1px solid #000; padding: 6px; width: 20%;">កាលបរិច្ឆេទ<br>(ត្រួតពិនិត្យ)</th>' +
-          '<th style="border: 1px solid #000; padding: 6px; width: 25%;">លេខកូដ គ្រឿងចក្រ</th>' +
-          '<th style="border: 1px solid #000; padding: 6px; width: 15%;">ចំនួនការងារ</th>' +
-          '<th style="border: 1px solid #000; padding: 6px; width: 15%;">ឯកតា</th>' +
-          '<th style="border: 1px solid #000; padding: 6px; width: 20%;">ផ្សេងៗ</th>' +
+        '<tr style="background: #f5e6ec; font-weight: bold;">' +
+          '<th style="border: 1px solid #333; padding: 6px; width: 5%;">ល.រ</th>' +
+          '<th style="border: 1px solid #333; padding: 6px; width: 20%;">កាលបរិច្ឆេទ<br>(ត្រួតពិនិត្យ)</th>' +
+          '<th style="border: 1px solid #333; padding: 6px; width: 25%;">លេខកូដ គ្រឿងចក្រ</th>' +
+          '<th style="border: 1px solid #333; padding: 6px; width: 15%;">ចំនួនការងារ</th>' +
+          '<th style="border: 1px solid #333; padding: 6px; width: 10%;">ឯកតា</th>' +
+          '<th style="border: 1px solid #333; padding: 6px; width: 15%;">ផ្សេងៗ</th>' +
+          '<th style="border: 1px solid #333; padding: 6px; width: 10%;">QR</th>' +
         '</tr>' +
       '</thead>' +
       '<tbody>' +
-        (rowsHtml || '<tr><td colspan="6" style="border: 1px solid #000; text-align: center; padding: 10px;">No checklists this month</td></tr>') +
+        (rowsHtml || '<tr><td colspan="7" style="border: 1px solid #333; text-align: center; padding: 10px;">No checklists this month</td></tr>') +
       '</tbody>' +
     '</table>' +
+
+    // 5. Signatures
+    signaturesHTML +
   '</div>';
 }
-
-
 
 function buildMonthlyReportHTML(ym){
   return '<!DOCTYPE html>' +
@@ -8062,7 +8123,10 @@ async function generateMonthlyReportOutput(ym, mode) {
     ? 'position:absolute;top:0;left:0;width:' + CONTENT_W_PX + 'px;background:#ffffff;z-index:-9999;opacity:0;pointer-events:none;'
     : 'position:absolute;top:0;left:-99999px;width:' + CONTENT_W_PX + 'px;background:#ffffff;z-index:-1;';
 
-  host.innerHTML = buildMonthlyReportBody(ym);
+    // 👇 Switch between Truck Report and TCC Report 👇
+  host.innerHTML = String(currentUser.group).trim() === 'TCC&FCC' 
+    ? buildTCCMonthlyReportBody(ym) 
+    : buildMonthlyReportBody(ym);
   document.body.appendChild(host);
 
   try {
