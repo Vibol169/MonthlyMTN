@@ -5358,8 +5358,8 @@ function renderDailyChecklistForm(){
       '<div class="photo-upload-box mb-3">' +
         '<div class="d-flex align-items-center flex-wrap gap-2">' +
           '<input type="file" id="checkPhotos" accept="image/*" multiple style="display:none;">' +
-          '<button type="button" class="btn btn-primary btn-sm" onclick="takePhotoDirectly('DAILY')"><i class="bi bi-camera me-1"></i>ថតរូប (Camera)</button>'+
-          '<button type="button" class="btn btn-outline-primary btn-sm" onclick="pickFromGalleryDirectly('DAILY')"><i class="bi bi-image me-1"></i>ជ្រើសរើស (Gallery)</button>'+
+          <button type="button" class="btn btn-primary btn-sm" onclick="takePhotoDirectly('DAILY')"><i class="bi bi-camera me-1"></i>ថតរូប (Camera)</button>
+          <button type="button" class="btn btn-outline-primary btn-sm" onclick="pickFromGalleryDirectly('DAILY')"><i class="bi bi-image me-1"></i>ជ្រើសរើស (Gallery)</button>
           '<span id="checkPhotoCount" class="text-muted small">0 រូប</span>' +
         '</div>' +
         '<div id="checkPhotosPreview" class="photo-thumb-grid"></div>' +
