@@ -8045,7 +8045,7 @@ function buildTCCMonthlyReportBody(ym) {
     '</div>' +
 
     '<div style="text-align: center; padding: 4px 0 8px 0;">' +
-      '<span style="font-family: \'Moul\', cursive; font-size: 14px; color: #000000;">តារាងបូកសរុបការងារក្នុងកញ្ចប់ TCC & FCC</span>' +
+      '<span style="font-family: \'Moul\', cursive; font-size: 14px; color: #000000;">របាយការណ៍បូកសរុបការងារថែទាំ TCC & FCC ប្រចាំខែ</span>' +
     '</div>' +
 
     '<div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 10px;">' +
