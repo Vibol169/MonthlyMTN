@@ -1483,17 +1483,15 @@ window.generatePdfsForSingleChecklist = async function(s, silent = false) {
 };
 
 window.generateMissingPdfs = async function(ym, silent = false) {
+  // Prevent running multiple times at once
   if (window._isGeneratingPdfs) return;
   window._isGeneratingPdfs = true;
 
   if (!silent) showLoading('Checking for missing PDFs...');
   
   try {
-    console.log(`[Auto-PDF] Asking backend for missing PDFs for month: ${ym}`);
     const res = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r({ success: false, message: e.message })).getMissingPdfsForMonth(currentUser.group, ym));
     
-    console.log(`[Auto-PDF] Backend Response:`, res);
-
     if (!res || !res.success) { 
       if (!silent) { hideLoading(); showAlert('Failed to check: ' + (res.message || ''), 'danger'); } 
       window._isGeneratingPdfs = false;
@@ -1502,48 +1500,99 @@ window.generateMissingPdfs = async function(ym, silent = false) {
     
     const missingItems = res.missing || [];
     if (missingItems.length === 0) { 
-      console.log(`[Auto-PDF] No missing PDFs found. (This means the backend thinks they are already generated).`);
-      if (!silent) { hideLoading(); showAlert('All checklists already have both PDFs saved to Drive!', 'success'); } 
+      if (!silent) { hideLoading(); showAlert('All checklists already have their PDFs saved to Drive!', 'success'); } 
       window._isGeneratingPdfs = false;
       return; 
     }
     
-    let successCount = 0; let failCount = 0;
+    let successCount = 0; 
+    let failCount = 0;
     const originalForm = window.techReportForm; 
 
-    console.log(`[Auto-PDF] Found ${missingItems.length} missing PDFs. Generating now...`);
+    if (silent) console.log(`[Auto-PDF] Found ${missingItems.length} missing PDFs. Generating in background...`);
 
-      for (let i = 0; i < missingItems.length; i++) {
+    for (let i = 0; i < missingItems.length; i++) {
       const item = missingItems[i];
       const s = APP.submissions.find(x => x.checkId === item.checkId);
-      if (!s) continue;
+      
+      if (!s) {
+        console.warn(`[Auto-PDF] Could not find submission data for ${item.checkId} in local memory. Skipping.`);
+        continue;
+      }
 
-      // 1. Generate Standard PDF
+      // Prepare local IDs to update memory safely
+      let currentPdfVal = String(s.pdfFileId || '').trim();
+      let localIds = currentPdfVal ? currentPdfVal.split(',').map(x => x.trim()) : ['', ''];
+      if (localIds.length < 2) localIds.push('');
+
+      // 1. Generate Standard PDF (Runs for BOTH Trucks and TCC&FCC)
       if (item.missingStd) {
-        $('#loadingMessage').text(`Generating PDF ${i + 1} of ${missingItems.length}...`);
+        if (!silent) $('#loadingMessage').text(`Generating Standard PDF ${i + 1} of ${missingItems.length}...`);
         window.techReportForm = 'standard';
         window.activeReportForm = 'standard'; 
         try {
           const base64 = await generateChecklistPdfBase64(s);
           const up = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).saveChecklistPdf(item.checkId, base64, 'standard'));
-          if (up && up.success) successCount++; else failCount++;
-        } catch (err) { console.error('Failed std PDF', err); failCount++; }
+          
+          if (up && up.success) {
+            successCount++;
+            localIds[0] = up.fileId;
+          } else {
+            failCount++;
+          }
+        } catch (err) { 
+          console.error('Failed std PDF', err); 
+          failCount++; 
+        }
       }
 
-      // 2. Generate After Inspection PDF (Backend sets this to false for TCC)
+      // 2. Generate After Inspection PDF (Runs ONLY for Trucks, Backend sets missingAfter = false for TCC)
       if (item.missingAfter) {
-        $('#loadingMessage').text(`Generating After Insp. ${i + 1} of ${missingItems.length}...`);
+        if (!silent) $('#loadingMessage').text(`Generating After Insp. PDF ${i + 1} of ${missingItems.length}...`);
         window.techReportForm = 'after';
         window.activeReportForm = 'table'; 
         try {
           const base64 = await generateChecklistPdfBase64(s);
           const up = await new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).saveChecklistPdf(item.checkId, base64, 'after'));
-          if (up && up.success) successCount++; else failCount++;
-        } catch (err) { console.error('Failed after PDF', err); failCount++; }
+          
+          if (up && up.success) {
+            successCount++;
+            localIds[1] = up.fileId;
+          } else {
+            failCount++;
+          }
+        } catch (err) { 
+          console.error('Failed after PDF', err); 
+          failCount++; 
+        }
       }
-    } 
+
+      // Update the local memory so QR codes update instantly without needing a refresh
+      s.pdfFileId = localIds.join(',');
+      const localSub = APP.submissions.find(x => x.checkId === s.checkId);
+      if (localSub) localSub.pdfFileId = s.pdfFileId;
+    }
+
+    // Restore the toggle state
+    window.techReportForm = originalForm;
+    window.activeReportForm = originalForm === 'after' ? 'table' : 'standard';
+
+    if (!silent) {
+      hideLoading();
+      showAlert(`Saved ${successCount} PDFs to Drive. (${failCount} failed)`, successCount > 0 ? 'success' : 'warning');
+      refreshCurrentPage();
+    } else {
+      console.log(`[Auto-PDF] Background generation complete. Saved: ${successCount}, Failed: ${failCount}`);
+      if (successCount > 0 && safeToRefresh()) refreshCurrentPage(); 
+    }
+    
+  } catch (err) { 
+    console.error('[Auto-PDF] Fatal Error:', err);
+    if (!silent) { hideLoading(); showAlert('Error: ' + (err.message || err), 'danger'); } 
+  } finally {
+    window._isGeneratingPdfs = false;
+  }
 };
-}
 
 function renderMonthlyDriverHome(){
   const myAssignments = APP.assignments.filter(a => a.driverUsername === currentUser.username);
