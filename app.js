@@ -1543,6 +1543,7 @@ window.generateMissingPdfs = async function(ym, silent = false) {
       }
     } 
 };
+}
 
 function renderMonthlyDriverHome(){
   const myAssignments = APP.assignments.filter(a => a.driverUsername === currentUser.username);
