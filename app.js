@@ -6429,8 +6429,8 @@ async function paginateReport(sub) {
     const TRUCK_PAGE1_ADJUSTMENT = 0;       
     const TRUCK_PAGE2_PLUS_ADJUSTMENT = 10;  
     
-    const FCC_PAGE1_ADJUSTMENT = 0;         
-    const FCC_PAGE2_PLUS_ADJUSTMENT = 20;    
+    const FCC_PAGE1_ADJUSTMENT = -5;         
+    const FCC_PAGE2_PLUS_ADJUSTMENT = 15;    
 
     const RTG_PAGE1_ADJUSTMENT = 700;         
     const RTG_PAGE2_PLUS_ADJUSTMENT = 0;    
