@@ -1352,10 +1352,12 @@ function renderTechnicianReportTab(){
     '<div class="dash-bar mb-3"><div class="track"><div class="fill" style="width:' + pct + '%;background:' + (pct === 100 ? '#28a745' : '#0d6efd') + '"></div></div><span class="val">' + pct + '%</span></div>' +
     
     // 👇 1. TOGGLE SWITCH FOR 2 REPORT TYPES 👇
-    '<div class="btn-group w-100 mb-2" role="group">' +
-      '<button type="button" class="btn ' + (window.techReportForm === 'standard' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i> Standard</button>' +
-      '<button type="button" class="btn ' + (window.techReportForm === 'after' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'after\')"><i class="bi bi-table me-1"></i> After Inspection</button>' +
-    '</div>' +
+       (String(currentUser.group).trim() === 'រថយន្ត' ? 
+      '<div class="btn-group w-100 mb-2" role="group">' +
+        '<button type="button" class="btn ' + (window.techReportForm === 'standard' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i> Standard</button>' +
+        '<button type="button" class="btn ' + (window.techReportForm === 'after' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'after\')"><i class="bi bi-table me-1"></i> After Inspection</button>' +
+      '</div>' 
+    : '') +
 
     // 👇 2. ACTION BUTTONS + ZOOM TOGGLE 👇
     '<div class="d-flex gap-2 flex-wrap mb-2">' +
@@ -1369,7 +1371,9 @@ function renderTechnicianReportTab(){
     // 👇 3. RESPONSIVE PREVIEW WRAPPER (100% Print Fidelity) 👇
     '<div id="reportPreviewWrapper" style="background:#e9ecef; padding: 8px; border-radius:8px; width: 100%; display: flex; align-items: flex-start; overflow: hidden; transition: height 0.2s; position: relative;">' +
       '<div id="mrptPageSimulator" style="width:210mm; min-width:210mm; max-width:210mm; padding:10mm; background:#ffffff; box-shadow:0 4px 16px rgba(0,0,0,.18); box-sizing:border-box; margin: 0 auto; transform-origin: top center;">' + 
-        (typeof buildMonthlyReportBody !== 'undefined' ? buildMonthlyReportBody(ym) : '') + 
+        (typeof buildMonthlyReportBody !== 'undefined' ? 
+          (String(currentUser.group).trim() === 'TCC&FCC' ? buildTCCMonthlyReportBody(ym) : buildMonthlyReportBody(ym)) 
+          : '') + 
       '</div>' +
     '</div>' +
     
@@ -7939,6 +7943,85 @@ function buildMonthlyReportBody(ym){
     signaturesTable +
   '</div>';
 }
+
+function buildTCCMonthlyReportBody(ym) {
+  const myGroup = currentUser.group;
+  const monthSubs = (APP.submissions || []).filter(s => 
+    s.group === myGroup && isInMonth(s.date, ym)
+  ).sort((a, b) => parseDmyToMs(a.date) - parseDmyToMs(b.date)); // Sort by date oldest to newest
+
+  const [y, m]   = ym.split('-');
+  const khMonths = ['មករា','កុម្ភៈ','មីនា','មេសា','ឧសភា','មិថុនា','កក្កដា','សីហា','កញ្ញា','តុលា','វិច្ឆិកា','ធ្នូ'];
+  const monthKh  = khMonths[parseInt(m, 10) - 1];
+  const lastDay  = new Date(parseInt(y, 10), parseInt(m, 10), 0).getDate();
+  const periodStr = '01 ដល់ ' + String(lastDay).padStart(2, '0') + ' ខែ ' + monthKh + ' ឆ្នាំ ' + y;
+
+  const rowsHtml = monthSubs.map((sub, i) => {
+    // Look up the equipment to get the Serial Number (S/N)
+    const eqData = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
+    const serialNo = eqData.serialNumber || sub.equipmentId;
+    
+    // Count the number of checks (or you can just hardcode a number if it means something else)
+    const checkCount = sub.checks ? sub.checks.length : 0;
+    
+    // Get the specific group (e.g., FCC1, FCC2)
+    const otherInfo = eqData.specificGroup || sub.equipmentId;
+
+    return '<tr style="height: 30px;">' +
+      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">' + (i + 1) + '</td>' +
+      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">' + esc(sub.date) + '</td>' +
+      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">S/N: ' + esc(serialNo) + '</td>' +
+      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">' + checkCount + '</td>' +
+      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">មុន</td>' +
+      '<td style="border: 1px solid #000; text-align: center; padding: 4px;">' + esc(otherInfo) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  return '' +
+  '<div class="mrpt" style="font-family: \'Hanuman\', sans-serif;">' +
+    // Header (Same as Truck report)
+    '<div class="mrpt-header" style="text-align: center; margin-bottom: 20px;">' +
+      '<div style="font-family: \'Moul\', cursive; font-size: 16px; color: #1d4370;">ក្រុមហ៊ុន ផត អេឃ្វីបមិន ឯ.ក</div>' +
+      '<div style="font-weight: 700; font-size: 16px; color: #1d4370;">PORT EQUIPMENT CO., LTD.</div>' +
+    '</div>' +
+
+    // Report Title
+    '<div style="text-align: center; padding: 4px 0 8px 0;">' +
+      '<span style="font-family: \'Moul\', cursive; font-size: 14px; color: #000000;">តារាងបូកសរុបការងារក្នុងកញ្ចប់ TCC & FCC</span>' +
+    '</div>' +
+
+    // Customer Info
+    '<div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 10px;">' +
+      '<div>' +
+        '<div><b>ឈ្មោះក្រុមហ៊ុន ឬអតិថិជន:</b> កំពង់ផែស្វយ័តភ្នំពេញ</div>' +
+        '<div><b>Company Name/Customer:</b> PHNOM PENH AUTONOMOUS PORT</div>' +
+      '</div>' +
+      '<div style="text-align: right;">' +
+        '<div><b>កាលបរិច្ឆេទ/Date on:</b> ' + esc(formatIsoToDmy(homeReportDate)) + '</div>' +
+        '<div><b>ផ្តល់សេវាកម្ម ចាប់ពី:</b> ' + esc(periodStr) + '</div>' +
+      '</div>' +
+    '</div>' +
+
+    // Data Table
+    '<table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;">' +
+      '<thead>' +
+        '<tr style="background: #f0f0f0; font-weight: bold;">' +
+          '<th style="border: 1px solid #000; padding: 6px; width: 5%;">ល.រ</th>' +
+          '<th style="border: 1px solid #000; padding: 6px; width: 20%;">កាលបរិច្ឆេទ<br>(ត្រួតពិនិត្យ)</th>' +
+          '<th style="border: 1px solid #000; padding: 6px; width: 25%;">លេខកូដ គ្រឿងចក្រ</th>' +
+          '<th style="border: 1px solid #000; padding: 6px; width: 15%;">ចំនួនការងារ</th>' +
+          '<th style="border: 1px solid #000; padding: 6px; width: 15%;">ឯកតា</th>' +
+          '<th style="border: 1px solid #000; padding: 6px; width: 20%;">ផ្សេងៗ</th>' +
+        '</tr>' +
+      '</thead>' +
+      '<tbody>' +
+        (rowsHtml || '<tr><td colspan="6" style="border: 1px solid #000; text-align: center; padding: 10px;">No checklists this month</td></tr>') +
+      '</tbody>' +
+    '</table>' +
+  '</div>';
+}
+
+
 
 function buildMonthlyReportHTML(ym){
   return '<!DOCTYPE html>' +
