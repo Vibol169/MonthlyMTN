@@ -7988,7 +7988,7 @@ function buildTCCMonthlyReportBody(ym) {
       '<td style="' + tdBase + '">' + esc(sub.date) + '</td>' +
       '<td style="' + tdBase + '">S/N: ' + esc(serialNo) + '</td>' +
       '<td style="' + tdBase + '">' + checkCount + '</td>' +
-      '<td style="' + tdBase + '">មុន</td>' +
+      '<td style="' + tdBase + '">មុខ</td>' +
       '<td style="' + tdBase + '">' + esc(otherInfo) + '</td>' +
       '<td style="' + tdBase + ' padding: 0 4px;">' + qrCell + '</td>' +
     '</tr>';
@@ -8053,12 +8053,13 @@ function buildTCCMonthlyReportBody(ym) {
         '<div><b>ឈ្មោះក្រុមហ៊ុន ឬអតិថិជន:</b> កំពង់ផែស្វយ័តភ្នំពេញ</div>' +
         '<div><b>Company Name/Customer:</b> PHNOM PENH AUTONOMOUS PORT</div>' +
         '<div class="mrpt-customer-row"><b>អាស័យដ្ឋាន:</b> អគារលេខ៦៤៩ តិរវិថីព្រះស៊ីសុវត្ថិ សង្កាត់ស្រះចក ខណ្ឌដូនពេញ រាជធានីភ្នំពេញ</div>' +
+        '<div class="mrpt-customer-row"><b>អាស័យដ្ឋាន:</b> Address : #649, Preah Sisowath Street, Sras Chork Commune, Daun Penh District, Phnom Penh</div>' +
         '<div class="mrpt-customer-row"><b>លេខ អតប(VAT TIN):</b> L001-100044999</div>' +
-        '<div class="mrpt-customer-row"><b>លេខទំនាក់ទំនង/Phone:</b> +855 23 427 802 / 10 444 641</div>' +
+        '<div class="mrpt-customer-row"><b>លេខទំនាក់ទំនង/Phone:</b> +855 23 427 802 / 70 465 659</div>' +
       '</div>' +
       '<div style="text-align: right;">' +
         '<div><b>កាលបរិច្ឆេទ/Date on:</b> ' + esc(dateStr) + '</div>' +
-        '<div><b>ផ្តល់សេវាកម្ម ចាប់ពី:</b> ' + esc(periodStr) + '</div>' +
+        '<div><b>ផ្តល់សេវាកម្មចាប់ពី:</b> ' + esc(periodStr) + '</div>' +
       '</div>' +
     '</div>' +
 
@@ -8066,8 +8067,8 @@ function buildTCCMonthlyReportBody(ym) {
       '<thead>' +
         '<tr>' +
           '<th style="' + thBase + ' width: 5%;">ល.រ</th>' +
-          '<th style="' + thBase + ' width: 20%;">កាលបរិច្ឆេទ<br>(ត្រួតពិនិត្យ)</th>' +
-          '<th style="' + thBase + ' width: 20%;">លេខកូដ គ្រឿងចក្រ</th>' +
+          '<th style="' + thBase + ' width: 20%;">កាលបរិច្ឆេទចុះត្រួតពិនិត្យ</th>' +
+          '<th style="' + thBase + ' width: 20%;">លេខកូដគ្រឿងចក្រ</th>' +
           '<th style="' + thBase + ' width: 10%;">ចំនួនការងារ</th>' +
           '<th style="' + thBase + ' width: 10%;">ឯកតា</th>' +
           '<th style="' + thBase + ' width: 15%;">ផ្សេងៗ</th>' +
