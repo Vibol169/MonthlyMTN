@@ -8085,12 +8085,16 @@ function buildTCCMonthlyReportBody(ym) {
 }
 
 function buildMonthlyReportHTML(ym){
+  // 👇 Check the user's group to determine which report body to build 👇
+  const isTCC = String(currentUser.group || '').trim() === 'TCC&FCC';
+  const reportBody = isTCC ? buildTCCMonthlyReportBody(ym) : buildMonthlyReportBody(ym);
+
   return '<!DOCTYPE html>' +
     '<html lang="km"><head><meta charset="UTF-8">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<title>Monthly Inspection Report</title>' +
     monthlyReportStyles() +
-    '</head><body>' + buildMonthlyReportBody(ym) + '</body></html>';
+    '</head><body>' + reportBody + '</body></html>';
 }
 
 async function generateMonthlyReportOutput(ym, mode) {
