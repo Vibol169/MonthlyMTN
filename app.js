@@ -3071,7 +3071,10 @@ function renderChecklistFormFCC(){
       return '<div class="photo-tile" data-photo-idx="' + idx + '" onclick="openLightboxFromForm(\'' + escAttr(it.itemId) + '\',' + idx + ')">' + (src ? '<img src="' + src + '" loading="lazy" decoding="async" alt="">' : '<div style="width:90px;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="bi bi-image"></i></div>') + '<button type="button" class="photo-remove-btn" onclick="event.stopPropagation();removeItemPhoto(\'' + escAttr(it.itemId) + '\',' + idx + ')">×</button></div>';
     }).join('');
 
-    const addPhotoTile = (photos.length < 10) ? '<div class="photo-tile photo-add-tile" onclick="showPhotoOptions(\'' + escAttr(it.itemId) + '\')"><i class="bi bi-plus-lg"></i></div>' : '';
+    const addPhotoTile = (photos.length < 10) ? 
+  '<div class="photo-tile photo-add-tile" onclick="takePhotoDirectly(\'' + escAttr(it.itemId) + '\')" style="color: #0d6efd; border-color: #0d6efd;" title="Take Photo"><i class="bi bi-camera"></i></div>' +
+  '<div class="photo-tile photo-add-tile" onclick="pickFromGalleryDirectly(\'' + escAttr(it.itemId) + '\')" title="Gallery"><i class="bi bi-image"></i></div>' 
+  : '';
 
     itemsHtml += headerHtml + '<div class="check-item" data-item="' + escAttr(it.itemId) + '" data-freq="' + escAttr(freq) + '" data-status="' + escAttr(statusVal) + '" ' + displayStyle + '><div class="row-line"><div class="label-part"><span class="item-num">' + esc(label) + '.</span><div class="item-text"><span class="item-name-kh">' + esc(it.itemKhmer) + '</span>' + (it.itemEng ? '<span class="item-name-en">' + esc(it.itemEng) + '</span>' : '') + '</div></div><div class="controls-group">' + 
       '<select class="form-select form-select-sm status-select" onchange="setStatus(\'' + escAttr(it.itemId) + '\', this.value)">' + optsHtml + '</select>' + 
@@ -5352,7 +5355,8 @@ function renderDailyChecklistForm(){
       '<div class="photo-upload-box mb-3">' +
         '<div class="d-flex align-items-center flex-wrap gap-2">' +
           '<input type="file" id="checkPhotos" accept="image/*" multiple style="display:none;">' +
-          '<button type="button" class="btn btn-outline-primary btn-sm" onclick="$(\'#checkPhotos\').click()"><i class="bi bi-image me-1"></i>ភ្ជាប់រូបថត</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" onclick="takePhotoDirectly('DAILY')"><i class="bi bi-camera me-1"></i>ថតរូប (Camera)</button>'+
+          '<button type="button" class="btn btn-outline-primary btn-sm" onclick="pickFromGalleryDirectly('DAILY')"><i class="bi bi-image me-1"></i>ជ្រើសរើស (Gallery)</button>'+
           '<span id="checkPhotoCount" class="text-muted small">0 រូប</span>' +
         '</div>' +
         '<div id="checkPhotosPreview" class="photo-thumb-grid"></div>' +
