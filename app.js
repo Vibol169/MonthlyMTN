@@ -3406,7 +3406,10 @@ function renderChecklistFormRTG(){
         </div>`;
     }).join('');
 
-    const addPhotoTile = (photos.length < 10) ? `<div class="photo-tile photo-add-tile" onclick="document.getElementById('photo-input-${escAttr(it.itemId)}').click()"><i class="bi bi-plus-lg"></i></div>` : '';
+const addPhotoTile = (photos.length < 10) ? 
+  '<div class="photo-tile photo-add-tile" onclick="takePhotoDirectly(\'' + escAttr(it.itemId) + '\')" style="color: #0d6efd; border-color: #0d6efd;" title="Take Photo"><i class="bi bi-camera"></i></div>' +
+  '<div class="photo-tile photo-add-tile" onclick="pickFromGalleryDirectly(\'' + escAttr(it.itemId) + '\')" title="Gallery"><i class="bi bi-image"></i></div>' 
+  : '';
 
     itemsHtml += headerHtml + `
       <div class="check-item" data-item="${escAttr(it.itemId)}" data-status="${escAttr(statusVal)}">
