@@ -7960,6 +7960,9 @@ function buildTCCMonthlyReportBody(ym) {
   const monEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const dateStr = String(rptDate.getDate()).padStart(2,'0') + '-' + monEn[rptDate.getMonth()] + '-' + rptDate.getFullYear();
 
+  const tdBase = 'border-right:1px solid #333333 !important; border-bottom:1px solid #333333 !important; padding:4px; vertical-align:middle; font-size:10.5px; line-height:1.4; color:#000; box-sizing:border-box; text-align:center;';
+  const thBase = 'background:#f5e6ec; color:#000; font-weight:700; text-align:center; padding:4px 5px; font-size:10px; border-right:1px solid #333333 !important; border-bottom:1px solid #333333 !important;';
+
   const rowsHtml = monthSubs.map((sub, i) => {
     const eqData = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
     const serialNo = eqData.serialNumber || sub.equipmentId;
@@ -7978,20 +7981,18 @@ function buildTCCMonthlyReportBody(ym) {
         '</a>'
       : '<span style="color:#6c757d;">-</span>';
 
-    const cellBorder = 'border: 1px solid #333 !important; padding: 4px; vertical-align: middle;';
-
     return '<tr style="height: 20mm;">' +
-      '<td style="' + cellBorder + ' text-align: center;">' + (i + 1) + '</td>' +
-      '<td style="' + cellBorder + ' text-align: center;">' + esc(sub.date) + '</td>' +
-      '<td style="' + cellBorder + ' text-align: center;">S/N: ' + esc(serialNo) + '</td>' +
-      '<td style="' + cellBorder + ' text-align: center;">' + checkCount + '</td>' +
-      '<td style="' + cellBorder + ' text-align: center;">មុន</td>' +
-      '<td style="' + cellBorder + ' text-align: center;">' + esc(otherInfo) + '</td>' +
-      '<td style="' + cellBorder + ' text-align: center; padding: 2px;">' + qrCell + '</td>' +
+      '<td style="' + tdBase + '">' + (i + 1) + '</td>' +
+      '<td style="' + tdBase + '">' + esc(sub.date) + '</td>' +
+      '<td style="' + tdBase + '">S/N: ' + esc(serialNo) + '</td>' +
+      '<td style="' + tdBase + '">' + checkCount + '</td>' +
+      '<td style="' + tdBase + '">មុន</td>' +
+      '<td style="' + tdBase + '">' + esc(otherInfo) + '</td>' +
+      '<td style="' + tdBase + ' padding: 2px;">' + qrCell + '</td>' +
     '</tr>';
   }).join('');
 
-  // Signature Generation (Copied from FCC Checklist)
+  // Signature Generation
   const makeSig = (title, role1, role2) => {
     const colWidth = '23%';
     const dotLine = '...............................';
@@ -8022,7 +8023,6 @@ function buildTCCMonthlyReportBody(ym) {
 
   return '' +
   '<div class="mrpt" style="font-family: \'Hanuman\', sans-serif;">' +
-    // 1. Header (Copied from Truck)
     '<div class="mrpt-header" style="position:relative; text-align:center; padding: 5px 0; min-height: 75px; display: flex; align-items: center; justify-content: center;">' +
       '<div style="position:absolute; left:0; top:50%; transform:translateY(-50%);">' +
         (APP.logoDataUrl
@@ -8043,12 +8043,10 @@ function buildTCCMonthlyReportBody(ym) {
       '<div><b>Phone:</b> +855 61 444 555 / 10 444 868</div>' +
     '</div>' +
 
-    // 2. Report Title
     '<div style="text-align: center; padding: 4px 0 8px 0;">' +
       '<span style="font-family: \'Moul\', cursive; font-size: 14px; color: #000000;">តារាងបូកសរុបការងារក្នុងកញ្ចប់ TCC & FCC</span>' +
     '</div>' +
 
-    // 3. Customer Info
     '<div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 10px;">' +
       '<div>' +
         '<div><b>ឈ្មោះក្រុមហ៊ុន ឬអតិថិជន:</b> កំពង់ផែស្វយ័តភ្នំពេញ</div>' +
@@ -8061,25 +8059,24 @@ function buildTCCMonthlyReportBody(ym) {
       '</div>' +
     '</div>' +
 
-    // 4. Data Table with QR Code
-    '<table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;">' +
+    // 👇 ADDED class="mrpt-table" so the paginator can find it 👇
+    '<table class="mrpt-table" style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;">' +
       '<thead>' +
-        '<tr style="background: #f5e6ec; font-weight: bold;">' +
-          '<th style="border: 1px solid #333; padding: 6px; width: 5%;">ល.រ</th>' +
-          '<th style="border: 1px solid #333; padding: 6px; width: 20%;">កាលបរិច្ឆេទ<br>(ត្រួតពិនិត្យ)</th>' +
-          '<th style="border: 1px solid #333; padding: 6px; width: 25%;">លេខកូដ គ្រឿងចក្រ</th>' +
-          '<th style="border: 1px solid #333; padding: 6px; width: 15%;">ចំនួនការងារ</th>' +
-          '<th style="border: 1px solid #333; padding: 6px; width: 10%;">ឯកតា</th>' +
-          '<th style="border: 1px solid #333; padding: 6px; width: 15%;">ផ្សេងៗ</th>' +
-          '<th style="border: 1px solid #333; padding: 6px; width: 10%;">QR</th>' +
+        '<tr>' +
+          '<th style="' + thBase + ' width: 5%;">ល.រ</th>' +
+          '<th style="' + thBase + ' width: 20%;">កាលបរិច្ឆេទ<br>(ត្រួតពិនិត្យ)</th>' +
+          '<th style="' + thBase + ' width: 25%;">លេខកូដ គ្រឿងចក្រ</th>' +
+          '<th style="' + thBase + ' width: 15%;">ចំនួនការងារ</th>' +
+          '<th style="' + thBase + ' width: 10%;">ឯកតា</th>' +
+          '<th style="' + thBase + ' width: 15%;">ផ្សេងៗ</th>' +
+          '<th style="' + thBase + ' width: 10%;">QR</th>' +
         '</tr>' +
       '</thead>' +
       '<tbody>' +
-        (rowsHtml || '<tr><td colspan="7" style="border: 1px solid #333; text-align: center; padding: 10px;">No checklists this month</td></tr>') +
+        (rowsHtml || '<tr><td colspan="7" style="' + tdBase + ' text-align: center; padding: 10px;">No checklists this month</td></tr>') +
       '</tbody>' +
     '</table>' +
 
-    // 5. Signatures
     signaturesHTML +
   '</div>';
 }
