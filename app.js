@@ -7960,7 +7960,8 @@ function buildTCCMonthlyReportBody(ym) {
   const monEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const dateStr = String(rptDate.getDate()).padStart(2,'0') + '-' + monEn[rptDate.getMonth()] + '-' + rptDate.getFullYear();
 
-  const tdBase = 'border-right:1px solid #333333 !important; border-bottom:1px solid #333333 !important; padding:4px; vertical-align:middle; font-size:10.5px; line-height:1.4; color:#000; box-sizing:border-box; text-align:center;';
+  // 👇 UPDATED PADDING TO MATCH TRUCK (0 7px) 👇
+  const tdBase = 'border-right:1px solid #333333 !important; border-bottom:1px solid #333333 !important; padding:0 7px; vertical-align:middle; font-size:10.5px; line-height:1.4; color:#000; box-sizing:border-box; text-align:center;';
   const thBase = 'background:#f5e6ec; color:#000; font-weight:700; text-align:center; padding:4px 5px; font-size:10px; border-right:1px solid #333333 !important; border-bottom:1px solid #333333 !important;';
 
   const rowsHtml = monthSubs.map((sub, i) => {
@@ -7969,30 +7970,30 @@ function buildTCCMonthlyReportBody(ym) {
     const checkCount = sub.checks ? sub.checks.length : 0;
     const otherInfo = eqData.specificGroup || sub.equipmentId;
 
-    // QR Code Logic (Uses Standard PDF)
     const pdfFileId = sub ? String(sub.pdfFileId || '').trim() : '';
     const stdPdfId = pdfFileId ? String(pdfFileId).split(',')[0].trim() : '';
     const pdfHref = stdPdfId ? ('https://drive.google.com/file/d/' + stdPdfId + '/view') : '';
     const qrDataUrl = pdfHref ? getQrDataUrl(pdfHref) : '';
     
+    // 👇 UPDATED QR SIZE TO MATCH TRUCK (20mm) 👇
     const qrCell = qrDataUrl
       ? '<a href="' + escAttr(pdfHref) + '" target="_blank" rel="noopener" style="display:block;text-decoration:none;">' +
-          '<img src="' + escAttr(qrDataUrl) + '" alt="QR" style="display:block;width:15mm;height:15mm;margin:0 auto;object-fit:contain;">' +
+          '<img src="' + escAttr(qrDataUrl) + '" alt="QR" style="display:block;width:20mm;height:20mm;margin:0 auto;object-fit:contain;">' +
         '</a>'
       : '<span style="color:#6c757d;">-</span>';
 
-    return '<tr style="height: 20mm;">' +
+    // 👇 UPDATED ROW HEIGHT TO MATCH TRUCK (29.4mm) 👇
+    return '<tr style="height: 29.4mm;">' +
       '<td style="' + tdBase + '">' + (i + 1) + '</td>' +
       '<td style="' + tdBase + '">' + esc(sub.date) + '</td>' +
       '<td style="' + tdBase + '">S/N: ' + esc(serialNo) + '</td>' +
       '<td style="' + tdBase + '">' + checkCount + '</td>' +
       '<td style="' + tdBase + '">មុន</td>' +
       '<td style="' + tdBase + '">' + esc(otherInfo) + '</td>' +
-      '<td style="' + tdBase + ' padding: 2px;">' + qrCell + '</td>' +
+      '<td style="' + tdBase + ' padding: 0 4px;">' + qrCell + '</td>' +
     '</tr>';
   }).join('');
 
-  // Signature Generation
   const makeSig = (title, role1, role2) => {
     const colWidth = '23%';
     const dotLine = '...............................';
@@ -8059,17 +8060,16 @@ function buildTCCMonthlyReportBody(ym) {
       '</div>' +
     '</div>' +
 
-    // 👇 ADDED class="mrpt-table" so the paginator can find it 👇
     '<table class="mrpt-table" style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;">' +
       '<thead>' +
         '<tr>' +
           '<th style="' + thBase + ' width: 5%;">ល.រ</th>' +
-          '<th style="' + thBase + ' width: 20%;">កាលបរិច្ឆេទ<br>(ត្រួតពិនិត្យ)</th>' +
+          '<th style="' + thBase + ' width: 15%;">កាលបរិច្ឆេទ<br>(ត្រួតពិនិត្យ)</th>' +
           '<th style="' + thBase + ' width: 25%;">លេខកូដ គ្រឿងចក្រ</th>' +
-          '<th style="' + thBase + ' width: 15%;">ចំនួនការងារ</th>' +
+          '<th style="' + thBase + ' width: 10%;">ចំនួនការងារ</th>' +
           '<th style="' + thBase + ' width: 10%;">ឯកតា</th>' +
           '<th style="' + thBase + ' width: 15%;">ផ្សេងៗ</th>' +
-          '<th style="' + thBase + ' width: 10%;">QR</th>' +
+          '<th style="' + thBase + ' width: 20%;">QR</th>' +
         '</tr>' +
       '</thead>' +
       '<tbody>' +
