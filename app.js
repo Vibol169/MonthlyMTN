@@ -7973,37 +7973,38 @@ function buildTCCMonthlyReportBody(ym) {
   const monEn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const dateStr = String(rptDate.getDate()).padStart(2,'0') + '-' + monEn[rptDate.getMonth()] + '-' + rptDate.getFullYear();
 
-  // 👇 UPDATED PADDING TO MATCH TRUCK (0 7px) 👇
   const tdBase = 'border-right:1px solid #333333 !important; border-bottom:1px solid #333333 !important; padding:0 7px; vertical-align:middle; font-size:10.5px; line-height:1.4; color:#000; box-sizing:border-box; text-align:center;';
   const thBase = 'background:#f5e6ec; color:#000; font-weight:700; text-align:center; padding:4px 5px; font-size:10px; border-right:1px solid #333333 !important; border-bottom:1px solid #333333 !important;';
 
   const rowsHtml = monthSubs.map((sub, i) => {
     const eqData = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
     const serialNo = eqData.serialNumber || sub.equipmentId;
+    
+    // Count only items with a valid status
     const checkCount = sub.checks ? sub.checks.filter(c => c.status && String(c.status).trim() !== '').length : 0;
     const otherInfo = eqData.shortName || sub.equipmentId;
+
+    // Format Date to DD-MMM-YYYY (e.g., 30-Oct-2026)
+    const formattedDate = (function() {
+      const d = parseDmyToDate(sub.date);
+      if (!d) return esc(sub.date);
+      return String(d.getDate()).padStart(2, '0') + '-' + monEn[d.getMonth()] + '-' + d.getFullYear();
+    })();
 
     const pdfFileId = sub ? String(sub.pdfFileId || '').trim() : '';
     const stdPdfId = pdfFileId ? String(pdfFileId).split(',')[0].trim() : '';
     const pdfHref = stdPdfId ? ('https://drive.google.com/file/d/' + stdPdfId + '/view') : '';
     const qrDataUrl = pdfHref ? getQrDataUrl(pdfHref) : '';
     
-    // 👇 UPDATED QR SIZE TO MATCH TRUCK (20mm) 👇
     const qrCell = qrDataUrl
       ? '<a href="' + escAttr(pdfHref) + '" target="_blank" rel="noopener" style="display:block;text-decoration:none;">' +
           '<img src="' + escAttr(qrDataUrl) + '" alt="QR" style="display:block;width:20mm;height:20mm;margin:0 auto;object-fit:contain;">' +
         '</a>'
       : '<span style="color:#6c757d;">-</span>';
 
-    // 👇 UPDATED ROW HEIGHT TO MATCH TRUCK (29.4mm) 👇
     return '<tr style="height: 29.4mm;">' +
       '<td style="' + tdBase + '">' + (i + 1) + '</td>' +
-      '<td style="' + tdBase + '">' + (function() {
-        const d = parseDmyToDate(sub.date);
-        if (!d) return esc(sub.date);
-        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        return String(d.getDate()).padStart(2, '0') + '-' + months[d.getMonth()] + '-' + d.getFullYear();
-      })() + '</td>' +
+      '<td style="' + tdBase + '">' + formattedDate + '</td>' +
       '<td style="' + tdBase + '">S/N: ' + esc(serialNo) + '</td>' +
       '<td style="' + tdBase + '">' + checkCount + '</td>' +
       '<td style="' + tdBase + '">មុខ</td>' +
@@ -8012,33 +8013,73 @@ function buildTCCMonthlyReportBody(ym) {
     '</tr>';
   }).join('');
 
-  const makeSig = (title, role1, role2) => {
-    const colWidth = '23%';
-    const dotLine = '...............................';
-    return '<div class="sig-column" style="flex: 0 0 ' + colWidth + '; max-width: ' + colWidth + ';">' +
-      '<div style="font-weight:700; font-size:14px; text-align:center; margin-bottom:85px;">' + title + '</div>' +
-      '<div style="overflow:hidden; white-space:nowrap; color:#000; text-align:center; font-weight:700; letter-spacing:1px; margin-bottom:5px; font-size:12px;">' + dotLine + '</div>' +
-      '<div style="font-size:12px; text-align:center; margin-bottom:20px;">ហត្ថលេខា</div>' +
-      '<div style="display:flex; align-items:flex-end; font-size:12px; margin-bottom:8px;">' +
-        '<span style="white-space:nowrap; flex-shrink:0;">' + role1 + '</span>' +
-        '<div style="flex:1; overflow:hidden; white-space:nowrap; color:#000; margin-left:5px; font-weight:700; letter-spacing:1px; font-size:12px; text-align:center;">' + dotLine + '</div>' +
-      '</div>' +
-      '<div style="display:flex; align-items:flex-end; font-size:12px;">' +
-        '<span style="white-space:nowrap; flex-shrink:0;">' + role2 + '</span>' +
-        '<div style="flex:1; overflow:hidden; white-space:nowrap; color:#000; margin-left:5px; font-weight:700; letter-spacing:1px; font-size:12px; text-align:center;">' + dotLine + '</div>' +
-      '</div>' +
-    '</div>';
-  };
+  // ==========================================
+  // 👇 YOUR CUSTOM SIGNATURE BLOCK 👇
+  // ==========================================
+  const lineStyle = 'font-family:\'Hanuman\',\'Roboto Condensed\',Arial,sans-serif;' +
+                    'font-size:12px;font-weight:400;line-height:1.5;color:#000;' + 
+                    'letter-spacing:0;margin:0;padding:0;white-space:nowrap;' +
+                    '-webkit-text-size-adjust:none;text-size-adjust:none;';
 
-  const signaturesHTML = 
-    '<div class="signature-container" style="margin-top: 30px;">' +
-      '<div class="signature-row" style="display:flex; justify-content:space-between; width:100%; align-items:flex-start;">' +
-        makeSig('ត្រួតពិនិត្យដោយ', 'ឈ្មោះ:', 'តួនាទី:') +
-        makeSig('អ្នកបើកបរ', 'ឈ្មោះ:', 'ទូរស័ព្ទ:') +
-        makeSig('អតិថិជន', 'ឈ្មោះ:', 'តួនាទី:') +
-        makeSig('អនុញ្ញាតដោយ', 'ឈ្មោះ:', 'តួនាទី:') +
-      '</div>' +
+  const dotLine =
+    '<div class="mrpt-sig-dots" style="font-size:11px;font-weight:700;letter-spacing:0;color:#000;' +
+      'text-align:center;line-height:1;white-space:nowrap;overflow:hidden;width:100%;margin:0 0 2px 0;user-select:none;">' +
+      '............................................................' +
     '</div>';
+
+  const sigGap = '<div class="mrpt-sig-gap" style="height:45px;"></div>';
+
+  const sigCol1 =
+    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center; font-weight: 700 !important;">អនុញ្ញាតដោយ</div>' +
+    sigGap + dotLine +
+    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center;">ហត្ថលេខា</div>' +
+    '<div style="text-align: left; display: inline-block; margin-top: 2px;">' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">ឈ្មោះ: <span style="font-weight: 700 !important;">យ៉ឹម ជឿន</span></div>' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">តួនាទី: នាយកក្រុមហ៊ុន</div>' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">កាលបរិច្ឆេទ: ..................................</div>' +
+    '</div>';
+
+  const sigCol2 =
+    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center; font-weight: 700 !important;">ត្រូតពិនិត្យដោយ</div>' +
+    sigGap + dotLine +
+    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center;">ហត្ថលេខា</div>' +
+    '<div style="text-align: left; display: inline-block; margin-top: 2px;">' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">ឈ្មោះ: <span style="font-weight: 700 !important;">អ៊ុច សាំងឡី</span></div>' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">តួនាទី: ផ្នែកបច្ចេកទេស</div>' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">កាលបរិច្ឆេទ: ..................................</div>' +
+    '</div>';
+
+  const sigCol3 =
+    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center; font-weight: 700 !important;">អតិថិជន</div>' +
+    sigGap + dotLine +
+    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center;">ហត្ថលេខា</div>' +
+    '<div style="text-align: left; display: inline-block; margin-top: 2px;">' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">ឈ្មោះ: <span style="font-weight: 700 !important;">ហៃ ម៉ារ៉ាឌី</span></div>' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">តួនាទី: ប្រធានសេវាដ្ឋាន</div>' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">កាលបរិច្ឆេទ: ..................................</div>' +
+    '</div>';
+
+  const sigCol4 =
+    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center; font-weight: 700 !important;">អនុញ្ញាតដោយ</div>' +
+    sigGap + dotLine +
+    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center;">ហត្ថលេខា</div>' +
+    '<div style="text-align: left; display: inline-block; margin-top: 2px;">' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">ឈ្មោះ: <span style="font-weight: 700 !important;">សេង គន្ធា</span></div>' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">តួនាទី: អគ្គនាយករងបច្ចេកទេស</div>' +
+      '<div class="mrpt-sig-text" style="' + lineStyle + '">កាលបរិច្ឆេទ: ..................................</div>' +
+    '</div>';
+
+  const signaturesTable =
+    '<table class="mrpt-signatures-table" style="width:100%;border-collapse:collapse;table-layout:fixed;margin-top:15px;">' +
+      '<tr>' +
+        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sigCol1 + '</td>' +
+        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sigCol2 + '</td>' +
+        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sigCol3 + '</td>' +
+        '<td class="mrpt-sig-cell-wide"   style="width:30%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sigCol4 + '</td>' +
+      '</tr>' +
+    '</table>';
+  // 👆 END OF CUSTOM SIGNATURE BLOCK 👆
+  // ==========================================
 
   return '' +
   '<div class="mrpt" style="font-family: \'Hanuman\', sans-serif;">' +
@@ -8098,7 +8139,7 @@ function buildTCCMonthlyReportBody(ym) {
       '</tbody>' +
     '</table>' +
 
-    signaturesHTML +
+    signaturesTable +
   '</div>';
 }
 
