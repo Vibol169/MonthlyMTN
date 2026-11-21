@@ -7980,7 +7980,7 @@ function buildTCCMonthlyReportBody(ym) {
   const rowsHtml = monthSubs.map((sub, i) => {
     const eqData = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
     const serialNo = eqData.serialNumber || sub.equipmentId;
-    const checkCount = sub.checks ? sub.checks.length : 0;
+    const checkCount = sub.checks ? sub.checks.filter(c => c.status && String(c.status).trim() !== '').length : 0;
     const otherInfo = eqData.shortName || sub.equipmentId;
 
     const pdfFileId = sub ? String(sub.pdfFileId || '').trim() : '';
