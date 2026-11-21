@@ -8057,10 +8057,11 @@ function buildTCCMonthlyReportBody(ym) {
   let sig1, sig2, sig3, sig4;
 
   if (selectedCompany === 'PPAP') {
-    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ TCC & FCC ប្រចាំខែ';
+    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ TCC&FCC ប្រចាំខែ';
     customerNameKh = 'កំពង់ផែស្វយ័តភ្នំពេញ';
     customerNameEn = 'PHNOM PENH AUTONOMOUS PORT';
     customerAddress = 'អគារលេខ៦៤៩ តិរវិថីព្រះស៊ីសុវត្ថិ សង្កាត់ស្រះចក ខណ្ឌដូនពេញ រាជធានីភ្នំពេញ';
+    customerAddressEn = '#649, Preah Sisowath Street, Sras Chork Commune, Daun Penh District, Phnom Penh';
     customerVat = 'L001-100044999';
     customerPhone = '+855 23 427 802 / 70 465 659';
 
@@ -8070,30 +8071,30 @@ function buildTCCMonthlyReportBody(ym) {
     sig4 = makeSigCol('អនុញ្ញាតដោយ', 'សេង គន្ធា', 'អគ្គនាយករដ្ឋបច្ចេកទេស');
 
   } else if (selectedCompany === 'PORT STEVEDORING COMPANY LIMITED') {
-    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ PORT STEVEDORING ប្រចាំខែ';
-    customerNameKh = 'ក្រុមហ៊ុន ផត ស្ទីវដូរីង ខូអិលធីឌី'; // (Edit this Khmer name)
+    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ FCC ប្រចាំខែ';
+    customerNameKh = 'ផត ស្ទេវដរីង ឯ.ក'; // (Edit this Khmer name)
     customerNameEn = 'PORT STEVEDORING COMPANY LIMITED';
-    customerAddress = 'ភ្នំពេញ, កម្ពុជា'; // (Edit this address)
-    customerVat = 'K001-XXXXXXX'; // (Edit this VAT)
-    customerPhone = '+855 XX XXX XXX'; // (Edit this phone)
+    customerAddress = 'ផ្ទះលេខ ៤៩D ផ្លូវលេខ ២១៤​ សង្កាត់ បឹងរាំង ខណ្ឌ ដូនពេញ រាជធានីភ្នំពេញ'; // (Edit this address)
+    customerAddressEn = '#49D, St, 214, Sangkat Boeng Raing, Khan Daun Penh, Phnom Penh';
+    customerVat = 'K003-902004154'; // (Edit this VAT)
+    customerPhone = '+855 89 987 709'; // (Edit this phone)
 
     sig1 = makeSigCol('អនុញ្ញាតដោយ', 'Name 1', 'នាយកក្រុមហ៊ុន');
     sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ផ្នែកបច្ចេកទេស');
     sig3 = makeSigCol('អតិថិជន', 'Name 3', 'ប្រធានសេវាដ្ឋាន');
-    sig4 = makeSigCol('អនុញ្ញាតដោយ', 'Name 4', 'អគ្គនាយក');
-
+   
   } else if (selectedCompany === 'PMNT') {
     reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ PMNT ប្រចាំខែ';
     customerNameKh = 'ក្រុមហ៊ុន PMNT'; // (Edit this Khmer name)
     customerNameEn = 'PMNT';
-    customerAddress = 'ភ្នំពេញ, កម្ពុជា'; // (Edit this address)
+    customerAddress = 'XXXX'; // (Edit this address)
+    customerAddressEn = 'XXXX;
     customerVat = 'K001-XXXXXXX'; // (Edit this VAT)
     customerPhone = '+855 XX XXX XXX'; // (Edit this phone)
 
     sig1 = makeSigCol('អនុញ្ញាតដោយ', 'Name 1', 'នាយកក្រុមហ៊ុន');
     sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ផ្នែកបច្ចេកទេស');
     sig3 = makeSigCol('អតិថិជន', 'Name 3', 'ប្រធានសេវាដ្ឋាន');
-    sig4 = makeSigCol('អនុញ្ញាតដោយ', 'Name 4', 'អគ្គនាយក');
   }
 
   const signaturesTable =
@@ -8125,7 +8126,7 @@ function buildTCCMonthlyReportBody(ym) {
       '<div><b>អាស័យដ្ឋាន:</b> អគារលេខ៦៤៩ បន្ទប់លេខ៣០៨ តិរវិថីព្រះស៊ីសុវត្ថិ សង្កាត់ស្រះចក ខណ្ឌដូនពេញ រាជធានីភ្នំពេញ</div>' +
       '<div><b>Address:</b> #649, Room 308, Preah Sisowath St, Sras Chork, Daunpenh, Phnom Penh</div>' +
       '<div><b>ទូរស័ព្ទ:</b> +៨៥៥ ៦១ ៤៤៤ ៥៥៥ / ១០ ៤៤៤ ៨៦៨</div>' +
-      '<div><b>Phone:</b> +855 61 444 555 / 10 444 868</div>' +
+      '<div><b>Phone:</b> +855 61 444 555 / 70 465 659</div>' +
     '</div>' +
 
     '<div style="text-align: center; padding: 4px 0 8px 0;">' +
@@ -8137,6 +8138,7 @@ function buildTCCMonthlyReportBody(ym) {
         '<div><b>ឈ្មោះក្រុមហ៊ុន ឬអតិថិជន:</b> ' + customerNameKh + '</div>' +
         '<div><b>Company Name/Customer:</b> ' + customerNameEn + '</div>' +
         '<div class="mrpt-customer-row"><b>អាស័យដ្ឋាន:</b> ' + customerAddress + '</div>' +
+        '<div class="mrpt-customer-row"><b>Address:</b> ' + customerAddressEn + '</div>' +
         '<div class="mrpt-customer-row"><b>លេខ អតប(VAT TIN):</b> ' + customerVat + '</div>' +
         '<div class="mrpt-customer-row"><b>លេខទំនាក់ទំនង/Phone:</b> ' + customerPhone + '</div>' +
       '</div>' +
