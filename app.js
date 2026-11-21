@@ -7967,14 +7967,15 @@ function buildMonthlyReportBody(ym){
 function buildTCCMonthlyReportBody(ym) {
   const myGroup = currentUser.group;
   
-  // 👇 FILTER BY COMPANY 👇
-  const selectedCompany = window.tccCompanyFilter || 'PPAP';
+  // 👇 FILTER BY COMPANY (Case-Insensitive & Trimmed) 👇
+  const selectedCompany = String(window.tccCompanyFilter || 'PPAP').trim().toUpperCase();
   
   const monthSubs = (APP.submissions || []).filter(s => {
     if (s.group !== myGroup || !isInMonth(s.date, ym)) return false;
+    
     const eqData = APP.equipmentMap[s.equipmentId] || {};
-    // If no company is set in the sheet, default to PPAP
-    const eqCompany = String(eqData.companyName || 'PPAP').trim();
+    const eqCompany = String(eqData.companyName || 'PPAP').trim().toUpperCase();
+    
     return eqCompany === selectedCompany;
   }).sort((a, b) => parseDmyToMs(a.date) - parseDmyToMs(b.date)); 
 
@@ -8032,14 +8033,12 @@ function buildTCCMonthlyReportBody(ym) {
   let customerNameKh = '';
   let customerNameEn = '';
   let customerAddress = '';
+  let customerAddressEn = ''; // 👈 FIXED: Added missing variable
   let customerVat = '';
   let customerPhone = '';
+  let is4Sigs = false; // 👈 NEW: Track if we need 4 signatures
 
-  const lineStyle = 'font-family:\'Hanuman\',\'Roboto Condensed\',Arial,sans-serif;' +
-                    'font-size:12px;font-weight:400;line-height:1.5;color:#000;' + 
-                    'letter-spacing:0;margin:0;padding:0;white-space:nowrap;' +
-                    '-webkit-text-size-adjust:none;text-size-adjust:none;';
-
+  const lineStyle = 'font-family:\'Hanuman\',\'Roboto Condensed\',Arial,sans-serif;font-size:12px;font-weight:400;line-height:1.5;color:#000;letter-spacing:0;margin:0;padding:0;white-space:nowrap;';
   const dotLine = '<div class="mrpt-sig-dots" style="font-size:11px;font-weight:700;letter-spacing:0;color:#000;text-align:center;line-height:1;white-space:nowrap;overflow:hidden;width:100%;margin:0 0 2px 0;user-select:none;">............................................................</div>';
   const sigGap = '<div class="mrpt-sig-gap" style="height:45px;"></div>';
 
@@ -8056,7 +8055,38 @@ function buildTCCMonthlyReportBody(ym) {
 
   let sig1, sig2, sig3, sig4;
 
-  if (selectedCompany === 'PPAP') {
+  if (selectedCompany === 'PORT STEVEDORING COMPANY LIMITED') {
+    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ FCC ប្រចាំខែ';
+    customerNameKh = 'ផត ស្ទេវដរីង ឯ.ក';
+    customerNameEn = 'PORT STEVEDORING COMPANY LIMITED';
+    customerAddress = 'ផ្ទះលេខ ៤៩D ផ្លូវលេខ ២១៤​ សង្កាត់ បឹងរាំង ខណ្ឌ ដូនពេញ រាជធានីភ្នំពេញ';
+    customerAddressEn = '#49D, St, 214, Sangkat Boeng Raing, Khan Daun Penh, Phnom Penh';
+    customerVat = 'K003-902004154';
+    customerPhone = '+855 89 987 709';
+    is4Sigs = false; // 👈 3 Signatures
+
+    sig1 = makeSigCol('អនុញ្ញាតដោយ', 'Name 1', 'នាយកក្រុមហ៊ុន');
+    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ផ្នែកបច្ចេកទេស');
+    sig3 = makeSigCol('អតិថិជន', 'Name 3', 'ប្រធានសេវាដ្ឋាន');
+    sig4 = '';
+
+  } else if (selectedCompany === 'PMNT') {
+    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ PMNT ប្រចាំខែ';
+    customerNameKh = 'ក្រុមហ៊ុន PMNT';
+    customerNameEn = 'PMNT';
+    customerAddress = 'XXXX'; 
+    customerAddressEn = 'XXXX'; // 👈 FIXED: Missing quote
+    customerVat = 'K001-XXXXXXX'; 
+    customerPhone = '+855 XX XXX XXX'; 
+    is4Sigs = false; // 👈 3 Signatures
+
+    sig1 = makeSigCol('អនុញ្ញាតដោយ', 'Name 1', 'នាយកក្រុមហ៊ុន');
+    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ផ្នែកបច្ចេកទេស');
+    sig3 = makeSigCol('អតិថិជន', 'Name 3', 'ប្រធានសេវាដ្ឋាន');
+    sig4 = '';
+
+  } else {
+    // Default to PPAP
     reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ TCC&FCC ប្រចាំខែ';
     customerNameKh = 'កំពង់ផែស្វយ័តភ្នំពេញ';
     customerNameEn = 'PHNOM PENH AUTONOMOUS PORT';
@@ -8064,46 +8094,25 @@ function buildTCCMonthlyReportBody(ym) {
     customerAddressEn = '#649, Preah Sisowath Street, Sras Chork Commune, Daun Penh District, Phnom Penh';
     customerVat = 'L001-100044999';
     customerPhone = '+855 23 427 802 / 70 465 659';
+    is4Sigs = true; // 👈 4 Signatures
 
     sig1 = makeSigCol('អនុញ្ញាតដោយ', 'យ៉ឹម ជឿន', 'នាយកក្រុមហ៊ុន');
     sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'អ៊ុច សាំងឡី', 'ផ្នែកបច្ចេកទេស');
     sig3 = makeSigCol('អតិថិជន', 'ហៃ ម៉ារ៉ាឌី', 'ប្រធានសេវាដ្ឋាន');
     sig4 = makeSigCol('អនុញ្ញាតដោយ', 'សេង គន្ធា', 'អគ្គនាយករដ្ឋបច្ចេកទេស');
-
-  } else if (selectedCompany === 'PORT STEVEDORING COMPANY LIMITED') {
-    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ FCC ប្រចាំខែ';
-    customerNameKh = 'ផត ស្ទេវដរីង ឯ.ក'; // (Edit this Khmer name)
-    customerNameEn = 'PORT STEVEDORING COMPANY LIMITED';
-    customerAddress = 'ផ្ទះលេខ ៤៩D ផ្លូវលេខ ២១៤​ សង្កាត់ បឹងរាំង ខណ្ឌ ដូនពេញ រាជធានីភ្នំពេញ'; // (Edit this address)
-    customerAddressEn = '#49D, St, 214, Sangkat Boeng Raing, Khan Daun Penh, Phnom Penh';
-    customerVat = 'K003-902004154'; // (Edit this VAT)
-    customerPhone = '+855 89 987 709'; // (Edit this phone)
-
-    sig1 = makeSigCol('អនុញ្ញាតដោយ', 'Name 1', 'នាយកក្រុមហ៊ុន');
-    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ផ្នែកបច្ចេកទេស');
-    sig3 = makeSigCol('អតិថិជន', 'Name 3', 'ប្រធានសេវាដ្ឋាន');
-   
-  } else if (selectedCompany === 'PMNT') {
-    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ PMNT ប្រចាំខែ';
-    customerNameKh = 'ក្រុមហ៊ុន PMNT'; // (Edit this Khmer name)
-    customerNameEn = 'PMNT';
-    customerAddress = 'XXXX'; // (Edit this address)
-    customerAddressEn = 'XXXX;
-    customerVat = 'K001-XXXXXXX'; // (Edit this VAT)
-    customerPhone = '+855 XX XXX XXX'; // (Edit this phone)
-
-    sig1 = makeSigCol('អនុញ្ញាតដោយ', 'Name 1', 'នាយកក្រុមហ៊ុន');
-    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ផ្នែកបច្ចេកទេស');
-    sig3 = makeSigCol('អតិថិជន', 'Name 3', 'ប្រធានសេវាដ្ឋាន');
   }
+
+  // 👇 DYNAMICALLY ADJUST COLUMN WIDTHS BASED ON SIGNATURE COUNT 👇
+  const colWidth = is4Sigs ? '23.33%' : '33.33%';
+  const wideWidth = '30%';
 
   const signaturesTable =
     '<table class="mrpt-signatures-table" style="width:100%;border-collapse:collapse;table-layout:fixed;margin-top:15px;">' +
       '<tr>' +
-        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig1 + '</td>' +
-        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig2 + '</td>' +
-        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig3 + '</td>' +
-        '<td class="mrpt-sig-cell-wide"   style="width:30%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig4 + '</td>' +
+        '<td class="mrpt-sig-cell-narrow" style="width:' + colWidth + ';padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig1 + '</td>' +
+        '<td class="mrpt-sig-cell-narrow" style="width:' + colWidth + ';padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig2 + '</td>' +
+        '<td class="mrpt-sig-cell-narrow" style="width:' + colWidth + ';padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig3 + '</td>' +
+        (is4Sigs ? '<td class="mrpt-sig-cell-wide" style="width:' + wideWidth + ';padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig4 + '</td>' : '') +
       '</tr>' +
     '</table>';
 
