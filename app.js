@@ -7998,7 +7998,12 @@ function buildTCCMonthlyReportBody(ym) {
     // 👇 UPDATED ROW HEIGHT TO MATCH TRUCK (29.4mm) 👇
     return '<tr style="height: 29.4mm;">' +
       '<td style="' + tdBase + '">' + (i + 1) + '</td>' +
-      '<td style="' + tdBase + '">' + esc(sub.date) + '</td>' +
+      '<td style="' + tdBase + '">' + (function() {
+        const d = parseDmyToDate(sub.date);
+        if (!d) return esc(sub.date);
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return String(d.getDate()).padStart(2, '0') + '-' + months[d.getMonth()] + '-' + d.getFullYear();
+      })() + '</td>' +
       '<td style="' + tdBase + '">S/N: ' + esc(serialNo) + '</td>' +
       '<td style="' + tdBase + '">' + checkCount + '</td>' +
       '<td style="' + tdBase + '">មុខ</td>' +
