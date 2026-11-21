@@ -8078,7 +8078,7 @@ function buildTCCMonthlyReportBody(ym) {
     sig4 = '';
 
   } else if (selectedCompany === 'PMNT') {
-    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ PMNT ប្រចាំខែ';
+    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ FCC ប្រចាំខែ';
     customerNameKh = 'ក្រុមហ៊ុន PMNT';
     customerNameEn = 'PMNT';
     customerAddress = 'XXXX'; 
