@@ -2885,7 +2885,7 @@ function loadAndRenderChecklistFormFCC(equipmentId, group, shortName, driverUser
       lastOpHour: s.lastOpHour || '', 
       previousDate: s.previousDate || '', 
       previousHour: s.previousHour || '',
-      customer: s.customer || '',
+      customer: s.customer || eqData.companyName || '', // 👈 Default to eqData if old record is empty
       reportNo: s.reportNo || '',
       driverUsername: s.driverUsername || driverUsername || ''
     };
@@ -2915,7 +2915,7 @@ function loadAndRenderChecklistFormFCC(equipmentId, group, shortName, driverUser
       lastOpHour: '', 
       previousDate: prevSub ? isoDate(parseDmyToDate(prevSub.date)) : '', 
       previousHour: prevSub ? (prevSub.lastOpHour || '') : '',
-      customer: '',
+      customer: eqData.companyName || '', // 👈 AUTOMATICALLY POPULATE COMPANY NAME HERE
       reportNo: '',
       driverUsername: driverUsername || ''
     };
