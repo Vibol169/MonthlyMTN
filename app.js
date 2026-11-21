@@ -157,6 +157,9 @@ window.setTccCompany = function(company) {
   renderHome(); // Re-render the report tab
 };
 
+let listDisplayLimit = 20;
+let notifDisplayLimit = 10;
+
 /* =========================================================
    WEB WORKER TIMER (Prevents Mobile Background Throttling)
    ========================================================= */
@@ -3611,7 +3614,7 @@ window.submitChecklistFormRTG = function(){
 /*ScriptData*/
 
 
-  let listDisplayLimit = 20;
+
 /* =========================================================
    GLOBAL ERROR CATCHER (Helps diagnose silent crashes)
    ========================================================= */
@@ -8457,7 +8460,7 @@ window.generateMonthlyReportPDF = function() {
 };
 
 // Global variable for the modal limit
-let notifDisplayLimit = 10;
+
 
 window.openNotificationsModal = function() {
   notifDisplayLimit = 10; // Reset to 10 every time they open it fresh
