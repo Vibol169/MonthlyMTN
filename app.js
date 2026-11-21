@@ -4424,9 +4424,16 @@ function renderDetailItemsList(s){
     return getRank(a.itemId) - getRank(b.itemId);
   });
 
+  // 👇 NEW: Filter out blank items (Only for TCC&FCC) 👇
+  const isTCC = String(s.group || '').trim() === 'TCC&FCC';
+  
   const checks = sortedChecks.filter(c => { 
     const t = tplMap[c.itemId]; 
     if (t && String(t.inputType).toLowerCase() === 'header') return false; 
+    
+    // If it's TCC&FCC and the status is blank, don't show it in the view
+    if (isTCC && (!c.status || String(c.status).trim() === '')) return false;
+    
     return true; 
   });
 
