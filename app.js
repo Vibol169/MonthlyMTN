@@ -149,6 +149,14 @@ window.applyReportZoom = function() {
     $('#btnZoomToggle').html('<i class="bi bi-arrows-angle-contract"></i>');
   }
 };
+
+window.tccCompanyFilter = 'PPAP'; // Default company
+
+window.setTccCompany = function(company) {
+  window.tccCompanyFilter = company;
+  renderHome(); // Re-render the report tab
+};
+
 /* =========================================================
    WEB WORKER TIMER (Prevents Mobile Background Throttling)
    ========================================================= */
@@ -1311,6 +1319,8 @@ function renderTechnicianHome(){
   );
 }
 
+
+
 function renderTechnicianReportTab(){
   const myGroup = currentUser.group;
   const ym      = homeReportMonth;
@@ -1349,6 +1359,7 @@ function renderTechnicianReportTab(){
   return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span><div class="d-flex gap-1"><span class="badge bg-success">' + checkedCount + ' checked</span><span class="badge bg-warning text-dark">' + pendingCount + ' pending</span></div></div><div class="card-body">' +
     '<div class="row g-2 align-items-center mb-2"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +
     '<div class="row g-2 align-items-center mb-3"><div class="col-12"><label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label><input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)"></div></div>' +
+    tccCompanyToggle +
     '<div class="dash-bar mb-3"><div class="track"><div class="fill" style="width:' + pct + '%;background:' + (pct === 100 ? '#28a745' : '#0d6efd') + '"></div></div><span class="val">' + pct + '%</span></div>' +
     
     // 👇 1. TOGGLE SWITCH FOR 2 REPORT TYPES 👇
@@ -1386,6 +1397,17 @@ window.onReportMonthChange = function(value){ const cur = isoToday().slice(0, 7)
 window.onReportDateChange = function(value){ if (!value) return; homeReportDate = value; renderHome(); };
 window.reportPrevMonth = function(){ homeReportMonth = shiftMonth(homeReportMonth, -1); renderHome(); };
 window.reportNextMonth = function(){ const next = shiftMonth(homeReportMonth, 1); const cur = isoToday().slice(0, 7); if (next > cur) return; homeReportMonth = next; renderHome(); };
+
+  // 👇 ADDED COMPANY TOGGLE FOR TCC 👇
+  let tccCompanyToggle = '';
+  if (String(currentUser.group).trim() === 'TCC&FCC') {
+    tccCompanyToggle = 
+      '<div class="btn-group w-100 mb-2" role="group">' +
+        '<button type="button" class="btn ' + (window.tccCompanyFilter === 'PPAP' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTccCompany(\'PPAP\')">PPAP</button>' +
+        '<button type="button" class="btn ' + (window.tccCompanyFilter === 'PORT STEVEDORING COMPANY LIMITED' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTccCompany(\'PORT STEVEDORING COMPANY LIMITED\')">Port Stevedoring</button>' +
+        '<button type="button" class="btn ' + (window.tccCompanyFilter === 'PMNT' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTccCompany(\'PMNT\')">PMNT</button>' +
+      '</div>';
+  }
 
 // Global queue to hold checklists waiting to generate
 window._pdfQueue = [];
@@ -7959,9 +7981,17 @@ function buildMonthlyReportBody(ym){
 
 function buildTCCMonthlyReportBody(ym) {
   const myGroup = currentUser.group;
-  const monthSubs = (APP.submissions || []).filter(s => 
-    s.group === myGroup && isInMonth(s.date, ym)
-  ).sort((a, b) => parseDmyToMs(a.date) - parseDmyToMs(b.date)); 
+  
+  // 👇 FILTER BY COMPANY 👇
+  const selectedCompany = window.tccCompanyFilter || 'PPAP';
+  
+  const monthSubs = (APP.submissions || []).filter(s => {
+    if (s.group !== myGroup || !isInMonth(s.date, ym)) return false;
+    const eqData = APP.equipmentMap[s.equipmentId] || {};
+    // If no company is set in the sheet, default to PPAP
+    const eqCompany = String(eqData.companyName || 'PPAP').trim();
+    return eqCompany === selectedCompany;
+  }).sort((a, b) => parseDmyToMs(a.date) - parseDmyToMs(b.date)); 
 
   const [y, m]   = ym.split('-');
   const khMonths = ['មករា','កុម្ភៈ','មីនា','មេសា','ឧសភា','មិថុនា','កក្កដា','សីហា','កញ្ញា','តុលា','វិច្ឆិកា','ធ្នូ'];
@@ -7979,12 +8009,9 @@ function buildTCCMonthlyReportBody(ym) {
   const rowsHtml = monthSubs.map((sub, i) => {
     const eqData = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
     const serialNo = eqData.serialNumber || sub.equipmentId;
-    
-    // Count only items with a valid status
     const checkCount = sub.checks ? sub.checks.filter(c => c.status && String(c.status).trim() !== '').length : 0;
     const otherInfo = eqData.shortName || sub.equipmentId;
 
-    // Format Date to DD-MMM-YYYY (e.g., 30-Oct-2026)
     const formattedDate = (function() {
       const d = parseDmyToDate(sub.date);
       if (!d) return esc(sub.date);
@@ -8014,72 +8041,85 @@ function buildTCCMonthlyReportBody(ym) {
   }).join('');
 
   // ==========================================
-  // 👇 YOUR CUSTOM SIGNATURE BLOCK 👇
+  // DYNAMIC HEADER & SIGNATURES
   // ==========================================
+  let reportTitle = '';
+  let customerNameKh = '';
+  let customerNameEn = '';
+  let customerAddress = '';
+  let customerVat = '';
+  let customerPhone = '';
+
   const lineStyle = 'font-family:\'Hanuman\',\'Roboto Condensed\',Arial,sans-serif;' +
                     'font-size:12px;font-weight:400;line-height:1.5;color:#000;' + 
                     'letter-spacing:0;margin:0;padding:0;white-space:nowrap;' +
                     '-webkit-text-size-adjust:none;text-size-adjust:none;';
 
-  const dotLine =
-    '<div class="mrpt-sig-dots" style="font-size:11px;font-weight:700;letter-spacing:0;color:#000;' +
-      'text-align:center;line-height:1;white-space:nowrap;overflow:hidden;width:100%;margin:0 0 2px 0;user-select:none;">' +
-      '............................................................' +
-    '</div>';
-
+  const dotLine = '<div class="mrpt-sig-dots" style="font-size:11px;font-weight:700;letter-spacing:0;color:#000;text-align:center;line-height:1;white-space:nowrap;overflow:hidden;width:100%;margin:0 0 2px 0;user-select:none;">............................................................</div>';
   const sigGap = '<div class="mrpt-sig-gap" style="height:45px;"></div>';
 
-  const sigCol1 =
-    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center; font-weight: 700 !important;">អនុញ្ញាតដោយ</div>' +
-    sigGap + dotLine +
-    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center;">ហត្ថលេខា</div>' +
-    '<div style="text-align: left; display: inline-block; margin-top: 2px;">' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">ឈ្មោះ: <span style="font-weight: 700 !important;">យ៉ឹម ជឿន</span></div>' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">តួនាទី: នាយកក្រុមហ៊ុន</div>' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">កាលបរិច្ឆេទ: ..................................</div>' +
-    '</div>';
+  const makeSigCol = (title, name, role) => {
+    return '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center; font-weight: 700 !important;">' + title + '</div>' +
+      sigGap + dotLine +
+      '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center;">ហត្ថលេខា</div>' +
+      '<div style="text-align: left; display: inline-block; margin-top: 2px;">' +
+        '<div class="mrpt-sig-text" style="' + lineStyle + '">ឈ្មោះ: <span style="font-weight: 700 !important;">' + name + '</span></div>' +
+        '<div class="mrpt-sig-text" style="' + lineStyle + '">តួនាទី: ' + role + '</div>' +
+        '<div class="mrpt-sig-text" style="' + lineStyle + '">កាលបរិច្ឆេទ: ..................................</div>' +
+      '</div>';
+  };
 
-  const sigCol2 =
-    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center; font-weight: 700 !important;">ត្រូតពិនិត្យដោយ</div>' +
-    sigGap + dotLine +
-    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center;">ហត្ថលេខា</div>' +
-    '<div style="text-align: left; display: inline-block; margin-top: 2px;">' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">ឈ្មោះ: <span style="font-weight: 700 !important;">អ៊ុច សាំងឡី</span></div>' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">តួនាទី: ផ្នែកបច្ចេកទេស</div>' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">កាលបរិច្ឆេទ: ..................................</div>' +
-    '</div>';
+  let sig1, sig2, sig3, sig4;
 
-  const sigCol3 =
-    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center; font-weight: 700 !important;">អតិថិជន</div>' +
-    sigGap + dotLine +
-    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center;">ហត្ថលេខា</div>' +
-    '<div style="text-align: left; display: inline-block; margin-top: 2px;">' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">ឈ្មោះ: <span style="font-weight: 700 !important;">ហៃ ម៉ារ៉ាឌី</span></div>' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">តួនាទី: ប្រធានសេវាដ្ឋាន</div>' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">កាលបរិច្ឆេទ: ..................................</div>' +
-    '</div>';
+  if (selectedCompany === 'PPAP') {
+    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ TCC & FCC ប្រចាំខែ';
+    customerNameKh = 'កំពង់ផែស្វយ័តភ្នំពេញ';
+    customerNameEn = 'PHNOM PENH AUTONOMOUS PORT';
+    customerAddress = 'អគារលេខ៦៤៩ តិរវិថីព្រះស៊ីសុវត្ថិ សង្កាត់ស្រះចក ខណ្ឌដូនពេញ រាជធានីភ្នំពេញ';
+    customerVat = 'L001-100044999';
+    customerPhone = '+855 23 427 802 / 70 465 659';
 
-  const sigCol4 =
-    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center; font-weight: 700 !important;">អនុញ្ញាតដោយ</div>' +
-    sigGap + dotLine +
-    '<div class="mrpt-sig-text" style="' + lineStyle + ' text-align: center;">ហត្ថលេខា</div>' +
-    '<div style="text-align: left; display: inline-block; margin-top: 2px;">' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">ឈ្មោះ: <span style="font-weight: 700 !important;">សេង គន្ធា</span></div>' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">តួនាទី: អគ្គនាយករងបច្ចេកទេស</div>' +
-      '<div class="mrpt-sig-text" style="' + lineStyle + '">កាលបរិច្ឆេទ: ..................................</div>' +
-    '</div>';
+    sig1 = makeSigCol('អនុញ្ញាតដោយ', 'យ៉ឹម ជឿន', 'នាយកក្រុមហ៊ុន');
+    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'អ៊ុច សាំងឡី', 'ផ្នែកបច្ចេកទេស');
+    sig3 = makeSigCol('អតិថិជន', 'ហៃ ម៉ារ៉ាឌី', 'ប្រធានសេវាដ្ឋាន');
+    sig4 = makeSigCol('អនុញ្ញាតដោយ', 'សេង គន្ធា', 'អគ្គនាយករដ្ឋបច្ចេកទេស');
+
+  } else if (selectedCompany === 'PORT STEVEDORING COMPANY LIMITED') {
+    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ PORT STEVEDORING ប្រចាំខែ';
+    customerNameKh = 'ក្រុមហ៊ុន ផត ស្ទីវដូរីង ខូអិលធីឌី'; // (Edit this Khmer name)
+    customerNameEn = 'PORT STEVEDORING COMPANY LIMITED';
+    customerAddress = 'ភ្នំពេញ, កម្ពុជា'; // (Edit this address)
+    customerVat = 'K001-XXXXXXX'; // (Edit this VAT)
+    customerPhone = '+855 XX XXX XXX'; // (Edit this phone)
+
+    sig1 = makeSigCol('អនុញ្ញាតដោយ', 'Name 1', 'នាយកក្រុមហ៊ុន');
+    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ផ្នែកបច្ចេកទេស');
+    sig3 = makeSigCol('អតិថិជន', 'Name 3', 'ប្រធានសេវាដ្ឋាន');
+    sig4 = makeSigCol('អនុញ្ញាតដោយ', 'Name 4', 'អគ្គនាយក');
+
+  } else if (selectedCompany === 'PMNT') {
+    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ PMNT ប្រចាំខែ';
+    customerNameKh = 'ក្រុមហ៊ុន PMNT'; // (Edit this Khmer name)
+    customerNameEn = 'PMNT';
+    customerAddress = 'ភ្នំពេញ, កម្ពុជា'; // (Edit this address)
+    customerVat = 'K001-XXXXXXX'; // (Edit this VAT)
+    customerPhone = '+855 XX XXX XXX'; // (Edit this phone)
+
+    sig1 = makeSigCol('អនុញ្ញាតដោយ', 'Name 1', 'នាយកក្រុមហ៊ុន');
+    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ផ្នែកបច្ចេកទេស');
+    sig3 = makeSigCol('អតិថិជន', 'Name 3', 'ប្រធានសេវាដ្ឋាន');
+    sig4 = makeSigCol('អនុញ្ញាតដោយ', 'Name 4', 'អគ្គនាយក');
+  }
 
   const signaturesTable =
     '<table class="mrpt-signatures-table" style="width:100%;border-collapse:collapse;table-layout:fixed;margin-top:15px;">' +
       '<tr>' +
-        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sigCol1 + '</td>' +
-        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sigCol2 + '</td>' +
-        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sigCol3 + '</td>' +
-        '<td class="mrpt-sig-cell-wide"   style="width:30%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sigCol4 + '</td>' +
+        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig1 + '</td>' +
+        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig2 + '</td>' +
+        '<td class="mrpt-sig-cell-narrow" style="width:23.33%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig3 + '</td>' +
+        '<td class="mrpt-sig-cell-wide"   style="width:30%;padding:0 3px;text-align:center;vertical-align:top;border:none;">' + sig4 + '</td>' +
       '</tr>' +
     '</table>';
-  // 👆 END OF CUSTOM SIGNATURE BLOCK 👆
-  // ==========================================
 
   return '' +
   '<div class="mrpt" style="font-family: \'Hanuman\', sans-serif;">' +
@@ -8104,17 +8144,16 @@ function buildTCCMonthlyReportBody(ym) {
     '</div>' +
 
     '<div style="text-align: center; padding: 4px 0 8px 0;">' +
-      '<span style="font-family: \'Moul\', cursive; font-size: 14px; color: #000000;">របាយការណ៍បូកសរុបការងារថែទាំ TCC & FCC ប្រចាំខែ</span>' +
+      '<span style="font-family: \'Moul\', cursive; font-size: 14px; color: #000000;">' + reportTitle + '</span>' +
     '</div>' +
 
     '<div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 10px;">' +
       '<div>' +
-        '<div><b>ឈ្មោះក្រុមហ៊ុន ឬអតិថិជន:</b> កំពង់ផែស្វយ័តភ្នំពេញ</div>' +
-        '<div><b>Company Name/Customer:</b> PHNOM PENH AUTONOMOUS PORT</div>' +
-        '<div class="mrpt-customer-row"><b>អាស័យដ្ឋាន:</b> អគារលេខ៦៤៩ តិរវិថីព្រះស៊ីសុវត្ថិ សង្កាត់ស្រះចក ខណ្ឌដូនពេញ រាជធានីភ្នំពេញ</div>' +
-        '<div class="mrpt-customer-row"><b>អាស័យដ្ឋាន:</b> Address : #649, Preah Sisowath Street, Sras Chork Commune, Daun Penh District, Phnom Penh</div>' +
-        '<div class="mrpt-customer-row"><b>លេខ អតប(VAT TIN):</b> L001-100044999</div>' +
-        '<div class="mrpt-customer-row"><b>លេខទំនាក់ទំនង/Phone:</b> +855 23 427 802 / 70 465 659</div>' +
+        '<div><b>ឈ្មោះក្រុមហ៊ុន ឬអតិថិជន:</b> ' + customerNameKh + '</div>' +
+        '<div><b>Company Name/Customer:</b> ' + customerNameEn + '</div>' +
+        '<div class="mrpt-customer-row"><b>អាស័យដ្ឋាន:</b> ' + customerAddress + '</div>' +
+        '<div class="mrpt-customer-row"><b>លេខ អតប(VAT TIN):</b> ' + customerVat + '</div>' +
+        '<div class="mrpt-customer-row"><b>លេខទំនាក់ទំនង/Phone:</b> ' + customerPhone + '</div>' +
       '</div>' +
       '<div style="text-align: right;">' +
         '<div><b>កាលបរិច្ឆេទ/Date on:</b> ' + esc(dateStr) + '</div>' +
@@ -8135,7 +8174,7 @@ function buildTCCMonthlyReportBody(ym) {
         '</tr>' +
       '</thead>' +
       '<tbody>' +
-        (rowsHtml || '<tr><td colspan="7" style="' + tdBase + ' text-align: center; padding: 10px;">No checklists this month</td></tr>') +
+        (rowsHtml || '<tr><td colspan="7" style="' + tdBase + ' text-align: center; padding: 10px;">No checklists this month for ' + selectedCompany + '</td></tr>') +
       '</tbody>' +
     '</table>' +
 
