@@ -150,13 +150,6 @@ window.applyReportZoom = function() {
   }
 };
 
-window.tccCompanyFilter = 'PPAP'; // Default company
-
-window.setTccCompany = function(company) {
-  window.tccCompanyFilter = company;
-  renderHome(); // Re-render the report tab
-};
-
 let listDisplayLimit = 20;
 let notifDisplayLimit = 10;
 
@@ -1322,7 +1315,12 @@ function renderTechnicianHome(){
   );
 }
 
+window.tccCompanyFilter = window.tccCompanyFilter || 'PPAP';
 
+window.setTccCompany = function(company) {
+  window.tccCompanyFilter = company;
+  renderHome(); 
+};
 
 function renderTechnicianReportTab(){
   const myGroup = currentUser.group;
@@ -1356,52 +1354,9 @@ function renderTechnicianReportTab(){
     document.head.appendChild(s);
   })();
 
-  // Reset zoom to 'fit' every time the tab loads
   window.currentReportZoom = 'fit';
 
-  return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span><div class="d-flex gap-1"><span class="badge bg-success">' + checkedCount + ' checked</span><span class="badge bg-warning text-dark">' + pendingCount + ' pending</span></div></div><div class="card-body">' +
-    '<div class="row g-2 align-items-center mb-2"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +
-    '<div class="row g-2 align-items-center mb-3"><div class="col-12"><label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label><input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)"></div></div>' +
-    tccCompanyToggle +
-    '<div class="dash-bar mb-3"><div class="track"><div class="fill" style="width:' + pct + '%;background:' + (pct === 100 ? '#28a745' : '#0d6efd') + '"></div></div><span class="val">' + pct + '%</span></div>' +
-    
-    // 👇 1. TOGGLE SWITCH FOR 2 REPORT TYPES 👇
-       (String(currentUser.group).trim() === 'រថយន្ត' ? 
-      '<div class="btn-group w-100 mb-2" role="group">' +
-        '<button type="button" class="btn ' + (window.techReportForm === 'standard' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i> Standard</button>' +
-        '<button type="button" class="btn ' + (window.techReportForm === 'after' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'after\')"><i class="bi bi-table me-1"></i> After Inspection</button>' +
-      '</div>' 
-    : '') +
-
-    // 👇 2. ACTION BUTTONS + ZOOM TOGGLE 👇
-    '<div class="d-flex gap-2 flex-wrap mb-2">' +
-      '<button class="btn btn-primary flex-fill" onclick="generateMonthlyReportPDF()"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</button>' +
-      '<button class="btn btn-outline-primary flex-fill" onclick="printMonthlyReport()"><i class="bi bi-printer me-1"></i>Print</button>' +
-      '<button class="btn btn-outline-secondary" id="btnZoomToggle" onclick="toggleReportZoom()" title="Toggle Zoom"><i class="bi bi-arrows-fullscreen"></i></button>' +
-    '</div>' +
-
-    '<div class="d-flex gap-2 flex-wrap mb-3"><button class="btn btn-success flex-fill" onclick="generateMissingPdfs(\'' + ym + '\')"><i class="bi bi-cloud-arrow-up me-1"></i>Generate Missing PDFs to Drive</button></div></div></div>' +
-    
-    // 👇 3. RESPONSIVE PREVIEW WRAPPER (100% Print Fidelity) 👇
-    '<div id="reportPreviewWrapper" style="background:#e9ecef; padding: 8px; border-radius:8px; width: 100%; display: flex; align-items: flex-start; overflow: hidden; transition: height 0.2s; position: relative;">' +
-      '<div id="mrptPageSimulator" style="width:210mm; min-width:210mm; max-width:210mm; padding:10mm; background:#ffffff; box-shadow:0 4px 16px rgba(0,0,0,.18); box-sizing:border-box; margin: 0 auto; transform-origin: top center;">' + 
-        (typeof buildMonthlyReportBody !== 'undefined' ? 
-          (String(currentUser.group).trim() === 'TCC&FCC' ? buildTCCMonthlyReportBody(ym) : buildMonthlyReportBody(ym)) 
-          : '') + 
-      '</div>' +
-    '</div>' +
-    
-    // 👇 4. TRIGGER AUTO-FIT ON LOAD 👇
-    '<script>setTimeout(applyReportZoom, 150);</script>';
-}
-
-window.setReportMonth = function(ym){ homeReportMonth = ym; renderHome(); };
-window.onReportMonthChange = function(value){ const cur = isoToday().slice(0, 7); if (value > cur) return; homeReportMonth = value; renderHome(); };
-window.onReportDateChange = function(value){ if (!value) return; homeReportDate = value; renderHome(); };
-window.reportPrevMonth = function(){ homeReportMonth = shiftMonth(homeReportMonth, -1); renderHome(); };
-window.reportNextMonth = function(){ const next = shiftMonth(homeReportMonth, 1); const cur = isoToday().slice(0, 7); if (next > cur) return; homeReportMonth = next; renderHome(); };
-
-  // 👇 ADDED COMPANY TOGGLE FOR TCC 👇
+  // 👇 COMPANY TOGGLE DEFINED INSIDE THE FUNCTION 👇
   let tccCompanyToggle = '';
   if (String(currentUser.group).trim() === 'TCC&FCC') {
     tccCompanyToggle = 
@@ -1412,16 +1367,56 @@ window.reportNextMonth = function(){ const next = shiftMonth(homeReportMonth, 1)
       '</div>';
   }
 
+  return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span><div class="d-flex gap-1"><span class="badge bg-success">' + checkedCount + ' checked</span><span class="badge bg-warning text-dark">' + pendingCount + ' pending</span></div></div><div class="card-body">' +
+    '<div class="row g-2 align-items-center mb-2"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +
+    '<div class="row g-2 align-items-center mb-3"><div class="col-12"><label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label><input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)"></div></div>' +
+    
+    // 👇 INSERT TOGGLE HERE 👇
+    tccCompanyToggle + 
+    
+    '<div class="dash-bar mb-3"><div class="track"><div class="fill" style="width:' + pct + '%;background:' + (pct === 100 ? '#28a745' : '#0d6efd') + '"></div></div><span class="val">' + pct + '%</span></div>' +
+    
+    (String(currentUser.group).trim() === 'រថយន្ត' ? 
+      '<div class="btn-group w-100 mb-2" role="group">' +
+        '<button type="button" class="btn ' + (window.techReportForm === 'standard' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i> Standard</button>' +
+        '<button type="button" class="btn ' + (window.techReportForm === 'after' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'after\')"><i class="bi bi-table me-1"></i> After Inspection</button>' +
+      '</div>' 
+    : '') +
+
+    '<div class="d-flex gap-2 flex-wrap mb-2">' +
+      '<button class="btn btn-primary flex-fill" onclick="generateMonthlyReportPDF()"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</button>' +
+      '<button class="btn btn-outline-primary flex-fill" onclick="printMonthlyReport()"><i class="bi bi-printer me-1"></i>Print</button>' +
+      '<button class="btn btn-outline-secondary" id="btnZoomToggle" onclick="toggleReportZoom()" title="Toggle Zoom"><i class="bi bi-arrows-fullscreen"></i></button>' +
+    '</div>' +
+
+    '<div class="d-flex gap-2 flex-wrap mb-3"><button class="btn btn-success flex-fill" onclick="generateMissingPdfs(\'' + ym + '\')"><i class="bi bi-cloud-arrow-up me-1"></i>Generate Missing PDFs to Drive</button></div></div></div>' +
+    
+    '<div id="reportPreviewWrapper" style="background:#e9ecef; padding: 8px; border-radius:8px; width: 100%; display: flex; align-items: flex-start; overflow: hidden; transition: height 0.2s; position: relative;">' +
+      '<div id="mrptPageSimulator" style="width:210mm; min-width:210mm; max-width:210mm; padding:10mm; background:#ffffff; box-shadow:0 4px 16px rgba(0,0,0,.18); box-sizing:border-box; margin: 0 auto; transform-origin: top center;">' + 
+        (typeof buildMonthlyReportBody !== 'undefined' ? 
+          (String(currentUser.group).trim() === 'TCC&FCC' ? buildTCCMonthlyReportBody(ym) : buildMonthlyReportBody(ym)) 
+          : '') + 
+      '</div>' +
+    '</div>' +
+    
+    '<script>setTimeout(applyReportZoom, 150);</script>';
+}
+
+window.setReportMonth = function(ym){ homeReportMonth = ym; renderHome(); };
+window.onReportMonthChange = function(value){ const cur = isoToday().slice(0, 7); if (value > cur) return; homeReportMonth = value; renderHome(); };
+window.onReportDateChange = function(value){ if (!value) return; homeReportDate = value; renderHome(); };
+window.reportPrevMonth = function(){ homeReportMonth = shiftMonth(homeReportMonth, -1); renderHome(); };
+window.reportNextMonth = function(){ const next = shiftMonth(homeReportMonth, 1); const cur = isoToday().slice(0, 7); if (next > cur) return; homeReportMonth = next; renderHome(); };
+
+
 // Global queue to hold checklists waiting to generate
 window._pdfQueue = [];
 
 window.generatePdfsForSingleChecklist = async function(s, silent = false) {
   if (!s) return;
   
-  // 👇 NEW: If already generating, add to queue instead of skipping 👇
   if (window._isGeneratingPdfs) {
      console.log(`[Auto-PDF] Currently busy. Adding ${s.checkId} to the queue...`);
-     // Avoid adding duplicates to the queue
      if (!window._pdfQueue.find(item => item.s.checkId === s.checkId)) {
         window._pdfQueue.push({ s: s, silent: silent });
      }
@@ -1436,14 +1431,12 @@ window.generatePdfsForSingleChecklist = async function(s, silent = false) {
   let successCount = 0;
 
   try {
-     // Check local memory to see if they are already generated
      const pdfVal = String(s.pdfFileId || '').trim();
      let ids = pdfVal ? pdfVal.split(',').map(x => x.trim()) : ['', ''];
      if (ids.length < 2) ids.push('');
     
      const isTruck = String(s.group || '').trim() === 'រថយន្ត';
 
-     // 1. Generate Standard PDF
      if (!ids[0]) {
         if (!silent) $('#loadingMessage').text(`Generating Standard PDF...`);
         window.techReportForm = 'standard';
@@ -1458,7 +1451,6 @@ window.generatePdfsForSingleChecklist = async function(s, silent = false) {
         } catch(e) { console.error('Std PDF error', e); }
      }
 
-     // 2. Generate After Inspection PDF
      if (!ids[1] && isTruck) {
         if (!silent) $('#loadingMessage').text(`Generating After Inspection PDF...`);
         window.techReportForm = 'after';
@@ -1473,7 +1465,6 @@ window.generatePdfsForSingleChecklist = async function(s, silent = false) {
         } catch(e) { console.error('After PDF error', e); }
      }
 
-     // Update local memory instantly so QR codes update
      if (successCount > 0) {
          s.pdfFileId = ids.join(',');
          const localSub = APP.submissions.find(x => x.checkId === s.checkId);
@@ -1494,12 +1485,9 @@ window.generatePdfsForSingleChecklist = async function(s, silent = false) {
         if (successCount > 0 && safeToRefresh()) refreshCurrentPage();
      }
 
-     // 👇 NEW: Process the next item in the queue 👇
      if (window._pdfQueue && window._pdfQueue.length > 0) {
          const nextItem = window._pdfQueue.shift();
          console.log(`[Auto-PDF] Processing next in queue: ${nextItem.s.checkId}`);
-         
-         // Small delay to let the browser free up memory before the next heavy generation
          setTimeout(() => {
             generatePdfsForSingleChecklist(nextItem.s, nextItem.silent);
          }, 1000); 
@@ -1508,7 +1496,6 @@ window.generatePdfsForSingleChecklist = async function(s, silent = false) {
 };
 
 window.generateMissingPdfs = async function(ym, silent = false) {
-  // Prevent running multiple times at once
   if (window._isGeneratingPdfs) return;
   window._isGeneratingPdfs = true;
 
@@ -1545,12 +1532,10 @@ window.generateMissingPdfs = async function(ym, silent = false) {
         continue;
       }
 
-      // Prepare local IDs to update memory safely
       let currentPdfVal = String(s.pdfFileId || '').trim();
       let localIds = currentPdfVal ? currentPdfVal.split(',').map(x => x.trim()) : ['', ''];
       if (localIds.length < 2) localIds.push('');
 
-      // 1. Generate Standard PDF (Runs for BOTH Trucks and TCC&FCC)
       if (item.missingStd) {
         if (!silent) $('#loadingMessage').text(`Generating Standard PDF ${i + 1} of ${missingItems.length}...`);
         window.techReportForm = 'standard';
@@ -1571,7 +1556,6 @@ window.generateMissingPdfs = async function(ym, silent = false) {
         }
       }
 
-      // 2. Generate After Inspection PDF (Runs ONLY for Trucks, Backend sets missingAfter = false for TCC)
       if (item.missingAfter) {
         if (!silent) $('#loadingMessage').text(`Generating After Insp. PDF ${i + 1} of ${missingItems.length}...`);
         window.techReportForm = 'after';
@@ -1592,13 +1576,11 @@ window.generateMissingPdfs = async function(ym, silent = false) {
         }
       }
 
-      // Update the local memory so QR codes update instantly without needing a refresh
       s.pdfFileId = localIds.join(',');
       const localSub = APP.submissions.find(x => x.checkId === s.checkId);
       if (localSub) localSub.pdfFileId = s.pdfFileId;
     }
 
-    // Restore the toggle state
     window.techReportForm = originalForm;
     window.activeReportForm = originalForm === 'after' ? 'table' : 'standard';
 
