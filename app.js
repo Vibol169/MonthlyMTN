@@ -7190,6 +7190,8 @@ function buildFCCReportBody(sub) {
 
   const eqData = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
   const sg = eqData.specificGroup || '';
+  const companyName = String(eqData.companyName || 'PPAP').trim().toUpperCase();
+  const isPPAP = companyName === 'PPAP';
   const isTCC = String(sg || '').trim().toUpperCase() === 'TCC';
   
   const tplList = APP.templates[sub.group + '|' + sg] || APP.templates[sub.group + '|'] || APP.templates[sub.group] || [];
@@ -7237,12 +7239,10 @@ function buildFCCReportBody(sub) {
     let html = '';
     secs.forEach(sec => {
       let headerTitle = sec.kh;
-      // If the Khmer text doesn't start with a letter like "ក." or "ខ.", and doesn't start with the ID, add the ID.
       if (!headerTitle.startsWith(sec.sid + '.') && !headerTitle.match(/^[ក-អ][\.\s]/)) {
          headerTitle = sec.sid + '. ' + headerTitle;
       }
 
-      // Section Header (Pink Bar) - Black Border
       html += '<tr>' +
         '<td colspan="7" class="bold" style="background:#A9567D; color:#ffffff; text-align:left; padding: 4px 6px; font-size: 11px; border: 1px solid #000 !important;">' +
           esc(headerTitle) +
@@ -7250,11 +7250,13 @@ function buildFCCReportBody(sub) {
       '</tr>';
 
       sec.items.forEach((it, i) => {
+        // Skip blank items in the PDF
+        if (!it.status || String(it.status).trim() === '') return;
+        
         globalCounter++;
         const freq = String(it.frequency || '').toUpperCase();
         const statusTxt = esc(it.status);
         
-        // Items - Black Borders
         html += '<tr>' +
           '<td class="center bold" style="border: 1px solid #000 !important;">' + globalCounter + '</td>' +
           '<td style="border: 1px solid #000 !important;">' + esc(it.kh) + (it.en ? ' / ' + esc(it.en) : '') + '</td>' +
@@ -7269,12 +7271,10 @@ function buildFCCReportBody(sub) {
     return html;
   };
 
-  // Header Block - Blue Borders forced with !important + Absolute Centering
   const fccThead = '<thead>' +
     '<tr>' +
       '<th rowspan="2" style="width: 4%; border: 2px solid #0056b3 !important; font-size: 10px;">ល.រ</th>' +
       '<th style="width: 42%; border: 2px solid #0056b3 !important; padding: 5px; font-size: 12px;">តារាងត្រួតពិនិត្យជាប្រចាំ</th>' +
-      
       '<th rowspan="2" style="width: 5%; border: 2px solid #0056b3 !important; padding: 0; position: relative; vertical-align: middle;">' +
         '<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-90deg); white-space: nowrap; font-size: 9px; font-weight: bold;">រៀងរាល់សប្ដាហ៍</div>' +
       '</th>' +
@@ -7287,7 +7287,6 @@ function buildFCCReportBody(sub) {
       '<th rowspan="2" style="width: 5%; border: 2px solid #0056b3 !important; padding: 0; position: relative; vertical-align: middle;">' +
         '<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-90deg); white-space: nowrap; font-size: 9px; font-weight: bold;">រៀងរាល់ឆ្នាំ</div>' +
       '</th>' +
-      
       '<th rowspan="2" style="width: 34%; border: 2px solid #0056b3 !important; font-size: 10px;">កំណត់ចំណាំផ្សេងៗ</th>' +
     '</tr>' +
     '<tr>' +
@@ -7300,40 +7299,62 @@ function buildFCCReportBody(sub) {
     '</tr>' +
   '</thead>';
 
-  // --- SIGNATURE GENERATOR ---
-  const is4Sigs = window.include4thSignature;
-  const dotLine = is4Sigs ? '...............................' : '.............................................';
-  const colWidth = is4Sigs ? '23%' : '31%';
+  // ==========================================
+  // 👇 NEW E-SIGNATURE LOGIC FOR FCC 👇
+  // ==========================================
+  const techObj = (APP.users || []).find(u => u.username === sub.username) || {};
+  const drvObj  = (APP.users || []).find(u => u.username === sub.driverUsername) || {};
+  const mgrObj  = (APP.users || []).find(u => u.username === sub.confirmedBy) || {};
 
-  const makeSig = (title, role1, role2) => {
+  const sigInspector = signatureUrl(sub.username);
+  const sigDriver    = (sub.driverConfirmStatus === 'Confirmed') ? signatureUrl(sub.driverUsername) : '';
+  const sigManager   = signatureUrl(sub.confirmedBy); 
+  const sigAdmin     = signatureUrl(sub.confirmedBy); 
+
+  const makeSig = (title, name, phone, sigUrl, isSmall = false) => {
+    const colWidth = isSmall ? '15%' : '28.33%';
+    const dotLine = '...............................';
+    
+    if (isSmall) {
+       return '<div class="sig-column" style="flex: 0 0 ' + colWidth + '; max-width: ' + colWidth + ';">' +
+        '<div style="font-weight:700; font-size:14px; text-align:center; margin-bottom:85px;">' + title + '</div>' +
+        '<div style="overflow:hidden; white-space:nowrap; color:#000; text-align:center; font-weight:700; letter-spacing:1px; margin-bottom:5px; font-size:12px;">' + dotLine + '</div>' +
+        '<div style="font-size:12px; text-align:center; margin-bottom:20px;">ហត្ថលេខា</div>' +
+        (sigUrl ? '<div style="text-align:center; margin-bottom:10px;"><img src="' + sigUrl + '" style="max-height:40px; max-width:100%; object-fit:contain;"></div>' : '<div style="height:40px;"></div>') +
+       '</div>';
+    }
+
     return '<div class="sig-column" style="flex: 0 0 ' + colWidth + '; max-width: ' + colWidth + ';">' +
       '<div style="font-weight:700; font-size:14px; text-align:center; margin-bottom:85px;">' + title + '</div>' +
       '<div style="overflow:hidden; white-space:nowrap; color:#000; text-align:center; font-weight:700; letter-spacing:1px; margin-bottom:5px; font-size:12px;">' + dotLine + '</div>' +
       '<div style="font-size:12px; text-align:center; margin-bottom:20px;">ហត្ថលេខា</div>' +
+      (sigUrl ? '<div style="text-align:center; margin-bottom:10px;"><img src="' + sigUrl + '" style="max-height:50px; max-width:100%; object-fit:contain;"></div>' : '<div style="height:50px;"></div>') +
       '<div style="display:flex; align-items:flex-end; font-size:12px; margin-bottom:8px;">' +
-        '<span style="white-space:nowrap; flex-shrink:0;">' + role1 + '</span>' +
-        '<div style="flex:1; overflow:hidden; white-space:nowrap; color:#000; margin-left:5px; font-weight:700; letter-spacing:1px; font-size:12px; text-align:center;">' + dotLine + '</div>' +
+        '<span style="white-space:nowrap; flex-shrink:0;">ឈ្មោះ:</span>' +
+        '<div style="flex:1; overflow:hidden; white-space:nowrap; color:#000; margin-left:5px; font-weight:700; letter-spacing:1px; font-size:12px; text-align:center;">' + esc(name || '') + '</div>' +
+      '</div>' +
+      '<div style="display:flex; align-items:flex-end; font-size:12px; margin-bottom:8px;">' +
+        '<span style="white-space:nowrap; flex-shrink:0;">ទូរស័ព្ធ:</span>' +
+        '<div style="flex:1; overflow:hidden; white-space:nowrap; color:#000; margin-left:5px; font-weight:700; letter-spacing:1px; font-size:12px; text-align:center;">' + esc(phone || '') + '</div>' +
       '</div>' +
       '<div style="display:flex; align-items:flex-end; font-size:12px;">' +
-        '<span style="white-space:nowrap; flex-shrink:0;">' + role2 + '</span>' +
-        '<div style="flex:1; overflow:hidden; white-space:nowrap; color:#000; margin-left:5px; font-weight:700; letter-spacing:1px; font-size:12px; text-align:center;">' + dotLine + '</div>' +
+        '<span style="white-space:nowrap; flex-shrink:0;">ទួនាទី:</span>' +
+        '<div style="flex:1; overflow:hidden; white-space:nowrap; color:#000; margin-left:5px; font-weight:700; letter-spacing:1px; font-size:12px; text-align:center;">..................................</div>' +
       '</div>' +
     '</div>';
   };
 
   const row1 = 
-    '<div class="signature-row">' +
-      makeSig('ត្រួតពិនិត្យដោយ', 'ឈ្មោះ:', 'តួនាទី:') +
-      makeSig('អ្នកបើកបរ', 'ឈ្មោះ:', 'ទូរស័ព្ទ:') +
-      makeSig('អតិថិជន', 'ឈ្មោះ:', 'តួនាទី:') +
-      (is4Sigs ? makeSig('អនុញ្ញាតដោយ', 'ឈ្មោះ:', 'តួនាទី:') : '') +
+    '<div class="signature-row" style="display:flex; justify-content:space-between; width:100%; align-items:flex-start;">' +
+      makeSig('ត្រួតពិនិត្យដោយ', techObj.fullName || sub.driverName, techObj.phone || '', sigInspector) +
+      makeSig('អ្នកបើកបរ', drvObj.fullName || sub.driverUsername, drvObj.phone || '', sigDriver) +
+      makeSig('អតិថិជន', mgrObj.fullName || sub.confirmedBy, mgrObj.phone || '', sigManager) +
+      (isPPAP ? makeSig('Admin', '', '', sigAdmin, true) : '') + // 👈 Show small admin sign ONLY for PPAP
     '</div>';
-
-  const row2 = ''; // Uncomment to add a second row of signatures
 
   const signaturesHTML = 
     '<div class="signature-container">' +
-      row1 + row2 +
+      row1 +
     '</div>';
 
   return '<div class="report-container">' +
