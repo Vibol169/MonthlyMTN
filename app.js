@@ -6801,7 +6801,7 @@ async function generateChecklistPdfBase64(sub) {
   window.isGeneratingPdfMode = true;
   
   const ctx = await paginateReport(sub);
-  ctx.SCALE = 1.5; 
+  ctx.SCALE = 2.0; 
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   for (let i = 0; i < ctx.pages.length; i++) {
@@ -6822,13 +6822,26 @@ async function generateChecklistPdfBase64(sub) {
 async function generateReport(sub, mode) {
   mode = (mode || 'print').toLowerCase();
   await new Promise(resolve => loadSignaturesForReport(sub, resolve));
+  
   if (mode !== 'print' && document.fonts) {
-    try { await Promise.all([document.fonts.load('400 16px Hanuman'), document.fonts.load('700 16px Hanuman'), document.fonts.load('900 16px Hanuman')]); await document.fonts.ready; } catch (e) {}
+    try { 
+      await Promise.all([document.fonts.load('400 16px Hanuman'), document.fonts.load('700 16px Hanuman'), document.fonts.load('900 16px Hanuman')]); 
+      await document.fonts.ready; 
+    } catch (e) {}
   }
-  if (mode === 'print') return outputPrint(sub);
-  if (mode === 'pdf')   return outputPDF(sub);
-  if (mode === 'jpg' || mode === 'jpeg') return outputImage(sub, 'jpeg');
-  return outputImage(sub, 'png');
+  
+  // 👇 SET FLAG TO TRUE BEFORE GENERATING 👇
+  window.isGeneratingPdfMode = true;
+  
+  try {
+    if (mode === 'print') return await outputPrint(sub);
+    if (mode === 'pdf')   return await outputPDF(sub);
+    if (mode === 'jpg' || mode === 'jpeg') return await outputImage(sub, 'jpeg');
+    return await outputImage(sub, 'png');
+  } finally {
+    // 👇 RESET FLAG AFTER FINISHING 👇
+    window.isGeneratingPdfMode = false;
+  }
 }
 
 window.printCurrentReport = function(){ const sub = getCurrentReportSub(); if (!sub) return; generateReport(sub, 'print').catch(e => { console.error(e); showAlert(e.message, 'danger'); }); };
