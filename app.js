@@ -1140,88 +1140,150 @@ function renderHomeViewToggle(){
 function renderHomeHistoryTable(){
   const ym      = homeHistoryMonth;
   const myGroup = currentUser.group;
-  const eqList  = APP.equipment || [];
-  const monthSubs = (APP.submissions || []).filter(s => s.group === myGroup && isInMonth(s.date, ym));
-  
-  const byEq = {};
-  monthSubs.forEach(s => { if (!byEq[s.equipmentId]) byEq[s.equipmentId] = []; byEq[s.equipmentId].push(s); });
-  
-  const rows = eqList.map(eq => {
-    const subs = (byEq[eq.equipmentId] || []).sort((a,b) => subMs(b) - subMs(a));
-    return { eq, done: subs.length > 0, latest: subs[0] || null, count: subs.length };
-  });
-
-  const doneCount = rows.filter(r => r.done).length;
-  const pendingCount = rows.length - doneCount;
-  const isCurrent = ym === isoToday().slice(0, 7);
-  
-  let visibleRows = rows;
-  if (homeHistoryFilter === 'done')    visibleRows = rows.filter(r => r.done);
-  if (homeHistoryFilter === 'pending') visibleRows = rows.filter(r => !r.done);
-  
-  if (homeHistoryFilter === 'all') {
-    visibleRows.sort((a,b) => { if (a.done !== b.done) return a.done ? 1 : -1; return String(a.eq.equipmentId).localeCompare(String(b.eq.equipmentId)); });
-  } else {
-    visibleRows.sort((a,b) => String(a.eq.equipmentId).localeCompare(String(b.eq.equipmentId)));
-  }
-
   const currentYM = isoToday().slice(0, 7);
+  const isCurrent = ym === currentYM;
+  
+  // Build Month Options
   const monthOptions = [];
   let tempYM = currentYM;
   while (tempYM >= '2026-01') { monthOptions.push(tempYM); tempYM = shiftMonth(tempYM, -1); }
   const monthSelectOptions = monthOptions.map(m => '<option value="' + escAttr(m) + '"' + (m === ym ? ' selected' : '') + '>' + esc(monthLabel(m)) + (m === currentYM ? ' (current)' : '') + '</option>').join('');
 
   let html = '<div class="card mb-3">';
-  html += '<div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-table me-2"></i>Checklist History</span>';
-  html += '<div class="d-flex gap-1"><span class="badge bg-success history-stat-badge' + (homeHistoryFilter === 'done' ? ' active-filter' : '') + '" onclick="setHomeHistoryFilter(\'done\')">' + doneCount + ' done</span><span class="badge bg-warning text-dark history-stat-badge' + (homeHistoryFilter === 'pending' ? ' active-filter' : '') + '" onclick="setHomeHistoryFilter(\'pending\')">' + pendingCount + ' pending</span></div></div>';
+  html += '<div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-table me-2"></i>Checklist History</span></div>';
+  
+  // Month Selector
   html += '<div class="p-3 border-bottom" style="border-color:var(--border-color) !important;"><div class="row g-2 align-items-center"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="homePrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onHistoryMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="homeNextMonth()"' + (isCurrent ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>';
-  
-  if (homeHistoryFilter !== 'all') {
-    const lbl = homeHistoryFilter === 'done' ? 'Done only' : 'Pending only';
-    const chipColor = homeHistoryFilter === 'done' ? 'success' : 'warning text-dark';
-    html += '<div class="mt-2 text-center"><span class="badge bg-' + chipColor + '" style="font-size:.78rem;padding:6px 12px;"><i class="bi bi-funnel-fill me-1"></i>' + esc(lbl) + '<span onclick="clearHomeHistoryFilter()" style="cursor:pointer;margin-left:8px;font-weight:700;">✕</span></span></div>';
-  }
   html += '</div><div class="card-body p-0">';
-  
-  html += '<div class="history-table-desktop table-responsive"><table class="table table-hover align-middle mb-0" style="font-size:.82rem;"><thead style="background:var(--header-bg);"><tr><th style="width:34px;" class="text-center">#</th><th>Equipment</th><th style="width:86px;" class="text-center">Status</th><th style="width:110px;">Last Check</th><th style="width:120px;">By</th><th style="width:44px;" class="text-center"></th></tr></thead><tbody>';
-  if (visibleRows.length === 0) {
-    html += '<tr><td colspan="6" class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:1.5rem;opacity:.5;"></i><div class="mt-1">No equipment' + (homeHistoryFilter !== 'all' ? ' in this filter' : '') + '</div></td></tr>';
-  } else {
-    visibleRows.forEach((r, i) => {
-      const eq = r.eq;
-      const rowIdx = i + 1;
-      if (r.done) {
-        const latest = r.latest;
-        const isIssue = latest.overall === 'Issues';
-        const statCls = isIssue ? 'bg-danger' : 'bg-success';
-        const statIcon = isIssue ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill';
-        html += '<tr class="history-row-clickable" onclick="viewCheck(\'' + escAttr(latest.checkId) + '\')" style="cursor:pointer;" title="Click to view checklist"><td class="text-center text-muted fw-bold">' + rowIdx + '</td><td><div class="fw-bold">' + esc(eq.shortName) + '</div>' + (eq.model ? '<div class="small text-muted">' + esc(eq.model) + '</div>' : '') + '</td><td class="text-center"><span class="badge ' + statCls + '"><i class="bi ' + statIcon + ' me-1"></i>' + esc(latest.overall) + '</span>' + (r.count > 1 ? '<div class="small text-muted mt-1">' + r.count + '×</div>' : '') + '</td><td><div class="fw-semibold">' + esc(latest.date) + '</div><div class="small text-muted">' + esc(latest.time) + '</div></td><td class="small">' + esc(latest.driverName || latest.username) + '</td><td class="text-center"><i class="bi bi-chevron-right text-muted"></i></td></tr>';
-      } else {
-        html += '<tr class="history-row-pending"><td class="text-center text-muted fw-bold">' + rowIdx + '</td><td><div class="fw-bold">' + esc(eq.shortName) + '</div>' + (eq.model ? '<div class="small text-muted">' + esc(eq.model) + '</div>' : '') + '</td><td class="text-center"><span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Pending</span></td><td class="text-muted">—</td><td class="text-muted">—</td><td></td></tr>';
-      }
-    });
-  }
-  html += '</tbody></table></div>';
 
-  html += '<div class="history-cards-mobile">';
-  if (visibleRows.length === 0) {
-    html += '<div class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:1.8rem;opacity:.5;"></i><div class="mt-2 small">No equipment' + (homeHistoryFilter !== 'all' ? ' in this filter' : '') + '</div></div>';
-  } else {
-    visibleRows.forEach((r, i) => {
-      const eq = r.eq;
-      const rowIdx = i + 1;
-      if (r.done) {
-        const latest = r.latest;
-        const isIssue = latest.overall === 'Issues';
+  // ==========================================
+  // 👇 NEW LOGIC FOR TCC&FCC 👇
+  // ==========================================
+  if (myGroup === 'TCC&FCC') {
+    const monthSubs = (APP.submissions || []).filter(s => s.group === myGroup && isInMonth(s.date, ym));
+    
+    // Desktop Table
+    html += '<div class="history-table-desktop table-responsive"><table class="table table-hover align-middle mb-0" style="font-size:.82rem;">';
+    html += '<thead style="background:var(--header-bg);"><tr><th style="width:34px;" class="text-center">#</th><th>Equipment</th><th style="width:86px;" class="text-center">Status</th><th style="width:110px;">Date & Time</th><th style="width:120px;">By</th><th style="width:44px;" class="text-center"></th></tr></thead><tbody>';
+    
+    if (monthSubs.length === 0) {
+      html += '<tr><td colspan="6" class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:1.5rem;opacity:.5;"></i><div class="mt-1">No checklists this month</div></td></tr>';
+    } else {
+      monthSubs.forEach((s, i) => {
+        const isIssue = s.overall === 'Issues';
         const statCls = isIssue ? 'bg-danger' : 'bg-success';
         const statIcon = isIssue ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill';
-        html += '<div class="history-mobile-card" onclick="viewCheck(\'' + escAttr(latest.checkId) + '\')"><div class="d-flex justify-content-between align-items-start mb-2"><div class="flex-grow-1 me-2"><div class="fw-bold"><span class="text-muted me-1">' + rowIdx + '.</span>' + esc(eq.shortName) + '</div>' + (eq.model ? '<div class="small text-muted">' + esc(eq.model) + '</div>' : '') + '</div><div class="text-end"><span class="badge ' + statCls + '"><i class="bi ' + statIcon + ' me-1"></i>' + esc(latest.overall) + '</span>' + (r.count > 1 ? '<div class="small text-muted mt-1">' + r.count + '×</div>' : '') + '</div></div><div class="d-flex justify-content-between align-items-center small"><div><i class="bi bi-calendar me-1 text-muted"></i><span class="fw-semibold">' + esc(latest.date) + '</span> <span class="text-muted">' + esc(latest.time) + '</span></div><i class="bi bi-chevron-right text-muted"></i></div><div class="small mt-1"><i class="bi bi-person me-1 text-muted"></i>' + esc(latest.driverName || latest.username) + '</div></div>';
-      } else {
-        html += '<div class="history-mobile-card history-mobile-pending"><div class="d-flex justify-content-between align-items-start"><div class="flex-grow-1"><div class="fw-bold"><span class="text-muted me-1">' + rowIdx + '.</span>' + esc(eq.shortName) + '</div>' + (eq.model ? '<div class="small text-muted">' + esc(eq.model) + '</div>' : '') + '</div><span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Pending</span></div></div>';
-      }
+        
+        html += '<tr class="history-row-clickable" onclick="viewCheck(\'' + escAttr(s.checkId) + '\')" style="cursor:pointer;">';
+        html += '<td class="text-center text-muted fw-bold">' + (i + 1) + '</td>';
+        html += '<td><div class="fw-bold">' + esc(eqShort(s.equipmentId)) + '</div><div class="small text-muted">' + esc(s.equipmentId) + '</div></td>';
+        html += '<td class="text-center"><span class="badge ' + statCls + '"><i class="bi ' + statIcon + ' me-1"></i>' + esc(s.overall) + '</span></td>';
+        html += '<td><div class="fw-semibold">' + esc(s.date) + '</div><div class="small text-muted">' + esc(s.time) + '</div></td>';
+        html += '<td class="small">' + esc(s.driverName || s.username) + '</td>';
+        html += '<td class="text-center"><i class="bi bi-chevron-right text-muted"></i></td>';
+        html += '</tr>';
+      });
+    }
+    html += '</tbody></table></div>';
+
+    // Mobile Cards
+    html += '<div class="history-cards-mobile">';
+    if (monthSubs.length === 0) {
+      html += '<div class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:1.8rem;opacity:.5;"></i><div class="mt-2 small">No checklists this month</div></div>';
+    } else {
+      monthSubs.forEach((s, i) => {
+        const isIssue = s.overall === 'Issues';
+        const statCls = isIssue ? 'bg-danger' : 'bg-success';
+        const statIcon = isIssue ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill';
+        
+        html += '<div class="history-mobile-card" onclick="viewCheck(\'' + escAttr(s.checkId) + '\')">';
+        html += '<div class="d-flex justify-content-between align-items-start mb-2">';
+        html += '<div class="flex-grow-1 me-2"><div class="fw-bold"><span class="text-muted me-1">' + (i + 1) + '.</span>' + esc(eqShort(s.equipmentId)) + '</div></div>';
+        html += '<div class="text-end"><span class="badge ' + statCls + '"><i class="bi ' + statIcon + ' me-1"></i>' + esc(s.overall) + '</span></div>';
+        html += '</div>';
+        html += '<div class="d-flex justify-content-between align-items-center small">';
+        html += '<div><i class="bi bi-calendar me-1 text-muted"></i><span class="fw-semibold">' + esc(s.date) + '</span> <span class="text-muted">' + esc(s.time) + '</span></div>';
+        html += '<i class="bi bi-chevron-right text-muted"></i></div>';
+        html += '<div class="small mt-1"><i class="bi bi-person me-1 text-muted"></i>' + esc(s.driverName || s.username) + '</div>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+
+  } 
+  // ==========================================
+  // 👇 EXISTING LOGIC FOR OTHER GROUPS 👇
+  // ==========================================
+  else {
+    const eqList  = APP.equipment || [];
+    const monthSubs = (APP.submissions || []).filter(s => s.group === myGroup && isInMonth(s.date, ym));
+    
+    const byEq = {};
+    monthSubs.forEach(s => { if (!byEq[s.equipmentId]) byEq[s.equipmentId] = []; byEq[s.equipmentId].push(s); });
+    
+    const rows = eqList.map(eq => {
+      const subs = (byEq[eq.equipmentId] || []).sort((a,b) => subMs(b) - subMs(a));
+      return { eq, done: subs.length > 0, latest: subs[0] || null, count: subs.length };
     });
+
+    const doneCount = rows.filter(r => r.done).length;
+    const pendingCount = rows.length - doneCount;
+    
+    let visibleRows = rows;
+    if (homeHistoryFilter === 'done')    visibleRows = rows.filter(r => r.done);
+    if (homeHistoryFilter === 'pending') visibleRows = rows.filter(r => !r.done);
+    
+    if (homeHistoryFilter === 'all') {
+      visibleRows.sort((a,b) => { if (a.done !== b.done) return a.done ? 1 : -1; return String(a.eq.equipmentId).localeCompare(String(b.eq.equipmentId)); });
+    } else {
+      visibleRows.sort((a,b) => String(a.eq.equipmentId).localeCompare(String(b.eq.equipmentId)));
+    }
+
+    // Desktop Table
+    html += '<div class="history-table-desktop table-responsive"><table class="table table-hover align-middle mb-0" style="font-size:.82rem;"><thead style="background:var(--header-bg);"><tr><th style="width:34px;" class="text-center">#</th><th>Equipment</th><th style="width:86px;" class="text-center">Status</th><th style="width:110px;">Last Check</th><th style="width:120px;">By</th><th style="width:44px;" class="text-center"></th></tr></thead><tbody>';
+    
+    if (visibleRows.length === 0) {
+      html += '<tr><td colspan="6" class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:1.5rem;opacity:.5;"></i><div class="mt-1">No equipment' + (homeHistoryFilter !== 'all' ? ' in this filter' : '') + '</div></td></tr>';
+    } else {
+      visibleRows.forEach((r, i) => {
+        const eq = r.eq;
+        const rowIdx = i + 1;
+        if (r.done) {
+          const latest = r.latest;
+          const isIssue = latest.overall === 'Issues';
+          const statCls = isIssue ? 'bg-danger' : 'bg-success';
+          const statIcon = isIssue ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill';
+          html += '<tr class="history-row-clickable" onclick="viewCheck(\'' + escAttr(latest.checkId) + '\')" style="cursor:pointer;" title="Click to view checklist"><td class="text-center text-muted fw-bold">' + rowIdx + '</td><td><div class="fw-bold">' + esc(eq.shortName) + '</div>' + (eq.model ? '<div class="small text-muted">' + esc(eq.model) + '</div>' : '') + '</td><td class="text-center"><span class="badge ' + statCls + '"><i class="bi ' + statIcon + ' me-1"></i>' + esc(latest.overall) + '</span>' + (r.count > 1 ? '<div class="small text-muted mt-1">' + r.count + '×</div>' : '') + '</td><td><div class="fw-semibold">' + esc(latest.date) + '</div><div class="small text-muted">' + esc(latest.time) + '</div></td><td class="small">' + esc(latest.driverName || latest.username) + '</td><td class="text-center"><i class="bi bi-chevron-right text-muted"></i></td></tr>';
+        } else {
+          html += '<tr class="history-row-pending"><td class="text-center text-muted fw-bold">' + rowIdx + '</td><td><div class="fw-bold">' + esc(eq.shortName) + '</div>' + (eq.model ? '<div class="small text-muted">' + esc(eq.model) + '</div>' : '') + '</td><td class="text-center"><span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Pending</span></td><td class="text-muted">—</td><td class="text-muted">—</td><td></td></tr>';
+        }
+      });
+    }
+    html += '</tbody></table></div>';
+
+    // Mobile Cards
+    html += '<div class="history-cards-mobile">';
+    if (visibleRows.length === 0) {
+      html += '<div class="text-center text-muted py-4"><i class="bi bi-inbox" style="font-size:1.8rem;opacity:.5;"></i><div class="mt-2 small">No equipment' + (homeHistoryFilter !== 'all' ? ' in this filter' : '') + '</div></div>';
+    } else {
+      visibleRows.forEach((r, i) => {
+        const eq = r.eq;
+        const rowIdx = i + 1;
+        if (r.done) {
+          const latest = r.latest;
+          const isIssue = latest.overall === 'Issues';
+          const statCls = isIssue ? 'bg-danger' : 'bg-success';
+          const statIcon = isIssue ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill';
+          html += '<div class="history-mobile-card" onclick="viewCheck(\'' + escAttr(latest.checkId) + '\')"><div class="d-flex justify-content-between align-items-start mb-2"><div class="flex-grow-1 me-2"><div class="fw-bold"><span class="text-muted me-1">' + rowIdx + '.</span>' + esc(eq.shortName) + '</div>' + (eq.model ? '<div class="small text-muted">' + esc(eq.model) + '</div>' : '') + '</div><div class="text-end"><span class="badge ' + statCls + '"><i class="bi ' + statIcon + ' me-1"></i>' + esc(latest.overall) + '</span>' + (r.count > 1 ? '<div class="small text-muted mt-1">' + r.count + '×</div>' : '') + '</div></div><div class="d-flex justify-content-between align-items-center small"><div><i class="bi bi-calendar me-1 text-muted"></i><span class="fw-semibold">' + esc(latest.date) + '</span> <span class="text-muted">' + esc(latest.time) + '</span></div><i class="bi bi-chevron-right text-muted"></i></div><div class="small mt-1"><i class="bi bi-person me-1 text-muted"></i>' + esc(latest.driverName || latest.username) + '</div></div>';
+        } else {
+          html += '<div class="history-mobile-card history-mobile-pending"><div class="d-flex justify-content-between align-items-start"><div class="flex-grow-1"><div class="fw-bold"><span class="text-muted me-1">' + rowIdx + '.</span>' + esc(eq.shortName) + '</div>' + (eq.model ? '<div class="small text-muted">' + esc(eq.model) + '</div>' : '') + '</div><span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Pending</span></div></div>';
+        }
+      });
+    }
+    html += '</div>';
   }
-  html += '</div></div></div>';
+
+  html += '</div></div>';
   return html;
 }
 
@@ -7380,10 +7442,10 @@ function buildFCCReportBody(sub) {
   let managerRole = 'ប្រធានសេវាដ្ឋាន';
 
   if (compName === 'PORT STEVEDORING COMPANY LIMITED') {
-    managerTitle = 'អតិថិជន (Port Stevedoring)';
+    managerTitle = 'អតិថិជន';
     managerRole = 'នាយកក្រុមហ៊ុន'; 
   } else if (compName === 'PMNT') {
-    managerTitle = 'អតិថិជន (PMNT)';
+    managerTitle = 'អតិថិជន';
     managerRole = 'នាយកគ្រប់គ្រង'; 
   }
 
@@ -8136,8 +8198,8 @@ function buildTCCMonthlyReportBody(ym) {
     is4Sigs = false; // 👈 3 Signatures
 
     sig1 = makeSigCol('អនុញ្ញាតដោយ', 'Name 1', 'នាយកក្រុមហ៊ុន');
-    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ផ្នែកបច្ចេកទេស');
-    sig3 = makeSigCol('អតិថិជន', 'Name 3', 'ប្រធានសេវាដ្ឋាន');
+    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ប្រធានក្រុម');
+    sig3 = makeSigCol('អតិថិជន', 'Name 3', 'នាយកក្រុមហ៊ុន');
     sig4 = '';
 
   } else if (selectedCompany === 'PMNT') {
@@ -8151,8 +8213,8 @@ function buildTCCMonthlyReportBody(ym) {
     is4Sigs = false; // 👈 3 Signatures
 
     sig1 = makeSigCol('អនុញ្ញាតដោយ', 'Name 1', 'នាយកក្រុមហ៊ុន');
-    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ផ្នែកបច្ចេកទេស');
-    sig3 = makeSigCol('អតិថិជន', 'Name 3', 'ប្រធានសេវាដ្ឋាន');
+    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'Name 2', 'ប្រធានក្រុម');
+    sig3 = makeSigCol('អតិថិជន', 'Name 3', 'នាយកក្រុមហ៊ុន');
     sig4 = '';
 
   } else {
@@ -8167,7 +8229,7 @@ function buildTCCMonthlyReportBody(ym) {
     is4Sigs = true; // 👈 4 Signatures
 
     sig1 = makeSigCol('អនុញ្ញាតដោយ', 'យ៉ឹម ជឿន', 'នាយកក្រុមហ៊ុន');
-    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'អ៊ុច សាំងឡី', 'ផ្នែកបច្ចេកទេស');
+    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'អ៊ុច សាំងឡី', 'ប្រធានក្រុម');
     sig3 = makeSigCol('អតិថិជន', 'ហៃ ម៉ារ៉ាឌី', 'ប្រធានសេវាដ្ឋាន');
     sig4 = makeSigCol('អនុញ្ញាតដោយ', 'សេង គន្ធា', 'អគ្គនាយករដ្ឋបច្ចេកទេស');
   }
