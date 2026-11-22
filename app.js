@@ -2948,27 +2948,50 @@ function loadAndRenderChecklistFormFCC(equipmentId, group, shortName, driverUser
       lastOpHour: s.lastOpHour || '', 
       previousDate: s.previousDate || '', 
       previousHour: s.previousHour || '',
-      customer: s.customer || eqData.companyName || '', // 👈 Default to eqData if old record is empty
+      customer: s.customer || eqData.companyName || '',
       reportNo: s.reportNo || '',
       driverUsername: s.driverUsername || driverUsername || ''
     };
+    
     checksInit = {};
-    items.forEach(it => { 
-      const freq = String(it.frequency || '').toUpperCase();
-      const isActive = !freq || window.activeFrequencies.includes(freq);
-      checksInit[it.itemId] = { itemId: it.itemId, status: isActive ? 'N' : '', note: '', photos: [] }; 
-    });
-    (s.checks || []).forEach(c => {
-      let photos = [];
-      if (Array.isArray(c.photos)) photos = c.photos.map(p => ({ fileId: p.fileId || '', thumb: p.thumb || '', dataUrl: p.dataUrl || '' }));
-      else if (Array.isArray(c.photoIds)) photos = c.photoIds.map(id => ({ fileId: id }));
-      else if (c.photoId) photos = [{ fileId: c.photoId }];
-      else if (c.photoData) photos = [{ dataUrl: c.photoData }];
-      if (checksInit[c.itemId]) {
-        checksInit[c.itemId].status = normalizeStatus(c.status) || '';
-        checksInit[c.itemId].note = c.note || '';
-        checksInit[c.itemId].photos = photos;
+    
+    // 👇 1. Reconstruct activeFrequencies from the saved data 👇
+    const savedFreqs = new Set();
+    items.forEach(it => {
+      const savedChk = (s.checks || []).find(c => c.itemId === it.itemId);
+      if (savedChk) {
+        // If the item has a status, its frequency was active
+        if (savedChk.status && String(savedChk.status).trim() !== '') {
+           const f = String(it.frequency || '').trim().toUpperCase();
+           if (f) savedFreqs.add(f);
+        }
       }
+    });
+    
+    // If savedFreqs is empty, default to all
+    window.activeFrequencies = savedFreqs.size > 0 ? Array.from(savedFreqs) : ['M', '3M', '6M', '1Y'];
+
+    // 👇 2. Initialize checks based on the reconstructed active frequencies 👇
+    items.forEach(it => { 
+      const freq = String(it.frequency || '').trim().toUpperCase();
+      const isActive = !freq || window.activeFrequencies.includes(freq);
+      
+      const savedChk = (s.checks || []).find(c => c.itemId === it.itemId);
+      
+      let photos = [];
+      if (savedChk) {
+        if (Array.isArray(savedChk.photos)) photos = savedChk.photos.map(p => ({ fileId: p.fileId || '', thumb: p.thumb || '', dataUrl: p.dataUrl || '' }));
+        else if (Array.isArray(savedChk.photoIds)) photos = savedChk.photoIds.map(id => ({ fileId: id }));
+        else if (savedChk.photoId) photos = [{ fileId: savedChk.photoId }];
+        else if (savedChk.photoData) photos = [{ dataUrl: savedChk.photoData }];
+      }
+
+      checksInit[it.itemId] = { 
+        itemId: it.itemId, 
+        status: isActive ? (savedChk ? (normalizeStatus(savedChk.status) || 'N') : 'N') : '', 
+        note: savedChk ? (savedChk.note || '') : '', 
+        photos: photos 
+      }; 
     });
   } else {
     formDefaults = { 
@@ -2993,6 +3016,7 @@ function loadAndRenderChecklistFormFCC(equipmentId, group, shortName, driverUser
   pendingChecklist = { equipmentId: equipmentId, group: group, shortName: shortName, headers: headers.slice(), headerBySection: headerBySection, items: items.slice(), checks: checksInit, form: formDefaults, assignmentId: assignmentId || '', existingRemark: isEdit ? (existingSub.remark || '') : '' };
   editingCheckId = isEdit ? existingSub.checkId : null;
   renderChecklistFormFCC();
+  if (isEdit) setTimeout(() => { applyFreqFilter(); }, 50); 
   if (isEdit) setTimeout(() => { $('#checkRemark').val(existingSub.remark || ''); }, 30);
 }
 
