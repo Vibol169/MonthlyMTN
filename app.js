@@ -152,6 +152,7 @@ window.applyReportZoom = function() {
 
 let listDisplayLimit = 20;
 let notifDisplayLimit = 10;
+window.isGeneratingPdfMode = false;
 
 /* =========================================================
    WEB WORKER TIMER (Prevents Mobile Background Throttling)
@@ -6796,18 +6797,24 @@ async function generateChecklistPdfBase64(sub) {
   if (document.fonts) { try { await Promise.all([document.fonts.load('400 16px Hanuman'), document.fonts.load('700 16px Hanuman'), document.fonts.load('900 16px Hanuman')]); await document.fonts.ready; } catch (e) {} }
   
   const { jsPDF } = window.jspdf;
+
+  window.isGeneratingPdfMode = true;
+  
   const ctx = await paginateReport(sub);
-  ctx.SCALE = 1.0; 
+  ctx.SCALE = 1.5; 
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   for (let i = 0; i < ctx.pages.length; i++) {
     const canvas = await renderPageToCanvas(ctx, ctx.pages[i], i + 1);
-    const imgData = canvas.toDataURL('image/jpeg', 0.75);
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
     if (i > 0) pdf.addPage();
     pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
     canvas.width = 0; canvas.height = 0;
     await new Promise(r => setTimeout(r, 50));
   }
+
+   window.isGeneratingPdfMode = false;
+  
   const dataUri = pdf.output('datauristring');
   return dataUri.split(',')[1];
 }
@@ -7284,7 +7291,9 @@ function buildFCCReportBody(sub) {
       '</tr>';
 
       sec.items.forEach((it, i) => {
-        if (!it.status || String(it.status).trim() === '') return;
+
+        if (!window.isGeneratingPdfMode && (!it.status || String(it.status).trim() === '')) return;
+        
         globalCounter++;
         const freq = String(it.frequency || '').toUpperCase();
         const statusTxt = esc(it.status);
@@ -8300,12 +8309,17 @@ async function generateMonthlyReportOutput(ym, mode) {
     const target = host.querySelector('.mrpt') || host;
     const scale  = 2;
 
+    window.isGeneratingPdfMode = true;
+    
     const canvas = await html2canvas(target, {
       scale: scale, useCORS: true, allowTaint: true, logging: false,
       backgroundColor: '#ffffff',
       windowWidth: CONTENT_W_PX, width: CONTENT_W_PX,
       scrollX: 0, scrollY: 0
     });
+
+     window.isGeneratingPdfMode = false;
+    
     if (!canvas.width || !canvas.height) throw new Error('Empty canvas.');
 
     const targetRect = target.getBoundingClientRect();
