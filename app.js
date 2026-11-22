@@ -4197,13 +4197,26 @@ function renderDetailModal(s, editConfirm){
         '</button>' +
       '</div>';
 
+        // If TCC&FCC, add the static view-only company label
     if (s.group === 'TCC&FCC') {
-      const btnClass = window.include4thSignature ? 'btn-info' : 'btn-outline-info';
-      const btnLabel = window.include4thSignature ? 'PPAP' : 'Other Company';
+      // 👇 AUTO-DETECT COMPANY NAME 👇
+      const eqData = (APP.equipmentMap && APP.equipmentMap[s.equipmentId]) ? APP.equipmentMap[s.equipmentId] : {};
+      const compName = String(eqData.companyName || 'PPAP').trim().toUpperCase();
+      
+      // Automatically set the 4th signature rule
+      window.include4thSignature = (compName === 'PPAP');
+      
+      // Determine the label text
+      let labelText = 'PPAP';
+      if (compName === 'PORT STEVEDORING COMPANY LIMITED') labelText = 'Port Stevedoring';
+      else if (compName === 'PMNT') labelText = 'PMNT';
+      else if (compName !== 'PPAP') labelText = compName;
+
+      // View-only badge (No onclick toggle)
       actionHtml = 
-        '<button class="btn btn-sm ' + btnClass + ' mb-1 me-1" onclick="toggleSignatureVisibility(this)" style="white-space:nowrap;">' +
-          '<i class="bi bi-person-check"></i> ' + btnLabel +
-        '</button>' + actionHtml;
+        '<span class="badge bg-info text-dark d-flex align-items-center gap-1 me-2" style="font-size: 0.85rem; padding: 6px 10px; border: 1px solid #0dcaf0;">' +
+          '<i class="bi bi-person-check"></i> ' + esc(labelText) +
+        '</span>' + actionHtml;
     }
     
     $('#modalActionButtons').html(actionHtml).removeClass('d-none');
@@ -7191,6 +7204,10 @@ function buildFCCReportBody(sub) {
   const eqData = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
   const sg = eqData.specificGroup || '';
   const isTCC = String(sg || '').trim().toUpperCase() === 'TCC';
+  
+  // 👇 AUTOMATIC COMPANY DETECTION 👇
+  const compName = String(eqData.companyName || 'PPAP').trim().toUpperCase();
+  window.include4thSignature = (compName === 'PPAP'); // Auto-set toggle for PPAP
 
   const tplList = APP.templates[sub.group + '|' + sg] || APP.templates[sub.group + '|'] || APP.templates[sub.group] || [];
 
@@ -7209,7 +7226,7 @@ function buildFCCReportBody(sub) {
   const eqShortName  = eqShortMap[sub.equipmentId]     || sub.equipmentId     || '';
   const trlShortName = trlShortMap[sub.trailerPlateNo] || sub.trailerPlateNo || '';
 
-  // ─── SIGNATURE SETUP (3 big sigs; Manager inline like Truck) ──────────
+  // ─── SIGNATURE SETUP ──────────
   const sigInspector = signatureUrl(sub.username);
   const sigDriver    = (sub.driverConfirmStatus === 'Confirmed') ? signatureUrl(sub.driverUsername) : '';
   const sigManager   = signatureUrl(sub.confirmedBy);   // small inline sig
@@ -7267,6 +7284,7 @@ function buildFCCReportBody(sub) {
       '</tr>';
 
       sec.items.forEach((it, i) => {
+        if (!it.status || String(it.status).trim() === '') return;
         globalCounter++;
         const freq = String(it.frequency || '').toUpperCase();
         const statusTxt = esc(it.status);
@@ -7313,7 +7331,7 @@ function buildFCCReportBody(sub) {
     '</tr>' +
   '</thead>';
 
-  // ─── E-SIGNATURE GENERATOR (3 big sigs) ───────────────────────────────
+  // ─── E-SIGNATURE GENERATOR ───────────────────────────────
   const colWidth = '32%';
 
   const makeSig = (titleHTML, sigUrl, name, secondLabel, secondVal) => {
@@ -7335,17 +7353,28 @@ function buildFCCReportBody(sub) {
     '</div>';
   };
 
-  // ★ Manager title carries the small inline sig (mirrors Truck's PPAP-Manager)
+  // 👇 DYNAMIC TITLE BASED ON COMPANY 👇
+  let managerTitle = 'អតិថិជន';
+  let managerRole = 'ប្រធានសេវាដ្ឋាន';
+
+  if (compName === 'PORT STEVEDORING COMPANY LIMITED') {
+    managerTitle = 'អតិថិជន (Port Stevedoring)';
+    managerRole = 'នាយកក្រុមហ៊ុន'; 
+  } else if (compName === 'PMNT') {
+    managerTitle = 'អតិថិជន (PMNT)';
+    managerRole = 'នាយកគ្រប់គ្រង'; 
+  }
+
   const managerTitleHTML =
-    'អតិថិជន (Manager)' +
+    managerTitle +
     (sigManager ? '<img class="sig-sign-inline" src="' + sigManager + '" alt="sig" style="height:18px; vertical-align:middle; margin-left:4px;">' : '');
 
   const signaturesHTML =
     '<div class="signature-container" style="margin-top:20px;">' +
       '<div class="signature-row" style="display:flex; justify-content:space-between; gap:10px;">' +
-        makeSig('ត្រួតពិនិត្យដោយ',  sigInspector, techName, 'តួនាទី:', 'អ្នកត្រួតពិនិត្យ') +
+        makeSig('ត្រួតពិនិត្យដោយ',  sigInspector, techName, 'តួនាទី:', 'ប្រធានក្រុម') +
         makeSig('អ្នកបើកបរ',          sigDriver,    drvName,  'ទូរស័ព្ទ:', drvPhone) +
-        makeSig(managerTitleHTML,     sigDirector,  dirName,  'តួនាទី:', 'Manager') +
+        makeSig(managerTitleHTML,     sigDirector,  dirName,  'តួនាទី:', managerRole) + 
       '</div>' +
     '</div>';
 
