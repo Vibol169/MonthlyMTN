@@ -1434,24 +1434,21 @@ function renderTechnicianReportTab(){
   })();
 
   window.currentReportZoom = 'fit';
-
-  // 👇 Manager Group Selector Dropdown 👇
-  let managerGroupSelector = '';
-  if (isManagerViewing) {
-    const GROUP_ORDER = ['រថយន្ត', 'RTG', 'គ្រឿងចក្រ', 'TCC&FCC'];
-    const eqGroups = [...new Set((APP.equipment || []).map(e => e.group).filter(Boolean))];
-    const availableGroups = GROUP_ORDER.filter(g => eqGroups.indexOf(g) !== -1);
-    
-    managerGroupSelector = 
-      '<div class="row g-2 align-items-center mb-3">' +
-        '<div class="col-12">' +
+   
+      '<div class="row g-2 align-items-end mb-3">' +
+      '<div class="col-12 col-md-6">' +
+        '<label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label>' +
+        '<input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)">' +
+      '</div>' +
+      (isManagerViewing ? 
+        '<div class="col-12 col-md-6">' +
           '<label class="small fw-bold text-muted mb-1"><i class="bi bi-diagram-3 me-1"></i>Select Group</label>' +
           '<select class="form-select form-select-sm fw-bold text-primary" onchange="onManagerReportGroupChange(this.value)">' +
             availableGroups.map(g => '<option value="' + escAttr(g) + '"' + (g === myGroup ? ' selected' : '') + '>' + esc(g) + '</option>').join('') +
           '</select>' +
-        '</div>' +
-      '</div>';
-  }
+        '</div>' 
+      : '') +
+    '</div>' +
 
   // 👇 Determine which Report Builder to use based on the selected group 👇
   let reportHtml = '';
@@ -1464,9 +1461,7 @@ function renderTechnicianReportTab(){
   }
 
   return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span><div class="d-flex gap-1"><span class="badge bg-success">' + checkedCount + ' checked</span><span class="badge bg-warning text-dark">' + pendingCount + ' pending</span></div></div><div class="card-body">' +
-    '<div class="row g-2 align-items-center mb-2"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +
-    '<div class="row g-2 align-items-center mb-3"><div class="col-12"><label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label><input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)"></div></div>' +
-    
+    '<div class="row g-2 align-items-center mb-2"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +   
     managerGroupSelector + // 👈 INSERT THE SELECTOR HERE
 
     (String(myGroup).trim() === 'រថយន្ត' ? 
