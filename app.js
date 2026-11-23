@@ -1128,7 +1128,7 @@ function renderLastCheckLine(equipmentId){
    ========================================================= */
 function renderHomeViewToggle(){
   const role = currentUser.role;
-  const showReport = (role === 'technician' || role === 'admin-viewer');
+  const showReport = (role === 'technician' || role === 'admin' || role === 'admin-viewer');
   
   return '<div class="tab-bar mb-3" style="border-radius:10px;overflow:visible;">' +
     '<div class="tab ' + (homeViewMode === 'cards' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setHomeView(\'cards\')"><i class="bi bi-grid me-1"></i>Cards</div>' +
@@ -1713,7 +1713,7 @@ function renderManagerHome(){
   }
 
   if (homeViewMode === 'report') {
-    $('#app').html('<div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0">Monthly Report</h5><small class="text-muted">' + esc(currentUser.fullName) + ' · ' + esc(currentUser.group) + '</small></div></div>' + renderHomeViewToggle() + renderTechnicianReportTab());
+    $('#app').html('<div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0">Monthly Report</h5><small class="text-muted">' + esc(currentUser.fullName) + ' · ' + esc(currentUser.group) + '</small></div><button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onclick="syncAllData(true)"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px;">--:--:--</span></button></div>' + renderHomeViewToggle() + renderTechnicianReportTab());
     return;
   }
 
