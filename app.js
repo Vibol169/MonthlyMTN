@@ -8414,47 +8414,53 @@ async function generateMonthlyReportOutput(ym, mode) {
   showLoading(mode === 'print' ? 'កំពុងបង្កើត...' : 'កំពុងបង្កើត PDF...');
   await new Promise(r => setTimeout(r, 30));
 
-  const styleId  = mode === 'print' ? 'monthlyReportPrintStyles' : 'monthlyReportLiveStyles';
-  const oldStyle = document.getElementById(styleId);
-  if (oldStyle) oldStyle.remove();
-
-  const styleEl = document.createElement('style');
-  styleEl.id = styleId;
-  styleEl.textContent = monthlyReportStyles().replace(/<\/?style[^>]*>/gi, '');
-  document.head.appendChild(styleEl);
-
-  const CONTENT_W_PX = 718;
-
-  const host = document.createElement('div');
-  host.id = mode === 'print' ? 'monthlyReportPrintHost' : 'monthlyReportHost';
-  host.style.cssText = mode === 'print'
-    ? 'position:absolute;top:0;left:0;width:' + CONTENT_W_PX + 'px;background:#ffffff;z-index:-9999;opacity:0;pointer-events:none;'
-    : 'position:absolute;top:0;left:-99999px;width:' + CONTENT_W_PX + 'px;background:#ffffff;z-index:-1;';
-
-  // 👇 Replace the existing host.innerHTML logic with this 👇
+  // Determine which report to build
   const isManagerViewing = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer');
   const targetGroup = isManagerViewing ? (window.managerReportGroup || 'រថយន្ត') : currentUser.group;
   
+  let reportHtml = '';
   if (targetGroup === 'TCC&FCC') {
-    host.innerHTML = buildTCCMonthlyReportBody(ym);
+    reportHtml = buildTCCMonthlyReportBody(ym);
   } else {
-    host.innerHTML = buildMonthlyReportBody(ym);
+    reportHtml = buildMonthlyReportBody(ym);
   }
 
+  const styleContent = monthlyReportStyles().replace(/<\/?style[^>]*>/gi, '');
+  const CONTENT_W_PX = 718;
+
+  // Create a hidden iframe to render the report safely
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = `position:fixed;top:0;left:-99999px;width:${CONTENT_W_PX}px;height:297mm;border:0;background:#fff;pointer-events:none;`;
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open();
+  
+  const fullHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${styleContent}</style>
+    <style>
+      body { margin: 0; padding: 0; background: #fff; }
+      .mrpt { width: ${CONTENT_W_PX}px !important; max-width: ${CONTENT_W_PX}px !important; margin: 0 auto; background: #fff; }
+    </style>
+    </head><body>${reportHtml}</body></html>`;
+    
+  doc.write(fullHTML);
+  doc.close();
+
   try {
-    if (document.fonts) {
+    // Wait for fonts and images inside the iframe to load
+    if (doc.fonts) {
       try {
         await Promise.all([
-          document.fonts.load('400 12px Hanuman'),
-          document.fonts.load('700 12px Hanuman'),
-          document.fonts.load('900 14px Hanuman')
+          doc.fonts.load('400 12px Hanuman'),
+          doc.fonts.load('700 12px Hanuman'),
+          doc.fonts.load('900 14px Hanuman')
         ]);
-        await document.fonts.ready;
+        await doc.fonts.ready;
       } catch (e) {}
     }
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 500));
 
-    const images = Array.from(host.querySelectorAll('img'));
+    const images = Array.from(doc.images || []);
     await Promise.all(images.map(img =>
       img.complete ? Promise.resolve() : new Promise(res => {
         img.addEventListener('load',  res, { once: true });
@@ -8463,20 +8469,20 @@ async function generateMonthlyReportOutput(ym, mode) {
       })
     ));
 
-    const target = host.querySelector('.mrpt') || host;
-    const scale  = 2;
+    const target = doc.querySelector('.mrpt') || doc.body;
+    const scale = 2;
 
     window.isGeneratingPdfMode = true;
     
+    // 👇 Render using html2canvas from inside the iframe context
     const canvas = await html2canvas(target, {
-      scale: 1.5, useCORS: true, allowTaint: true, logging: false,
+      scale: scale, useCORS: true, allowTaint: true, logging: false,
       backgroundColor: '#ffffff',
-      removeContainer: false, // 👈 ADD THIS LINE
       windowWidth: CONTENT_W_PX, width: CONTENT_W_PX,
       scrollX: 0, scrollY: 0
     });
 
-     window.isGeneratingPdfMode = false;
+    window.isGeneratingPdfMode = false;
     
     if (!canvas.width || !canvas.height) throw new Error('Empty canvas.');
 
@@ -8594,31 +8600,31 @@ async function generateMonthlyReportOutput(ym, mode) {
         '</div>';
       }).join('');
 
-      const html = '<!DOCTYPE html><html lang="km"><head><meta charset="UTF-8"><title>Monthly Inspection Report</title><style>' +
+      const printHTML = '<!DOCTYPE html><html lang="km"><head><meta charset="UTF-8"><title>Monthly Inspection Report</title><style>' +
           '@page { size: A4 portrait; margin: 0; } * { box-sizing: border-box; } html, body { margin: 0; padding: 0; background: #fff; }' +
           '.print-page { position: relative; width: 210mm; height: 297mm; padding: ' + MARGIN_MM + 'mm ' + MARGIN_MM + 'mm ' + (MARGIN_MM + PAGE_NUM_RESERVE_MM) + 'mm ' + MARGIN_MM + 'mm; page-break-after: always; break-after: page; overflow: hidden; background: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
           '.print-page:last-child { page-break-after: auto; break-after: auto; } .print-page img { display: block; }' +
           '.print-page-num { position: absolute; left: 0; right: 0; bottom: ' + (MARGIN_MM - 2) + 'mm; text-align: center; font-family: Helvetica, Arial, sans-serif; font-size: 9pt; color: #555; }' +
           '</style></head><body>' + pagesHTML + '</body></html>';
 
-      const iframe = document.createElement('iframe');
-      iframe.setAttribute('aria-hidden', 'true');
-      iframe.style.cssText = 'position:fixed;top:0;left:-99999px;width:210mm;height:297mm;border:0;background:#fff;pointer-events:none;';
-      document.body.appendChild(iframe);
-      const doc = iframe.contentWindow.document;
-      doc.open(); doc.write(html); doc.close();
+      const printIframe = document.createElement('iframe');
+      printIframe.setAttribute('aria-hidden', 'true');
+      printIframe.style.cssText = 'position:fixed;top:0;left:-99999px;width:210mm;height:297mm;border:0;background:#fff;pointer-events:none;';
+      document.body.appendChild(printIframe);
+      const printDoc = printIframe.contentWindow.document;
+      printDoc.open(); printDoc.write(printHTML); printDoc.close();
 
       await new Promise(r => setTimeout(r, 400));
-      const printImgs = Array.from(doc.images || []);
+      const printImgs = Array.from(printDoc.images || []);
       await Promise.all(printImgs.map(img => img.complete ? Promise.resolve() : new Promise(res => {
         img.addEventListener('load', res, { once: true });
         img.addEventListener('error', res, { once: true });
         setTimeout(res, 2500);
       })));
 
-      try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (err) { console.error(err); }
-      const cleanup = () => { try { iframe.remove(); } catch (e) {} };
-      try { iframe.contentWindow.addEventListener('afterprint', cleanup, { once: true }); } catch (e) {}
+      try { printIframe.contentWindow.focus(); printIframe.contentWindow.print(); } catch (err) { console.error(err); }
+      const cleanup = () => { try { printIframe.remove(); } catch (e) {} };
+      try { printIframe.contentWindow.addEventListener('afterprint', cleanup, { once: true }); } catch (e) {}
       setTimeout(cleanup, 60000);
 
     } else {
@@ -8650,7 +8656,7 @@ async function generateMonthlyReportOutput(ym, mode) {
       });
 
       const fileLabel = ym.replace('-', '_');
-      pdf.save('MONTHLY_INSPECTION_' + currentUser.group + '_' + fileLabel + '.pdf');
+      pdf.save('MONTHLY_INSPECTION_' + targetGroup + '_' + fileLabel + '.pdf');
       showAlert('ទាញយករួចរាល់ — PDF (' + totalPages + ' ទំព័រ)', 'success');
     }
 
@@ -8658,8 +8664,7 @@ async function generateMonthlyReportOutput(ym, mode) {
     console.error('[' + mode.toUpperCase() + '] Failed:', err);
     showAlert(mode + ' failed: ' + (err.message || err), 'danger');
   } finally {
-    try { host.remove(); } catch (e) {}
-    try { document.getElementById(styleId)?.remove(); } catch (e) {}
+    try { iframe.remove(); } catch (e) {}
     hideLoading();
   }
 }
