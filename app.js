@@ -1804,12 +1804,19 @@ function renderManagerHome(){
 }
 
 function renderDirectorHome(){
-if (homeViewMode === 'report') {
+  // 👇 1. Handle the Report Tab Routing 👇
+  if (homeViewMode === 'report') {
     $('#app').html('<div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0">Monthly Report</h5><small class="text-muted">' + esc(currentUser.fullName) + ' · All Groups</small></div><button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onclick="syncAllData(true)"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px;">--:--:--</span></button></div>' + renderHomeViewToggle() + renderTechnicianReportTab());
     return;
   }
 
-const GROUP_ORDER = ['រថយន្ត', 'RTG', 'គ្រឿងចក្រ', 'TCC&FCC'];
+  // 👇 2. Handle the History Tab Routing (Just in case you add it later) 👇
+  if (homeViewMode === 'history') {
+    $('#app').html('<div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0">Manager Home</h5><small class="text-muted">All Groups · ' + dmyToday() + '</small></div><button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onclick="syncAllData(true)"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px;">--:--:--</span></button></div>' + renderHomeViewToggle() + renderHomeHistoryTable());
+    return;
+  }
+
+  const GROUP_ORDER = ['រថយន្ត', 'RTG', 'គ្រឿងចក្រ', 'TCC&FCC'];
   const eqGroups = [...new Set((APP.equipment || []).map(e => e.group).filter(Boolean))];
   const groups = GROUP_ORDER.filter(g => eqGroups.indexOf(g) !== -1);
   eqGroups.forEach(g => { if (groups.indexOf(g) === -1) groups.push(g); });
@@ -1844,10 +1851,14 @@ const GROUP_ORDER = ['រថយន្ត', 'RTG', 'គ្រឿងចក្រ',
     return '<div class="card mb-2"><div class="group-header d-flex justify-content-between align-items-center clickable-card" data-bs-toggle="collapse" data-bs-target="#' + collapseId + '" style="cursor:pointer;"><span><i class="bi bi-diagram-3 me-2"></i><strong>' + esc(g) + '</strong></span><span class="badge bg-' + (pct === 100 ? 'success' : 'primary') + '">' + doneCount + '/' + total + ' (' + pct + '%)</span></div><div class="collapse show" id="' + collapseId + '"><div class="card-body py-2"><div class="dash-bar mb-2"><div class="track"><div class="fill" style="width:' + pct + '%;background:' + (pct === 100 ? '#28a745' : '#0d6efd') + '"></div></div><span class="val">' + pct + '%</span></div>' + pendingBlock + (completedRows ? '<div class="small text-muted mt-2 mb-1">Recently checked</div>' + completedRows : '') + '</div></div></div>';
   }).join('');
 
-  let html = '<div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0">Manager Home</h5><small class="text-muted">' + dmyToday() + '</small></div><button class="btn btn-sm btn-outline-secondary" onclick="reloadAll(\'home\')"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px; margin-left: 4px;">--:--:--</span></button></div>' +
+  let html = '<div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0">Manager Home</h5><small class="text-muted">' + dmyToday() + '</small></div><button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onclick="syncAllData(true)"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px;">--:--:--</span></button></div>' +
+    
+    // 👇 3. ADD THE TOGGLE HERE 👇
+    renderHomeViewToggle() + 
+    
     '<div class="row g-2 mb-3"><div class="col-4"><div class="' + cardCls('done') + '" onclick="setHomeStatFilter(\'done\')"><div class="num text-primary">' + totalDone + '</div><div class="lbl">Checked / ' + totalEq + '</div></div></div><div class="col-4"><div class="' + cardCls('toConfirm') + '" onclick="setHomeStatFilter(\'toConfirm\')"><div class="num text-warning">' + pendingConfirm.length + '</div><div class="lbl">To confirm</div></div></div><div class="col-4"><div class="' + cardCls('issues') + '" onclick="setHomeStatFilter(\'issues\')"><div class="num text-danger">' + monthIssues.length + '</div><div class="lbl">Issues</div></div></div></div>' +
     renderHomeFilterChip();
-
+  
   if (showToConfirm) html += '<h6 class="mb-2"><i class="bi bi-patch-question text-primary me-2"></i>Pending your confirmation (' + pendingConfirm.length + ')</h6>' + (pendingConfirm.length ? renderSectionWithLimit(pendingConfirm, 'dir_confirm', confirmRenderer, !showAll) : '<p class="text-muted small text-center py-3">✓ Nothing to confirm</p>');
   
   if (showDone && !showAll) {
