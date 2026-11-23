@@ -1394,19 +1394,18 @@ function renderTechnicianReportTab(){
   const seenIds   = new Set();
   const eqList    = [];
   
+  // Filter equipment by selected group
   rawEqList.forEach(e => { 
     if (!e || !e.equipmentId) return; 
     if (seenIds.has(e.equipmentId)) return; 
-    if (!isManagerViewing && e.group !== myGroup) return;
-    if (isManagerViewing && e.group !== myGroup) return; // Filter by selected group
+    if (e.group !== myGroup) return; // Filter based on myGroup
     seenIds.add(e.equipmentId); 
     eqList.push(e); 
   });
 
   const monthSubs = (APP.submissions || []).filter(s => {
     if (!isInMonth(s.date, ym)) return false;
-    if (!isManagerViewing && s.group !== myGroup) return false;
-    if (isManagerViewing && s.group !== myGroup) return false;
+    if (s.group !== myGroup) return false; // Filter based on myGroup
     return true;
   });
 
@@ -1434,8 +1433,29 @@ function renderTechnicianReportTab(){
   })();
 
   window.currentReportZoom = 'fit';
-   
-      '<div class="row g-2 align-items-end mb-3">' +
+
+  // Prepare Groups for Dropdown (if Manager)
+  const GROUP_ORDER = ['រថយន្ត', 'RTG', 'គ្រឿងចក្រ', 'TCC&FCC'];
+  const eqGroups = [...new Set((APP.equipment || []).map(e => e.group).filter(Boolean))];
+  const availableGroups = GROUP_ORDER.filter(g => eqGroups.indexOf(g) !== -1);
+
+  // Determine Report Body
+  let reportHtml = '';
+  if (typeof buildMonthlyReportBody !== 'undefined') {
+    if (myGroup === 'TCC&FCC') {
+      reportHtml = buildTCCMonthlyReportBody(ym);
+    } else {
+      reportHtml = buildMonthlyReportBody(ym);
+    }
+  }
+
+  return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span><div class="d-flex gap-1"><span class="badge bg-success">' + checkedCount + ' checked</span><span class="badge bg-warning text-dark">' + pendingCount + ' pending</span></div></div><div class="card-body">' +
+    
+    // Month Selector Row
+    '<div class="row g-2 align-items-center mb-3"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +
+    
+    // 👇 DATE AND GROUP SELECTOR ROW 👇
+    '<div class="row g-2 align-items-end mb-3">' +
       '<div class="col-12 col-md-6">' +
         '<label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label>' +
         '<input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)">' +
@@ -1449,21 +1469,9 @@ function renderTechnicianReportTab(){
         '</div>' 
       : '') +
     '</div>' +
+    // 👆 END OF DATE AND GROUP ROW 👆
 
-  // 👇 Determine which Report Builder to use based on the selected group 👇
-  let reportHtml = '';
-  if (typeof buildMonthlyReportBody !== 'undefined') {
-    if (myGroup === 'TCC&FCC') {
-      reportHtml = buildTCCMonthlyReportBody(ym);
-    } else {
-      reportHtml = buildMonthlyReportBody(ym);
-    }
-  }
-
-  return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span><div class="d-flex gap-1"><span class="badge bg-success">' + checkedCount + ' checked</span><span class="badge bg-warning text-dark">' + pendingCount + ' pending</span></div></div><div class="card-body">' +
-    '<div class="row g-2 align-items-center mb-2"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +   
-    managerGroupSelector + // 👈 INSERT THE SELECTOR HERE
-
+    // Standard / After Inspection Toggle (Only for Trucks)
     (String(myGroup).trim() === 'រថយន្ត' ? 
       '<div class="btn-group w-100 mb-2" role="group">' +
         '<button type="button" class="btn ' + (window.techReportForm === 'standard' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i> Standard</button>' +
@@ -1471,14 +1479,17 @@ function renderTechnicianReportTab(){
       '</div>' 
     : '') +
 
+    // Action Buttons
     '<div class="d-flex gap-2 flex-wrap mb-2">' +
       '<button class="btn btn-primary flex-fill" onclick="generateMonthlyReportPDF()"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</button>' +
       '<button class="btn btn-outline-primary flex-fill" onclick="printMonthlyReport()"><i class="bi bi-printer me-1"></i>Print</button>' +
       '<button class="btn btn-outline-secondary" id="btnZoomToggle" onclick="toggleReportZoom()" title="Toggle Zoom"><i class="bi bi-arrows-fullscreen"></i></button>' +
     '</div>' +
 
+    // Generate Missing PDFs
     '<div class="d-flex gap-2 flex-wrap mb-3"><button class="btn btn-success flex-fill" onclick="generateMissingPdfs(\'' + ym + '\')"><i class="bi bi-cloud-arrow-up me-1"></i>Generate Missing PDFs to Drive</button></div></div></div>' +
     
+    // Preview Wrapper
     '<div id="reportPreviewWrapper" style="background:#e9ecef; padding: 8px; border-radius:8px; width: 100%; display: flex; align-items: flex-start; overflow: hidden; transition: height 0.2s; position: relative;">' +
       '<div id="mrptPageSimulator" style="width:210mm; min-width:210mm; max-width:210mm; padding:10mm; background:#ffffff; box-shadow:0 4px 16px rgba(0,0,0,.18); box-sizing:border-box; margin: 0 auto; transform-origin: top center;">' + 
         reportHtml + 
