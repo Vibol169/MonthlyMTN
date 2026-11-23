@@ -1128,7 +1128,7 @@ function renderLastCheckLine(equipmentId){
    ========================================================= */
 function renderHomeViewToggle(){
   const role = currentUser.role;
-  const showReport = (role === 'technician' || role === 'admin' || role === 'admin-viewer');
+  const showReport = (role === 'technician' || role === 'admin' || role === 'admin-viewer'|| role === 'manager' || role === 'manager-viewer');
   
   return '<div class="tab-bar mb-3" style="border-radius:10px;overflow:visible;">' +
     '<div class="tab ' + (homeViewMode === 'cards' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setHomeView(\'cards\')"><i class="bi bi-grid me-1"></i>Cards</div>' +
@@ -1386,14 +1386,29 @@ window.setTccCompany = function(company) {
 };
 
 function renderTechnicianReportTab(){
-  const myGroup = currentUser.group;
+  const isManagerViewing = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer');
+  const myGroup = isManagerViewing ? 'ALL' : currentUser.group;
+  
   const ym      = homeReportMonth;
   const rawEqList = APP.equipment || [];
   const seenIds   = new Set();
   const eqList    = [];
-  rawEqList.forEach(e => { if (!e || !e.equipmentId) return; if (seenIds.has(e.equipmentId)) return; seenIds.add(e.equipmentId); eqList.push(e); });
+  
+  // If manager, include all equipment. Otherwise, filter by group.
+  rawEqList.forEach(e => { 
+    if (!e || !e.equipmentId) return; 
+    if (seenIds.has(e.equipmentId)) return; 
+    if (!isManagerViewing && e.group !== myGroup) return;
+    seenIds.add(e.equipmentId); 
+    eqList.push(e); 
+  });
 
-  const monthSubs = (APP.submissions || []).filter(s => s.group === myGroup && isInMonth(s.date, ym));
+  const monthSubs = (APP.submissions || []).filter(s => {
+    if (!isInMonth(s.date, ym)) return false;
+    if (!isManagerViewing && s.group !== myGroup) return false;
+    return true;
+  });
+
   const checkedCount = eqList.filter(e => monthSubs.some(s => s.equipmentId === e.equipmentId)).length;
   const pendingCount = eqList.length - checkedCount;
   const pct = eqList.length ? Math.round(checkedCount / eqList.length * 100) : 0;
@@ -1419,26 +1434,11 @@ function renderTechnicianReportTab(){
 
   window.currentReportZoom = 'fit';
 
-  // 👇 COMPANY TOGGLE DEFINED INSIDE THE FUNCTION 👇
-  let tccCompanyToggle = '';
-  if (String(currentUser.group).trim() === 'TCC&FCC') {
-    tccCompanyToggle = 
-      '<div class="btn-group w-100 mb-2" role="group">' +
-        '<button type="button" class="btn ' + (window.tccCompanyFilter === 'PPAP' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTccCompany(\'PPAP\')">PPAP</button>' +
-        '<button type="button" class="btn ' + (window.tccCompanyFilter === 'PORT STEVEDORING COMPANY LIMITED' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTccCompany(\'PORT STEVEDORING COMPANY LIMITED\')">Port Stevedoring</button>' +
-        '<button type="button" class="btn ' + (window.tccCompanyFilter === 'PMNT' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTccCompany(\'PMNT\')">PMNT</button>' +
-      '</div>';
-  }
-
   return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span><div class="d-flex gap-1"><span class="badge bg-success">' + checkedCount + ' checked</span><span class="badge bg-warning text-dark">' + pendingCount + ' pending</span></div></div><div class="card-body">' +
     '<div class="row g-2 align-items-center mb-2"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +
     '<div class="row g-2 align-items-center mb-3"><div class="col-12"><label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label><input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)"></div></div>' +
     
-    // 👇 INSERT TOGGLE HERE 👇
-    tccCompanyToggle + 
-    
-    '<div class="dash-bar mb-3"><div class="track"><div class="fill" style="width:' + pct + '%;background:' + (pct === 100 ? '#28a745' : '#0d6efd') + '"></div></div><span class="val">' + pct + '%</span></div>' +
-    
+    // Toggle only shows for single-group (Trucks) or TCC&FCC
     (String(currentUser.group).trim() === 'រថយន្ត' ? 
       '<div class="btn-group w-100 mb-2" role="group">' +
         '<button type="button" class="btn ' + (window.techReportForm === 'standard' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i> Standard</button>' +
@@ -1457,7 +1457,8 @@ function renderTechnicianReportTab(){
     '<div id="reportPreviewWrapper" style="background:#e9ecef; padding: 8px; border-radius:8px; width: 100%; display: flex; align-items: flex-start; overflow: hidden; transition: height 0.2s; position: relative;">' +
       '<div id="mrptPageSimulator" style="width:210mm; min-width:210mm; max-width:210mm; padding:10mm; background:#ffffff; box-shadow:0 4px 16px rgba(0,0,0,.18); box-sizing:border-box; margin: 0 auto; transform-origin: top center;">' + 
         (typeof buildMonthlyReportBody !== 'undefined' ? 
-          (String(currentUser.group).trim() === 'TCC&FCC' ? buildTCCMonthlyReportBody(ym) : buildMonthlyReportBody(ym)) 
+          (isManagerViewing ? buildManagerReportBody(ym) : // 👈 For manager, build a special combined report
+          (String(currentUser.group).trim() === 'TCC&FCC' ? buildTCCMonthlyReportBody(ym) : buildMonthlyReportBody(ym))) 
           : '') + 
       '</div>' +
     '</div>' +
@@ -1803,6 +1804,11 @@ function renderManagerHome(){
 }
 
 function renderDirectorHome(){
+if (homeViewMode === 'report') {
+    $('#app').html('<div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0">Monthly Report</h5><small class="text-muted">' + esc(currentUser.fullName) + ' · All Groups</small></div><button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onclick="syncAllData(true)"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px;">--:--:--</span></button></div>' + renderHomeViewToggle() + renderTechnicianReportTab());
+    return;
+  }
+
 const GROUP_ORDER = ['រថយន្ត', 'RTG', 'គ្រឿងចក្រ', 'TCC&FCC'];
   const eqGroups = [...new Set((APP.equipment || []).map(e => e.group).filter(Boolean))];
   const groups = GROUP_ORDER.filter(g => eqGroups.indexOf(g) !== -1);
@@ -8124,14 +8130,13 @@ function buildTCCMonthlyReportBody(ym) {
   const myGroup = currentUser.group;
   
   // 👇 FILTER BY COMPANY (Case-Insensitive & Trimmed) 👇
-  const selectedCompany = String(window.tccCompanyFilter || 'PPAP').trim().toUpperCase();
+  const selectedCompany = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer') ? 'ALL' : (window.tccCompanyFilter || 'PPAP');
   
-  const monthSubs = (APP.submissions || []).filter(s => {
+    const monthSubs = (APP.submissions || []).filter(s => {
     if (s.group !== myGroup || !isInMonth(s.date, ym)) return false;
-    
+    if (selectedCompany === 'ALL') return true; // 👈 Keep all for Manager
     const eqData = APP.equipmentMap[s.equipmentId] || {};
     const eqCompany = String(eqData.companyName || 'PPAP').trim().toUpperCase();
-    
     return eqCompany === selectedCompany;
   }).sort((a, b) => parseDmyToMs(a.date) - parseDmyToMs(b.date)); 
 
@@ -8332,6 +8337,39 @@ function buildTCCMonthlyReportBody(ym) {
 
     signaturesTable +
   '</div>';
+}
+
+function buildManagerReportBody(ym) {
+  // Use the existing TCC and Monthly report builders, but wrap them per group
+  const groups = ['រថយន្ត', 'RTG', 'គ្រឿងចក្រ', 'TCC&FCC'];
+  let html = '';
+
+  groups.forEach(g => {
+    const hasGroupData = (APP.submissions || []).some(s => s.group === g && isInMonth(s.date, ym));
+    if (!hasGroupData) return; // Skip groups with no data this month
+
+    html += '<div style="page-break-after: always; margin-bottom: 50px;">';
+    
+    // We temporarily trick the builders into thinking the user is in this group
+    const originalGroup = currentUser.group;
+    currentUser.group = g;
+
+    if (g === 'TCC&FCC') {
+      // Need a temporary tempCompanyFilter to avoid filtering by company for managers
+      const originalFilter = window.tccCompanyFilter;
+      window.tccCompanyFilter = 'ALL'; 
+      html += buildTCCMonthlyReportBody(ym);
+      window.tccCompanyFilter = originalFilter;
+    } else {
+      html += buildMonthlyReportBody(ym);
+    }
+
+    // Restore
+    currentUser.group = originalGroup;
+    html += '</div>';
+  });
+
+  return html;
 }
 
 function buildMonthlyReportHTML(ym){
