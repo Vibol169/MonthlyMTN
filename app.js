@@ -1402,11 +1402,73 @@ function renderTechnicianHome(){
   );
 }
 
-window.tccCompanyFilter = window.tccCompanyFilter || 'PPAP';
+/* =========================================================
+   TCC&FCC COMPANY FILTER (ALL / PPAP / PMNT / Port Stevedoring)
+   ========================================================= */
+const TCC_COMPANY_OPTIONS = [
+  { code: 'ALL',  label: 'ទាំងអស់ (All)' },
+  { code: 'PPAP', label: 'PPAP' },
+  { code: 'PMNT', label: 'PMNT' },
+  { code: 'PORT STEVEDORING COMPANY LIMITED', label: 'Port Stevedoring' }
+];
+
+// 👇 Canonical company code for any company value 👇
+// '' (old equipment rows without a company) is treated as PPAP
+function tccNormCompany(v){
+  const s = String(v == null ? '' : v).trim().toUpperCase()
+    .replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return 'PPAP';
+  if (s.indexOf('PORT STEVEDORING') === 0) return 'PORT STEVEDORING COMPANY LIMITED';
+  if (s === 'PHNOM PENH AUTONOMOUS PORT') return 'PPAP';
+  return s;
+}
+
+function tccCompanyLabel(v){
+  const code = tccNormCompany(v);
+  const found = TCC_COMPANY_OPTIONS.find(o => o.code === code);
+  return found ? found.label : code;
+}
+
+function tccCompanyStorageKey(){
+  return 'tccCompany_' + ((currentUser && currentUser.username) || 'anon');
+}
+
+// Selected company for the current session (null = not chosen yet)
+window.tccCompanyFilter = String(window.tccCompanyFilter || '').trim() || null;
+
+// 👇 Used by the Report tab UI and by buildTCCMonthlyReportBody() 👇
+function tccSelectedCompany(){
+  const raw = String(window.tccCompanyFilter || LS.get(tccCompanyStorageKey(), '') || '').trim();
+  if (!raw) return 'ALL'; // 👈 default: every company in TCC&FCC
+  const code = tccNormCompany(raw);
+  return TCC_COMPANY_OPTIONS.some(o => o.code === code) ? code : 'ALL';
+}
+
+// Companies that actually have equipment in the TCC&FCC group (+ the selected one)
+function tccAvailableCompanies(){
+  const selected = tccSelectedCompany();
+  const present  = new Set(
+    (APP.equipment || [])
+      .filter(e => String(e.group || '').trim() === 'TCC&FCC')
+      .map(e => tccNormCompany(e.companyName))
+  );
+  present.add(selected);
+  return TCC_COMPANY_OPTIONS.filter(o => o.code === 'ALL' || present.has(o.code));
+}
+
+function tccCompanySelectOptions(){
+  const selected = tccSelectedCompany();
+  return tccAvailableCompanies().map(o =>
+    '<option value="' + escAttr(o.code) + '"' + (o.code === selected ? ' selected' : '') + '>' + esc(o.label) + '</option>'
+  ).join('');
+}
 
 window.setTccCompany = function(company) {
-  window.tccCompanyFilter = company;
-  renderHome(); 
+  const raw  = String(company || '').trim();
+  const code = raw ? tccNormCompany(raw) : 'ALL';
+  window.tccCompanyFilter = TCC_COMPANY_OPTIONS.some(o => o.code === code) ? code : 'ALL';
+  LS.set(tccCompanyStorageKey(), window.tccCompanyFilter);
+  renderHome();
 };
 
 function renderTechnicianReportTab(){
@@ -1492,7 +1554,17 @@ function renderTechnicianReportTab(){
           '</select>' +
         '</div>' 
       : '') +
-    '</div>' +  
+    '</div>' +
+
+    // 👇 COMPANY SELECTOR (TCC&FCC only) – shown for Technician, Admin & Manager 👇
+    (String(myGroup).trim() === 'TCC&FCC' ?
+      '<div class="row g-2 align-items-end mb-3"><div class="col-12">' +
+        '<label class="small fw-bold text-muted mb-1"><i class="bi bi-building me-1"></i>Select Company</label>' +
+        '<select class="form-select form-select-sm fw-bold text-primary" onchange="setTccCompany(this.value)">' +
+          tccCompanySelectOptions() +
+        '</select>' +
+      '</div></div>'
+    : '') +  
 
     // Standard / After Inspection Toggle (Only for Trucks)
     (String(myGroup).trim() === 'រថយន្ត' ? 
@@ -8208,16 +8280,15 @@ function buildTCCMonthlyReportBody(ym) {
   const isManagerViewing = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer');
   const myGroup = isManagerViewing ? (window.managerReportGroup || 'TCC&FCC') : currentUser.group;
   
-  // 👇 2. Determine the company filter 👇
-  const selectedCompany = isManagerViewing ? 'ALL' : (window.tccCompanyFilter || 'PPAP');
+  // 👇 2. Determine the company filter (same value the Report tab shows) 👇
+  const selectedCompany = tccSelectedCompany();
   
   // 👇 3. Filter submissions using the correct group and company 👇
   const monthSubs = (APP.submissions || []).filter(s => {
     if (s.group !== myGroup || !isInMonth(s.date, ym)) return false;
     if (selectedCompany === 'ALL') return true; 
     const eqData = APP.equipmentMap[s.equipmentId] || {};
-    const eqCompany = String(eqData.companyName || 'PPAP').trim().toUpperCase();
-    return eqCompany === selectedCompany;
+    return tccNormCompany(eqData.companyName) === selectedCompany;
   }).sort((a, b) => parseDmyToMs(a.date) - parseDmyToMs(b.date)); 
 
 
@@ -8297,7 +8368,23 @@ function buildTCCMonthlyReportBody(ym) {
 
   let sig1, sig2, sig3, sig4;
 
-  if (selectedCompany === 'PORT STEVEDORING COMPANY LIMITED') {
+  if (selectedCompany === 'ALL') {
+    // 👈 "All" company: every company in TCC&FCC is merged into one summary report
+    reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ TCC&FCC ប្រចាំខែ';
+    customerNameKh = 'ក្រុមហ៊ុនទាំងអស់ (PPAP / PMNT / Port Stevedoring)';
+    customerNameEn = 'ALL COMPANIES (PPAP / PMNT / PORT STEVEDORING)';
+    customerAddress = '—';
+    customerAddressEn = '—';
+    customerVat = '—';
+    customerPhone = '—';
+    is4Sigs = true; // 👈 4 Signatures (internal approval team)
+
+    sig1 = makeSigCol('អនុញ្ញាតដោយ', 'យ៉ឹម ជឿន', 'នាយកក្រុមហ៊ុន');
+    sig2 = makeSigCol('ត្រូតពិនិត្យដោយ', 'អ៊ុច សាំងឡី', 'ប្រធានក្រុម');
+    sig3 = makeSigCol('អតិថិជន', 'ហៃ ម៉ារ៉ាឌី', 'ប្រធានសេវាដ្ឋាន');
+    sig4 = makeSigCol('អនុញ្ញាតដោយ', 'សេង គន្ធា', 'អគ្គនាយករដ្ឋបច្ចេកទេស');
+
+  } else if (selectedCompany === 'PORT STEVEDORING COMPANY LIMITED') {
     reportTitle = 'របាយការណ៍បូកសរុបការងារថែទាំ FCC ប្រចាំខែ';
     customerNameKh = 'ផត ស្ទេវដរីង ឯ.ក';
     customerNameEn = 'PORT STEVEDORING COMPANY LIMITED';
@@ -8412,7 +8499,7 @@ function buildTCCMonthlyReportBody(ym) {
         '</tr>' +
       '</thead>' +
       '<tbody>' +
-        (rowsHtml || '<tr><td colspan="7" style="' + tdBase + ' text-align: center; padding: 10px;">No checklists this month for ' + selectedCompany + '</td></tr>') +
+        (rowsHtml || '<tr><td colspan="7" style="' + tdBase + ' text-align: center; padding: 10px;">No checklists this month for ' + esc(selectedCompany === 'ALL' ? 'all companies' : tccCompanyLabel(selectedCompany)) + '</td></tr>') +
       '</tbody>' +
     '</table>' +
 
@@ -8421,9 +8508,10 @@ function buildTCCMonthlyReportBody(ym) {
 }
 
 function buildMonthlyReportHTML(ym){
-  // 👇 Check the user's group to determine which report body to build 👇
-  const isTCC = String(currentUser.group || '').trim() === 'TCC&FCC';
-  const reportBody = isTCC ? buildTCCMonthlyReportBody(ym) : buildMonthlyReportBody(ym);
+  // 👇 Same group resolution as generateMonthlyReportOutput() 👇
+  const isManagerViewing = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer');
+  const targetGroup = String((isManagerViewing ? (window.managerReportGroup || 'រថយន្ត') : currentUser.group) || '').trim();
+  const reportBody = targetGroup === 'TCC&FCC' ? buildTCCMonthlyReportBody(ym) : buildMonthlyReportBody(ym);
 
   return '<!DOCTYPE html>' +
     '<html lang="km"><head><meta charset="UTF-8">' +
