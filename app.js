@@ -1387,18 +1387,18 @@ window.setTccCompany = function(company) {
 
 function renderTechnicianReportTab(){
   const isManagerViewing = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer');
-  const myGroup = isManagerViewing ? 'ALL' : currentUser.group;
+  const myGroup = isManagerViewing ? (window.managerReportGroup || 'រថយន្ត') : currentUser.group;
   
   const ym      = homeReportMonth;
   const rawEqList = APP.equipment || [];
   const seenIds   = new Set();
   const eqList    = [];
   
-  // If manager, include all equipment. Otherwise, filter by group.
   rawEqList.forEach(e => { 
     if (!e || !e.equipmentId) return; 
     if (seenIds.has(e.equipmentId)) return; 
     if (!isManagerViewing && e.group !== myGroup) return;
+    if (isManagerViewing && e.group !== myGroup) return; // Filter by selected group
     seenIds.add(e.equipmentId); 
     eqList.push(e); 
   });
@@ -1406,6 +1406,7 @@ function renderTechnicianReportTab(){
   const monthSubs = (APP.submissions || []).filter(s => {
     if (!isInMonth(s.date, ym)) return false;
     if (!isManagerViewing && s.group !== myGroup) return false;
+    if (isManagerViewing && s.group !== myGroup) return false;
     return true;
   });
 
@@ -1434,12 +1435,41 @@ function renderTechnicianReportTab(){
 
   window.currentReportZoom = 'fit';
 
+  // 👇 Manager Group Selector Dropdown 👇
+  let managerGroupSelector = '';
+  if (isManagerViewing) {
+    const GROUP_ORDER = ['រថយន្ត', 'RTG', 'គ្រឿងចក្រ', 'TCC&FCC'];
+    const eqGroups = [...new Set((APP.equipment || []).map(e => e.group).filter(Boolean))];
+    const availableGroups = GROUP_ORDER.filter(g => eqGroups.indexOf(g) !== -1);
+    
+    managerGroupSelector = 
+      '<div class="row g-2 align-items-center mb-3">' +
+        '<div class="col-12">' +
+          '<label class="small fw-bold text-muted mb-1"><i class="bi bi-diagram-3 me-1"></i>Select Group</label>' +
+          '<select class="form-select form-select-sm fw-bold text-primary" onchange="onManagerReportGroupChange(this.value)">' +
+            availableGroups.map(g => '<option value="' + escAttr(g) + '"' + (g === myGroup ? ' selected' : '') + '>' + esc(g) + '</option>').join('') +
+          '</select>' +
+        '</div>' +
+      '</div>';
+  }
+
+  // 👇 Determine which Report Builder to use based on the selected group 👇
+  let reportHtml = '';
+  if (typeof buildMonthlyReportBody !== 'undefined') {
+    if (myGroup === 'TCC&FCC') {
+      reportHtml = buildTCCMonthlyReportBody(ym);
+    } else {
+      reportHtml = buildMonthlyReportBody(ym);
+    }
+  }
+
   return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span><div class="d-flex gap-1"><span class="badge bg-success">' + checkedCount + ' checked</span><span class="badge bg-warning text-dark">' + pendingCount + ' pending</span></div></div><div class="card-body">' +
     '<div class="row g-2 align-items-center mb-2"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +
     '<div class="row g-2 align-items-center mb-3"><div class="col-12"><label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label><input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)"></div></div>' +
     
-    // Toggle only shows for single-group (Trucks) or TCC&FCC
-    (String(currentUser.group).trim() === 'រថយន្ត' ? 
+    managerGroupSelector + // 👈 INSERT THE SELECTOR HERE
+
+    (String(myGroup).trim() === 'រថយន្ត' ? 
       '<div class="btn-group w-100 mb-2" role="group">' +
         '<button type="button" class="btn ' + (window.techReportForm === 'standard' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i> Standard</button>' +
         '<button type="button" class="btn ' + (window.techReportForm === 'after' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'after\')"><i class="bi bi-table me-1"></i> After Inspection</button>' +
@@ -1456,15 +1486,18 @@ function renderTechnicianReportTab(){
     
     '<div id="reportPreviewWrapper" style="background:#e9ecef; padding: 8px; border-radius:8px; width: 100%; display: flex; align-items: flex-start; overflow: hidden; transition: height 0.2s; position: relative;">' +
       '<div id="mrptPageSimulator" style="width:210mm; min-width:210mm; max-width:210mm; padding:10mm; background:#ffffff; box-shadow:0 4px 16px rgba(0,0,0,.18); box-sizing:border-box; margin: 0 auto; transform-origin: top center;">' + 
-        (typeof buildMonthlyReportBody !== 'undefined' ? 
-          (isManagerViewing ? buildManagerReportBody(ym) : // 👈 For manager, build a special combined report
-          (String(currentUser.group).trim() === 'TCC&FCC' ? buildTCCMonthlyReportBody(ym) : buildMonthlyReportBody(ym))) 
-          : '') + 
+        reportHtml + 
       '</div>' +
     '</div>' +
     
     '<script>setTimeout(applyReportZoom, 150);</script>';
 }
+
+// 👇 Add this function to handle the dropdown change 👇
+window.onManagerReportGroupChange = function(group) {
+  window.managerReportGroup = group;
+  renderHome(); 
+};
 
 window.setReportMonth = function(ym){ homeReportMonth = ym; renderHome(); };
 window.onReportMonthChange = function(value){ const cur = isoToday().slice(0, 7); if (value > cur) return; homeReportMonth = value; renderHome(); };
@@ -7894,7 +7927,8 @@ function monthlyReportStyles(){
    MONTHLY REPORT BUILDING
    ========================================================= */
 function buildMonthlyReportBody(ym){
-  const myGroup = currentUser.group;
+  const isManagerViewing = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer');
+  const myGroup = isManagerViewing ? (window.managerReportGroup || 'រថយន្ត') : currentUser.group;
 
   const isAfter = window.techReportForm === 'after';
   const reportTitleKh = isAfter ? 'តារាងបូកសរុបការងារក្នុងកញ្ចប់ទី២' : 'តារាងបូកសរុបការងារក្នុងកញ្ចប់ទី១';
@@ -8350,39 +8384,6 @@ function buildTCCMonthlyReportBody(ym) {
   '</div>';
 }
 
-function buildManagerReportBody(ym) {
-  // Use the existing TCC and Monthly report builders, but wrap them per group
-  const groups = ['រថយន្ត', 'RTG', 'គ្រឿងចក្រ', 'TCC&FCC'];
-  let html = '';
-
-  groups.forEach(g => {
-    const hasGroupData = (APP.submissions || []).some(s => s.group === g && isInMonth(s.date, ym));
-    if (!hasGroupData) return; // Skip groups with no data this month
-
-    html += '<div style="page-break-after: always; margin-bottom: 50px;">';
-    
-    // We temporarily trick the builders into thinking the user is in this group
-    const originalGroup = currentUser.group;
-    currentUser.group = g;
-
-    if (g === 'TCC&FCC') {
-      // Need a temporary tempCompanyFilter to avoid filtering by company for managers
-      const originalFilter = window.tccCompanyFilter;
-      window.tccCompanyFilter = 'ALL'; 
-      html += buildTCCMonthlyReportBody(ym);
-      window.tccCompanyFilter = originalFilter;
-    } else {
-      html += buildMonthlyReportBody(ym);
-    }
-
-    // Restore
-    currentUser.group = originalGroup;
-    html += '</div>';
-  });
-
-  return html;
-}
-
 function buildMonthlyReportHTML(ym){
   // 👇 Check the user's group to determine which report body to build 👇
   const isTCC = String(currentUser.group || '').trim() === 'TCC&FCC';
@@ -8426,11 +8427,15 @@ async function generateMonthlyReportOutput(ym, mode) {
     ? 'position:absolute;top:0;left:0;width:' + CONTENT_W_PX + 'px;background:#ffffff;z-index:-9999;opacity:0;pointer-events:none;'
     : 'position:absolute;top:0;left:-99999px;width:' + CONTENT_W_PX + 'px;background:#ffffff;z-index:-1;';
 
-    // 👇 Switch between Truck Report and TCC Report 👇
-  host.innerHTML = String(currentUser.group).trim() === 'TCC&FCC' 
-    ? buildTCCMonthlyReportBody(ym) 
-    : buildMonthlyReportBody(ym);
-  document.body.appendChild(host);
+  // 👇 Replace the existing host.innerHTML logic with this 👇
+  const isManagerViewing = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer');
+  const targetGroup = isManagerViewing ? (window.managerReportGroup || 'រថយន្ត') : currentUser.group;
+  
+  if (targetGroup === 'TCC&FCC') {
+    host.innerHTML = buildTCCMonthlyReportBody(ym);
+  } else {
+    host.innerHTML = buildMonthlyReportBody(ym);
+  }
 
   try {
     if (document.fonts) {
