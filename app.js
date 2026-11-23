@@ -153,7 +153,12 @@ window.applyReportZoom = function() {
 let listDisplayLimit = 20;
 let notifDisplayLimit = 10;
 window.isGeneratingPdfMode = false;
-
+const TCC_COMPANIES = [
+  'PHNOM PENH AUTONOMOUS PORT',   // PPAP
+  'PORT STEVEDORING COMPANY LIMITED',
+  'PMNT',
+  // ... add all companies you support
+];
 /* =========================================================
    WEB WORKER TIMER (Prevents Mobile Background Throttling)
    ========================================================= */
