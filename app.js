@@ -1493,7 +1493,22 @@ function renderTechnicianReportTab(){
         '</div>' 
       : '') +
     '</div>' +
-    // 👆 END OF DATE AND GROUP ROW 👆
+
+    // 👇 NEW: COMPANY SELECTOR (TCC&FCC only) 👇
+(myGroup === 'TCC&FCC' ?
+  '<div class="row g-2 align-items-end mb-3">' +
+    '<div class="col-12">' +
+      '<label class="small fw-bold text-muted mb-1"><i class="bi bi-building me-1"></i>Select Company</label>' +
+      '<select class="form-select form-select-sm fw-bold text-primary" onchange="onTccCompanyFilterChange(this.value)">' +
+        '<option value="ALL"' + ((window.tccCompanyFilter || 'ALL') === 'ALL' ? ' selected' : '') + '>All Companies</option>' +
+        TCC_COMPANIES.map(c =>
+          '<option value="' + escAttr(c) + '"' + (window.tccCompanyFilter === c ? ' selected' : '') + '>' + esc(c) + '</option>'
+        ).join('') +
+      '</select>' +
+    '</div>' +
+  '</div>'
+: '') +
+    
 
     // Standard / After Inspection Toggle (Only for Trucks)
     (String(myGroup).trim() === 'រថយន្ត' ? 
@@ -8204,13 +8219,18 @@ function buildMonthlyReportBody(ym){
   '</div>';
 }
 
+function onTccCompanyFilterChange(value) {
+  window.tccCompanyFilter = value;
+  renderCurrentTab(); // or re-render the report tab
+}
+
 function buildTCCMonthlyReportBody(ym) {
   // 👇 1. Determine the ACTUAL group to render 👇
   const isManagerViewing = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer');
   const myGroup = isManagerViewing ? (window.managerReportGroup || 'TCC&FCC') : currentUser.group;
   
   // 👇 2. Determine the company filter 👇
-  const selectedCompany = isManagerViewing ? 'ALL' : (window.tccCompanyFilter || 'PPAP');
+  const selectedCompany = window.tccCompanyFilter || 'ALL';
   
   // 👇 3. Filter submissions using the correct group and company 👇
   const monthSubs = (APP.submissions || []).filter(s => {
