@@ -216,7 +216,15 @@ let homeHistoryFilter   = 'all';
 let homeStatFilter      = 'all';
 let homeExpandedSections = {};
 let dashboardSubTab = 'overview';
-let mtnFilter       = 'pending';
+let mtnFilter       = 'all';
+// MTN Management Status tab (new repair-request flow)
+let mtnStatusFilter  = 'all';   // 'all' | '' (not requested) | 'Requested' | 'Waiting Repair' | 'Waiting Spare Part' | 'Repaired'
+let mtnStatusGroup   = 'all';
+let mtnStatusCompany = 'all';
+let mtnStatusMonth   = '';      // 'YYYY-MM' or '' = all months
+let mtnStatusSearch  = '';
+let mtnStatusSort    = 'newest';
+let mtnStatusLimit   = 25;
 let homeReportMonth = isoToday().slice(0, 7);
 let homeReportDate  = isoToday();
 
@@ -487,6 +495,10 @@ window.toggleSideNav = function() {
 };
 
 window.switchApp = function(app) {
+  if (currentUser && currentUser.role === 'repair' && app === 'daily') {
+    showAlert('Daily checklist is not available for Repair Service', 'warning');
+    return;
+  }
   if (currentApp === app) {
     if (window.innerWidth < 992) toggleSideNav();
     return;
@@ -611,7 +623,11 @@ function renderBottomNav(){
   const role = currentUser.role;
   let nav = '<a href="#" data-page="home"><i class="bi bi-house-door"></i>Home</a>';
   
-  if (role === 'driver' && currentApp === 'monthly') { 
+  if (role === 'repair') {
+    // Repair Service: status workspace + dashboard only
+    nav = '<a href="#" data-page="home"><i class="bi bi-tools"></i>MTN Status</a>' +
+          '<a href="#" data-page="dashboard"><i class="bi bi-bar-chart"></i>Dashboard</a>';
+  } else if (role === 'driver' && currentApp === 'monthly') { 
     nav += '<a href="#" data-page="list"><i class="bi bi-clock-history"></i>History</a>'; 
   } else {
     nav += '<a href="#" data-page="list"><i class="bi bi-list-ul"></i>List</a>';
@@ -1026,6 +1042,13 @@ $(document).ready(function(){
    ========================================================= */
 function renderHome(){
   if (!APP.loaded) { bootLoad(); return; }
+
+  // Repair Service lands directly on the MTN status workspace
+  if (currentUser.role === 'repair') {
+    dashboardSubTab = 'status';
+    renderDashboard();
+    return;
+  }
   
   if (currentApp === 'daily') {
     renderDailyHome();
@@ -1076,14 +1099,13 @@ function findDefaultDriver(equipmentId){
 function countIssueCodes(sub){
   const counts = { all: 0, UF: 0, NF: 0, NA: 0, Ad: 0, T: 0 };
   const fixed  = { all: 0, UF: 0, NF: 0, NA: 0, Ad: 0, T: 0 };
-  const mtnItems = sub.mtnItems || {};
+  const caseRepaired = mtnCaseStatus(sub) === 'Repaired';
   (sub.checks || []).forEach(c => {
     const n = normalizeStatus(c.status);
     if (!n || n === 'N') return;
     counts.all++;
     if (counts[n] !== undefined) counts[n]++;
-    const m = mtnItems[c.itemId];
-    if (m && m.status === 'Completed') {
+    if (caseRepaired) {
       fixed.all++;
       if (fixed[n] !== undefined) fixed[n]++;
     }
@@ -3855,7 +3877,7 @@ window.onerror = function(msg, url, line, col, error) {
 function countIssueCodes(sub){
   const counts = { all: 0, UF: 0, NF: 0, NA: 0, Ad: 0, T: 0 };
   const fixed  = { all: 0, UF: 0, NF: 0, NA: 0, Ad: 0, T: 0 };
-  const mtnItems = sub.mtnItems || {};
+  const caseRepaired = mtnCaseStatus(sub) === 'Repaired';
 
   (sub.checks || []).forEach(c => {
     const n = normalizeStatus(c.status);
@@ -3864,8 +3886,7 @@ function countIssueCodes(sub){
     counts.all++;
     if (counts[n] !== undefined) counts[n]++;
 
-    const m = mtnItems[c.itemId];
-    if (m && m.status === 'Completed') {
+    if (caseRepaired) {
       fixed.all++;
       if (fixed[n] !== undefined) fixed[n]++;
     }
@@ -4718,9 +4739,9 @@ function renderDetailItemsList(s){
     else if (!sec && (!currentBlock || currentBlock.sec)) { currentBlock = { sec: '', header: null, items: [] }; blocks.push(currentBlock); }
 
     let photos = []; if (Array.isArray(c.photos)) photos = c.photos.map(p => ({ fileId: p.fileId || '', thumb: p.thumb || '' })); else if (Array.isArray(c.photoIds)) photos = c.photoIds.map(id => ({ fileId: id, thumb: '' })); else if (c.photoId) photos = [{ fileId: c.photoId, thumb: '' }];
-    const mtn = (s.mtnItems || {})[c.itemId] || {};
     const tpl = tplMap[c.itemId] || {};
-    currentBlock.items.push({ itemId: c.itemId, itemKhmer: tpl.itemKhmer || c.itemKhmer || c.itemId, itemEng: tpl.itemEng || '', frequency: tpl.frequency || '', status: n, location: c.location || '', note: c.note || '', photos: photos, label: numberMap[c.itemId], mtnStatus: mtn.status === 'Completed' ? 'Completed' : 'Pending', mtnBy: mtn.by || '', mtnAt: mtn.at || '', mtnRemark: mtn.remark || '' });
+    const mtnLast = mtnLastUpdate(s);
+    currentBlock.items.push({ itemId: c.itemId, itemKhmer: tpl.itemKhmer || c.itemKhmer || c.itemId, itemEng: tpl.itemEng || '', frequency: tpl.frequency || '', status: n, location: c.location || '', note: c.note || '', photos: photos, label: numberMap[c.itemId], mtnStatus: mtnCaseStatus(s), mtnBy: (mtnLast && mtnLast.by) || s.mtnBy || '', mtnAt: (mtnLast && mtnLast.at) || s.mtnAt || '', mtnRemark: (mtnLast && mtnLast.remark) || s.mtnRemark || '' });
   });
 
   let truckBannerShown = false;
@@ -4767,7 +4788,9 @@ function renderDetailItemsList(s){
 function renderDetailItemRow(c){
   const isOk     = (c.status === 'N');
   const badgeCls = isOk ? 'status-N' : ('status-' + (c.status || ''));
-  const isFixed  = c.mtnStatus === 'Completed';
+  const caseStatus = c.mtnStatus || '';
+  const statusInfo = mtnStatusInfo(caseStatus);
+  const showRepair = !!c.status && c.status !== 'N' && caseStatus !== '';
 
   const hasL = c.location && c.location.indexOf('L') !== -1;
   const hasR = c.location && c.location.indexOf('R') !== -1;
@@ -4792,10 +4815,10 @@ function renderDetailItemRow(c){
   const photoCount = photos.length;
   const hasPhoto   = photoCount > 0;
   const clickAttrs = hasPhoto ? ' onclick="toggleItemPhoto(\'' + escAttr(c.itemId) + '\', this)" style="cursor:pointer;"' : '';
-  const fixedChip = isFixed ? '<span class="badge bg-success me-2" style="font-size:.68rem;">✅ Fixed</span>' : '';
-  const fixedDetail = isFixed && (c.mtnBy || c.mtnAt) ? '<div class="small text-success mt-1"><i class="bi bi-check-circle-fill me-1"></i>Fixed by <strong>' + esc(c.mtnBy || '—') + '</strong>' + (c.mtnAt ? ' · ' + esc(c.mtnAt) : '') + '</div>' : '';
+  const fixedChip = showRepair ? '<span class="badge bg-' + statusInfo.badge + ' me-2" style="font-size:.68rem;"><i class="bi ' + statusInfo.icon + ' me-1"></i>' + esc(statusInfo.label) + '</span>' : '';
+  const fixedDetail = (showRepair && (c.mtnBy || c.mtnAt)) ? '<div class="small mt-1"><i class="bi ' + statusInfo.icon + ' me-1 text-' + statusInfo.badge + '"></i><span class="text-' + statusInfo.badge + '">' + esc(statusInfo.label) + '</span> by <strong>' + esc(c.mtnBy || '—') + '</strong>' + (c.mtnAt ? ' · ' + esc(c.mtnAt) : '') + (c.mtnRemark ? '<div class="mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(c.mtnRemark) + '</div>' : '') + '</div>' : '';
 
-  return '<div class="check-item detail-item" data-item="' + escAttr(c.itemId) + '" data-status="' + (c.status || '') + '"' + (isFixed ? ' data-mtn="fixed"' : '') + clickAttrs + '><div class="row-line"><div class="label-part">' + numHtml + '<div class="item-text"><span class="item-name-kh">' + esc(c.itemKhmer) + '</span>' + (c.itemEng ? '<span class="item-name-en">' + esc(c.itemEng) + '</span>' : '') + '</div></div><div class="controls-group">' + fixedChip + (hasPhoto ? '<i class="bi bi-image text-primary me-2" title="Has ' + photoCount + ' photo(s)"></i>' + (photoCount > 1 ? '<span class="badge bg-secondary me-2" style="font-size:.6rem;">' + photoCount + '</span>' : '') : '') + (c.status ? '<span class="status-badge ' + badgeCls + '">' + esc(c.status) + '</span>' : '') + locChip + '</div></div>' + (c.note ? '<div class="small text-danger mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(c.note) + '</div>' : '') + fixedDetail + (hasPhoto ? '<div class="item-photo-reveal" data-item="' + escAttr(c.itemId) + '" data-photo-data=\'' + escAttr(JSON.stringify(photos)) + '\' style="display:none;"></div>' : '') + '</div>';
+  return '<div class="check-item detail-item" data-item="' + escAttr(c.itemId) + '" data-status="' + (c.status || '') + '"' + (showRepair ? ' data-mtn="' + escAttr(caseStatus) + '"' : '') + clickAttrs + '><div class="row-line"><div class="label-part">' + numHtml + '<div class="item-text"><span class="item-name-kh">' + esc(c.itemKhmer) + '</span>' + (c.itemEng ? '<span class="item-name-en">' + esc(c.itemEng) + '</span>' : '') + '</div></div><div class="controls-group">' + fixedChip + (hasPhoto ? '<i class="bi bi-image text-primary me-2" title="Has ' + photoCount + ' photo(s)"></i>' + (photoCount > 1 ? '<span class="badge bg-secondary me-2" style="font-size:.6rem;">' + photoCount + '</span>' : '') : '') + (c.status ? '<span class="status-badge ' + badgeCls + '">' + esc(c.status) + '</span>' : '') + locChip + '</div></div>' + (c.note ? '<div class="small text-danger mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(c.note) + '</div>' : '') + fixedDetail + (hasPhoto ? '<div class="item-photo-reveal" data-item="' + escAttr(c.itemId) + '" data-photo-data=\'' + escAttr(JSON.stringify(photos)) + '\' style="display:none;"></div>' : '') + '</div>';
 }
 
 function infoCell(icon, label, value, color){ return '<div class="col-6"><div class="info-row"><i class="bi bi-'+icon+' icon text-'+color+'"></i><div><span class="label">'+esc(label)+'</span><span class="value">'+esc(value||'-')+'</span></div></div></div>'; }
@@ -4858,13 +4881,108 @@ window.addCommentPrompt = function(checkId){
 /* =========================================================
    DASHBOARD & MTN
    ========================================================= */
+
+/* =========================================================
+   MTN REPAIR-REQUEST FLOW HELPERS (Monthly)
+   Case status: '' (not requested) | Requested | Waiting Repair |
+                Waiting Spare Part | Repaired
+   ========================================================= */
+const MTN_STATUS_LIST = ['Requested', 'Waiting Repair', 'Waiting Spare Part', 'Repaired'];
+const MTN_STATUS_INFO = {
+  ''                    : { label: 'Not Requested',      badge: 'secondary', icon: 'bi-dash-circle' },
+  'Requested'           : { label: 'Requested',          badge: 'warning',   icon: 'bi-send-check' },
+  'Waiting Repair'      : { label: 'Waiting Repairing',  badge: 'info',      icon: 'bi-hourglass-split' },
+  'Waiting Spare Part'  : { label: 'Waiting Spare Part', badge: 'primary',   icon: 'bi-box-seam' },
+  'Repaired'            : { label: 'Repaired',           badge: 'success',   icon: 'bi-check-circle-fill' }
+};
+function mtnStatusInfo(status){ return MTN_STATUS_INFO[status] || MTN_STATUS_INFO['']; }
+function mtnNormStatus(raw){
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return '';
+  if (MTN_STATUS_LIST.indexOf(s) !== -1) return s;
+  const low = s.toLowerCase();
+  if (low === 'completed' || low === 'fixed' || low === 'repaired') return 'Repaired';
+  if (low === 'requested') return 'Requested';
+  if (low === 'partial') return 'Waiting Repair';
+  if (low === 'pending' || low === 'none') return '';
+  if (low.indexOf('spare') !== -1) return 'Waiting Spare Part';
+  if (low.indexOf('repair') !== -1) return 'Waiting Repair';
+  return '';
+}
+function mtnCaseStatus(sub){ return mtnNormStatus(sub && sub.mtnStatus); }
+function mtnRequestMeta(sub){
+  const m = (sub && sub.mtnItems) || {};
+  let meta = (m.__request && typeof m.__request === 'object') ? m.__request : null;
+  if (!meta) {
+    // Legacy rows: only MTN-By / MTN-At / MTN-Remark exist
+    meta = {
+      requestedBy: sub ? String(sub.mtnBy || '') : '',
+      requestedAt: sub ? String(sub.mtnAt || '') : '',
+      history: [],
+      lastRemark: sub ? String(sub.mtnRemark || '') : ''
+    };
+  }
+  if (!Array.isArray(meta.history)) meta.history = [];
+  return meta;
+}
+function mtnLastUpdate(sub){
+  const meta = mtnRequestMeta(sub);
+  if (meta.history.length) return meta.history[meta.history.length - 1];
+  if (meta.updatedBy || meta.updatedAt || (sub && sub.mtnAt)) {
+    return {
+      status: mtnCaseStatus(sub),
+      by: meta.updatedBy || (sub && sub.mtnBy) || '',
+      at: meta.updatedAt || (sub && sub.mtnAt) || '',
+      remark: meta.lastRemark || ''
+    };
+  }
+  return null;
+}
+function mtnIsRequester(){ return !!currentUser && currentUser.role === 'admin'; }
+function mtnIsRepairer(){ return !!currentUser && currentUser.role === 'repair'; }
+function mtnCanAct(){ return mtnIsRequester() || mtnIsRepairer(); }
+function mtnCompanyOf(equipmentId){
+  const eq = (APP.equipmentMap && APP.equipmentMap[equipmentId]) ? APP.equipmentMap[equipmentId] : {};
+  return String(eq.companyName || '').trim();
+}
+function mtnMonthOf(dateStr){
+  const m = String(dateStr || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? (m[3] + '-' + String(m[2]).padStart(2, '0')) : '';
+}
+function mtnStatusBadge(subOrStatus){
+  const st = (typeof subOrStatus === 'string') ? mtnNormStatus(subOrStatus) : mtnCaseStatus(subOrStatus);
+  const info = mtnStatusInfo(st);
+  return '<span class="badge bg-' + info.badge + '" style="font-size:.68rem;font-weight:' + (st ? '600' : '500') + ';' + (st ? '' : 'opacity:.75;') + '"><i class="bi ' + info.icon + ' me-1"></i>' + esc(info.label) + '</span>';
+}
+function mtnActionHtml(sub){
+  const st = mtnCaseStatus(sub);
+  const cid = escAttr(sub.checkId);
+  if (mtnIsRequester()) {
+    if (st === '') {
+      return '<button class="btn btn-sm btn-warning" onclick="requestMtnRepair(\'' + cid + '\')"><i class="bi bi-send me-1"></i>Make a Request</button>';
+    }
+    if (st === 'Repaired') {
+      return '<button class="btn btn-sm btn-outline-warning" onclick="requestMtnRepair(\'' + cid + '\')"><i class="bi bi-arrow-repeat me-1"></i>Request Again</button>';
+    }
+    return '<span class="small text-muted"><i class="bi bi-hourglass-split me-1"></i>Awaiting Repair Service</span>';
+  }
+  if (mtnIsRepairer() && st !== '') {
+    return '<select class="form-select form-select-sm fw-semibold" style="min-width:140px;" onchange="setMtnRepairStatus(\'' + cid + '\', this.value)">' +
+      '<option value="">Update status…</option>' +
+      MTN_STATUS_LIST.map(s => '<option value="' + escAttr(s) + '"' + (s === st ? ' selected' : '') + '>' + esc(mtnStatusInfo(s).label) + '</option>').join('') +
+    '</select>';
+  }
+  return '<span class="small text-muted">—</span>';
+}
+
 function renderDashboard(){
   if (!APP.loaded) { bootLoad(); return; }
   if (currentUser.role === 'technician' || currentUser.role === 'driver') { showPage('home'); return; }
 
-  const subTabBar = '<div id="mtnSubTabBar" class="tab-bar mb-3" style="border-radius:10px;"><div class="tab ' + (dashboardSubTab === 'overview' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setDashboardSubTab(\'overview\')"><i class="bi bi-bar-chart me-1"></i>Dashboard</div><div class="tab ' + (dashboardSubTab === 'mtn' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setDashboardSubTab(\'mtn\')"><i class="bi bi-wrench-adjustable me-1"></i>MTN Management</div></div>';
+  const subTabBar = '<div id="mtnSubTabBar" class="tab-bar mb-3" style="border-radius:10px;"><div class="tab ' + (dashboardSubTab === 'overview' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setDashboardSubTab(\'overview\')"><i class="bi bi-bar-chart me-1"></i>Dashboard</div><div class="tab ' + (dashboardSubTab === 'mtn' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setDashboardSubTab(\'mtn\')"><i class="bi bi-wrench-adjustable me-1"></i>MTN Management</div><div class="tab ' + (dashboardSubTab === 'status' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setDashboardSubTab(\'status\')"><i class="bi bi-clipboard2-pulse me-1"></i>MTN Status</div></div>';
   
   if (dashboardSubTab === 'mtn') { renderMtnManagement(subTabBar); return; }
+  if (dashboardSubTab === 'status') { renderMtnStatusTab(subTabBar); return; }
 
   const subs        = APP.submissions;
   const todaySubs   = subs.filter(s => isToday(s.date));
@@ -4881,8 +4999,7 @@ function renderDashboard(){
 
     (s.checks || []).forEach(c => {
       if (normalizeStatus(c.status) === 'UF') {
-        const mtn = (s.mtnItems || {})[c.itemId];
-        if (!mtn || mtn.status !== 'Completed') {
+        if (mtnCaseStatus(s) !== 'Repaired') {
           const tpl = tplMap[c.itemId] || {};
           const kh = tpl.itemKhmer || c.itemId;
           const en = tpl.itemEng || '';
@@ -5027,6 +5144,7 @@ window.loadMoreMtn = function() {
 };
 
 function isIssueCheck(c){ const n = normalizeStatus(c.status); return n && n !== 'N'; }
+
 function getIssueItems(sub){
   const tplMap = {};
   const eqData = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
@@ -5034,14 +5152,23 @@ function getIssueItems(sub){
   const tplList = APP.templates[sub.group + '|' + sg] || APP.templates[sub.group + '|'] || APP.templates[sub.group] || [];
   tplList.forEach(t => { tplMap[t.itemId] = t; });
 
-  const mtnItems = sub.mtnItems || {};
-  return (sub.checks || []).filter(isIssueCheck).map(c => { const t = tplMap[c.itemId] || {}; const m = mtnItems[c.itemId] || {}; return { itemId: c.itemId, code: normalizeStatus(c.status), location: c.location || '', note: c.note || '', itemKhmer: t.itemKhmer || c.itemId, itemEng: t.itemEng || '', frequency: t.frequency || '', mtnStatus: m.status === 'Completed' ? 'Completed' : 'Pending', mtnBy: m.by || '', mtnAt: m.at || '', mtnRemark: m.remark || '' }; }).sort((a, b) => String(a.itemId).localeCompare(String(b.itemId)));
+  return (sub.checks || []).filter(isIssueCheck).map(c => {
+    const t = tplMap[c.itemId] || {};
+    return {
+      itemId: c.itemId,
+      code: normalizeStatus(c.status),
+      location: c.location || '',
+      note: c.note || '',
+      itemKhmer: t.itemKhmer || c.itemId,
+      itemEng: t.itemEng || '',
+      frequency: t.frequency || ''
+    };
+  }).sort((a, b) => String(a.itemId).localeCompare(String(b.itemId)));
 }
-function mtnRollup(sub){
-  const items = getIssueItems(sub); if (items.length === 0) return '';
-  const fixed = items.filter(i => i.mtnStatus === 'Completed').length;
-  if (fixed === 0) return 'Pending'; if (fixed === items.length) return 'Completed'; return 'Partial';
-}
+
+// Kept for backward compatibility: one repair status per checklist case
+// replaces the old per-item Pending / Partial / Completed rollup.
+function mtnRollup(sub){ return mtnCaseStatus(sub); }
 
 let mtnDisplayLimit = 10;
 let mtnItemFilter = null;
@@ -5050,75 +5177,78 @@ let mtnIsUrgentOnly = false;
 
 function renderMtnManagement(subTabBar){
   let issues = (APP.submissions || []).filter(s => s.overall === 'Issues').sort((a, b) => subMs(b) - subMs(a));
-  
+
   if (mtnItemFilter && mtnItemFilter.length > 0) {
-     issues = issues.filter(sub => {
-        return (sub.checks || []).some(c => {
-           if (!mtnItemFilter.includes(c.itemId)) return false;
-           if (mtnIsUrgentOnly) {
-               return normalizeStatus(c.status) === 'UF' && (!(sub.mtnItems || {})[c.itemId] || sub.mtnItems[c.itemId].status !== 'Completed');
-           } else {
-               return normalizeStatus(c.status) !== 'N';
-           }
-        });
-     });
+    issues = issues.filter(sub => (sub.checks || []).some(c => {
+      if (!mtnItemFilter.includes(c.itemId)) return false;
+      if (mtnIsUrgentOnly) return normalizeStatus(c.status) === 'UF' && mtnCaseStatus(sub) !== 'Repaired';
+      return normalizeStatus(c.status) !== 'N';
+    }));
   }
 
-  const pendingList   = issues.filter(s => mtnRollup(s) === 'Pending');
-  const partialList   = issues.filter(s => mtnRollup(s) === 'Partial');
-  const completedList = issues.filter(s => mtnRollup(s) === 'Completed');
+  const lists = {
+    pending:   issues.filter(s => mtnCaseStatus(s) === ''),
+    requested: issues.filter(s => mtnCaseStatus(s) === 'Requested'),
+    waiting:   issues.filter(s => mtnCaseStatus(s) === 'Waiting Repair'),
+    spare:     issues.filter(s => mtnCaseStatus(s) === 'Waiting Spare Part'),
+    repaired:  issues.filter(s => mtnCaseStatus(s) === 'Repaired')
+  };
   const cardCls = (f) => 'stat-card clickable-card' + (mtnFilter === f ? ' active' : '');
 
-  const issueRow = (sub, item) => {
-    const isFixed = item.mtnStatus === 'Completed'; const badgeCls = isFixed ? 'ok' : 'pending'; const badgeTxt = isFixed ? 'Fixed' : 'Pending';
-    let locChip = ''; 
+  const issueRow = (item) => {
+    let locChip = '';
     if (item.frequency) locChip += '<span class="badge bg-info text-dark ms-1" style="font-size:.6rem;">' + esc(item.frequency) + '</span>';
     else {
-      if (item.location.indexOf('L') !== -1) locChip += '<span class="badge bg-secondary ms-1" style="font-size:.6rem;">L</span>'; 
+      if (item.location.indexOf('L') !== -1) locChip += '<span class="badge bg-secondary ms-1" style="font-size:.6rem;">L</span>';
       if (item.location.indexOf('R') !== -1) locChip += '<span class="badge bg-secondary ms-1" style="font-size:.6rem;">R</span>';
     }
-    let statusLine = '';
-    if (isFixed) statusLine = '<div class="small text-success mt-1"><i class="bi bi-check-circle-fill me-1"></i>Fixed by <strong>' + esc(item.mtnBy || '—') + '</strong>' + (item.mtnAt ? ' · ' + esc(item.mtnAt) : '') + '</div>' + (item.mtnRemark ? '<div class="small mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(item.mtnRemark) + '</div>' : '');
-    else if (item.note) statusLine = '<div class="small text-muted mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(item.note) + '</div>';
-    
-    // 👇 HIDE ACTION BUTTONS FOR VIEWERS
-    let actionBtn = '';
-    if (!isViewer()) {
-      actionBtn = isFixed 
-        ? '<button class="btn btn-outline-secondary" style="padding: 2px 8px; font-size: 0.7rem;" onclick="event.stopPropagation();reopenIssueItem(\'' + escAttr(sub.checkId) + '\',\'' + escAttr(item.itemId) + '\')"><i class="bi bi-arrow-counterclockwise" style="font-size: 0.75rem;"></i> Reopen</button>' 
-        : '<button class="btn btn-success" style="padding: 2px 8px; font-size: 0.7rem;" onclick="event.stopPropagation();markIssueItemFixed(\'' + escAttr(sub.checkId) + '\',\'' + escAttr(item.itemId) + '\')"><i class="bi bi-tools" style="font-size: 0.75rem;"></i> Mark Fixed</button>';
-    }
-
-    return '<div class="p-2 mb-2" style="background:var(--bg-color);border-radius:8px;' + (isFixed ? 'opacity:.85;' : '') + '"><div class="d-flex align-items-center justify-content-between gap-2 flex-wrap"><div class="flex-grow-1" style="min-width: 200px;"><div class="fw-semibold small" style="line-height:1.25;"><span class="badge bg-danger me-1" style="font-size:.65rem;">' + esc(item.code) + '</span>' + esc(item.itemKhmer) + locChip + '</div>' + (item.itemEng ? '<div class="small text-muted" style="font-size:.7rem;">' + esc(item.itemEng) + '</div>' : '') + statusLine + '</div><div class="text-center"><span class="status-badge status-' + badgeCls + '" style="font-size:.65rem;min-width:auto;padding:2px 8px;">' + badgeTxt + '</span></div>' + (actionBtn ? '<div class="text-end">' + actionBtn + '</div>' : '') + '</div></div>';
+    return '<div class="p-2 mb-2" style="background:var(--bg-color);border-radius:8px;">' +
+      '<div class="fw-semibold small" style="line-height:1.25;"><span class="badge bg-danger me-1" style="font-size:.65rem;">' + esc(item.code) + '</span>' + esc(item.itemKhmer) + locChip + '</div>' +
+      (item.itemEng ? '<div class="small text-muted" style="font-size:.7rem;">' + esc(item.itemEng) + '</div>' : '') +
+      (item.note ? '<div class="small text-muted mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(item.note) + '</div>' : '') +
+    '</div>';
   };
 
+
   const cardRenderer = (sub) => {
-    const eq = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {}; const items = getIssueItems(sub); const fixed = items.filter(i => i.mtnStatus === 'Completed').length; const roll = mtnRollup(sub);
-    let rollBadgeCls = 'pending'; let rollTxt = 'Pending';
-    if (roll === 'Completed') { rollBadgeCls = 'ok'; rollTxt = 'Completed'; } if (roll === 'Partial') { rollBadgeCls = 'pending'; rollTxt = 'Partial ' + fixed + '/' + items.length; }
-    const allFixed = fixed === items.length && items.length > 0;
-    
+    const eq = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
+    const items = getIssueItems(sub);
+    const meta = mtnRequestMeta(sub);
+    const last = mtnLastUpdate(sub);
+
     let displayItems = items;
     if (mtnItemFilter && mtnItemFilter.length > 0) {
-       displayItems = items.filter(i => {
-           if (!mtnItemFilter.includes(i.itemId)) return false;
-           if (mtnIsUrgentOnly) return i.code === 'UF';
-           return true;
-       });
+      displayItems = items.filter(i => mtnItemFilter.includes(i.itemId) && (!mtnIsUrgentOnly || i.code === 'UF'));
     }
 
-    // 👇 HIDE "FIX ALL" BUTTON FOR VIEWERS
-    return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center"><span><i class="bi bi-truck text-primary me-2"></i><strong>' + esc(eq.shortName || sub.equipmentId) + '</strong> <span class="text-muted small ms-2">(' + esc(sub.date) + ')</span></span><span class="status-badge status-' + rollBadgeCls + '">' + esc(rollTxt) + '</span></div><div class="card-body py-2"><div class="small mb-1"><i class="bi bi-tag me-1 text-muted"></i>' + esc(sub.group) + ' · <i class="bi bi-calendar me-1 text-muted ms-2"></i>' + esc(sub.date) + ' ' + esc(sub.time) + '</div><div class="small mb-2"><i class="bi bi-person me-1 text-muted"></i>Inspector: ' + esc(sub.driverName || sub.username) + '</div><div class="small text-danger fw-semibold mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Issues (' + fixed + ' of ' + items.length + ' fixed)</div>' + displayItems.map(it => issueRow(sub, it)).join('') + '<div class="d-flex gap-2 mt-3"><button class="btn btn-sm btn-outline-primary flex-fill" onclick="viewCheck(\'' + escAttr(sub.checkId) + '\')"><i class="bi bi-eye me-1"></i>View Checklist</button>' + (!allFixed && !isViewer() ? '<button class="btn btn-sm btn-success flex-fill" onclick="markAllIssuesFixed(\'' + escAttr(sub.checkId) + '\')"><i class="bi bi-check2-all me-1"></i>Fix All</button>' : '') + '</div></div></div>';
+    const reqLine = meta.requestedBy
+      ? '<div class="small mt-1"><i class="bi bi-send me-1 text-muted"></i>Requested by <strong>' + esc(meta.requestedBy) + '</strong>' + (meta.requestedAt ? ' · ' + esc(meta.requestedAt) : '') + '</div>'
+      : '';
+    const updLine = (last && last.by)
+      ? '<div class="small mt-1"><i class="bi bi-clock-history me-1 text-muted"></i>Updated by <strong>' + esc(last.by) + '</strong>' + (last.at ? ' · ' + esc(last.at) : '') + (last.remark ? '<div class="mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(last.remark) + '</div>' : '') + '</div>'
+      : '';
+
+    return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center gap-2 flex-wrap"><span><i class="bi bi-truck text-primary me-2"></i><strong>' + esc(eq.shortName || sub.equipmentId) + '</strong> <span class="text-muted small ms-2">(' + esc(sub.date) + ')</span></span>' + mtnStatusBadge(sub) + '</div>' +
+      '<div class="card-body py-2">' +
+        '<div class="small mb-1"><i class="bi bi-tag me-1 text-muted"></i>' + esc(sub.group) + ' · <i class="bi bi-calendar me-1 text-muted ms-2"></i>' + esc(sub.date) + ' ' + esc(sub.time) + '</div>' +
+        '<div class="small mb-2"><i class="bi bi-person me-1 text-muted"></i>Inspector: ' + esc(sub.driverName || sub.username) + ' · <span class="text-muted">' + esc(sub.checkId) + '</span></div>' +
+        '<div class="small text-danger fw-semibold mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Issues (' + items.length + ')</div>' +
+        displayItems.map(issueRow).join('') + reqLine + updLine +
+        '<div class="d-flex gap-2 mt-3 flex-wrap"><button class="btn btn-sm btn-outline-primary flex-fill" onclick="viewCheck(\'' + escAttr(sub.checkId) + '\')"><i class="bi bi-eye me-1"></i>View Checklist</button>' + mtnActionHtml(sub) + '</div>' +
+      '</div></div>';
   };
 
   let visible = issues;
-  if (mtnFilter === 'pending') visible = pendingList.concat(partialList);
-  if (mtnFilter === 'partial') visible = partialList;
-  if (mtnFilter === 'completed') visible = completedList;
+  if (mtnFilter === 'pending')   visible = lists.pending;
+  if (mtnFilter === 'requested') visible = lists.requested;
+  if (mtnFilter === 'waiting')   visible = lists.waiting;
+  if (mtnFilter === 'spare')     visible = lists.spare;
+  if (mtnFilter === 'repaired')  visible = lists.repaired;
 
   const visibleSlice = visible.slice(0, mtnDisplayLimit);
-  
-  const listHtml = visibleSlice.length ? visibleSlice.map(cardRenderer).join('') : '<p class="text-muted small text-center py-4">' + (mtnFilter === 'pending' ? '✓ No pending issues — great work!' : 'No data') + '</p>';
+
+  const emptyMsg = mtnFilter === 'pending' ? '✓ No case waiting for a repair request.' : 'No data';
+  const listHtml = visibleSlice.length ? visibleSlice.map(cardRenderer).join('') : '<p class="text-muted small text-center py-4">' + emptyMsg + '</p>';
 
   let loadMoreHtml = '';
   if (visible.length > mtnDisplayLimit) {
@@ -5128,72 +5258,323 @@ function renderMtnManagement(subTabBar){
     loadMoreHtml = '<div style="padding-bottom: 120px;"></div>';
   }
 
+
   let filterChip = '';
   if (mtnItemFilter && mtnItemFilter.length > 0) {
-    filterChip = `
-      <div class="d-flex align-items-center gap-2 mb-3">
-        <span class="badge bg-danger d-flex align-items-center gap-1" style="font-size:.8rem;padding:6px 10px;">
-          <i class="bi bi-funnel-fill"></i> Filtering by: ${esc(mtnItemLabel)}
-          <span onclick="clearMtnItemFilter()" style="cursor:pointer;margin-left:6px;font-weight:700;">✕</span>
-        </span>
-      </div>
-    `;
+    filterChip = '<div class="d-flex align-items-center gap-2 mb-3"><span class="badge bg-danger d-flex align-items-center gap-1" style="font-size:.8rem;padding:6px 10px;"><i class="bi bi-funnel-fill"></i> Filtering by: ' + esc(mtnItemLabel) + '<span onclick="clearMtnItemFilter()" style="cursor:pointer;margin-left:6px;font-weight:700;">✕</span></span></div>';
   }
 
+  const card = (f, color, label, count) => '<div class="col-4"><div class="' + cardCls(f) + '" onclick="setMtnFilter(\'' + f + '\')"><div class="num text-' + color + '">' + count + '</div><div class="lbl" style="font-size:.62rem;">' + esc(label) + '</div></div></div>';
+
+  const titleMap = { pending: 'Not Requested', requested: 'Requested', waiting: 'Waiting Repairing', spare: 'Waiting Spare Part', repaired: 'Repaired' };
+  const heading = (mtnFilter === 'all') ? 'All Issue Checklists (' + issues.length + ')' : (titleMap[mtnFilter] || '') + ' (' + visible.length + ')';
+
+  const roleHint = mtnIsRequester() ? 'Select a case and press "Make a Request" to send it to Repair Service.'
+                 : mtnIsRepairer() ? 'Update the repair status of the cases requested by Admin.'
+                 : 'Read-only view — repair requests are created by Admin and updated by Repair Service.';
+
   $('#app').html('<div class="container-fluid px-0"><div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0"><i class="bi bi-wrench-adjustable me-2"></i>MTN Management</h5><small class="text-muted">' + esc(currentUser.group === 'ALL' ? 'All groups' : currentUser.group) + '</small></div><button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onclick="syncAllData(true)"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px;">--:--:--</span></button></div>' + subTabBar + filterChip +
-    '<div class="row g-2 mb-3"><div class="col-3"><div class="' + cardCls('pending') + '" onclick="setMtnFilter(\'pending\')"><div class="num text-warning">' + pendingList.length + '</div><div class="lbl">Pending</div></div></div><div class="col-3"><div class="' + cardCls('partial') + '" onclick="setMtnFilter(\'partial\')"><div class="num text-info">' + partialList.length + '</div><div class="lbl">Partial</div></div></div><div class="col-3"><div class="' + cardCls('completed') + '" onclick="setMtnFilter(\'completed\')"><div class="num text-success">' + completedList.length + '</div><div class="lbl">Completed</div></div></div><div class="col-3"><div class="' + cardCls('all') + '" onclick="setMtnFilter(\'all\')"><div class="num text-primary">' + issues.length + '</div><div class="lbl">All</div></div></div></div>' +
-    '<h6 class="mb-2"><i class="bi bi-list-check text-primary me-2"></i>' + (mtnFilter === 'pending' ? 'To Fix (' + (pendingList.length + partialList.length) + ')' : mtnFilter === 'partial' ? 'In Progress (' + partialList.length + ')' : mtnFilter === 'completed' ? 'Completed (' + completedList.length + ')' : 'All Issue Checklists (' + issues.length + ')') + '</h6>' + listHtml + loadMoreHtml + '</div>');
+    '<div class="alert alert-light border small py-2 mb-3"><i class="bi bi-info-circle me-1 text-primary"></i>' + roleHint + '</div>' +
+    '<div class="row g-2 mb-3">' + card('pending', 'warning', 'Not Requested', lists.pending.length) + card('requested', 'dark', 'Requested', lists.requested.length) + card('waiting', 'info', 'Waiting Repairing', lists.waiting.length) + card('spare', 'primary', 'Waiting Spare Part', lists.spare.length) + card('repaired', 'success', 'Repaired', lists.repaired.length) + card('all', 'secondary', 'All Cases', issues.length) + '</div>' +
+    '<h6 class="mb-2"><i class="bi bi-list-check text-primary me-2"></i>' + heading + '</h6>' + listHtml + loadMoreHtml + '</div>');
 }
 
-function _applyLocalItemUpdate(checkId, itemId, status, remark){
-  const sub = APP.submissions.find(x => x.checkId === checkId); if (!sub) return;
+
+/* =========================================================
+   REPAIR REQUEST ACTIONS
+   Admin  -> Make a Request (creates the case request)
+   Repair -> Waiting Repair / Waiting Spare Part / Repaired
+   ========================================================= */
+function _applyMtnLocal(checkId, status, remark){
+  const sub = (APP.submissions || []).find(x => x.checkId === checkId);
+  if (!sub) return;
+  const stamp = dmyToday() + ' ' + nowTimeStr();
   if (!sub.mtnItems) sub.mtnItems = {};
-  if (status === 'Completed') sub.mtnItems[itemId] = { status: 'Completed', by: currentUser.username, at: dmyToday() + ' ' + nowTimeStr(), remark: remark || '' };
-  else delete sub.mtnItems[itemId];
-  sub.mtnStatus = mtnRollup(sub);
+  let meta = (sub.mtnItems.__request && typeof sub.mtnItems.__request === 'object') ? sub.mtnItems.__request : {};
+  if (!Array.isArray(meta.history)) meta.history = [];
+  if (status === 'Requested') {
+    meta.requestedBy = currentUser.username;
+    meta.requestedAt = stamp;
+    meta.requestedItems = getIssueItems(sub).map(i => ({ itemId: i.itemId, code: i.code }));
+  } else if (!meta.requestedBy) {
+    meta.requestedBy = currentUser.username;
+    meta.requestedAt = stamp;
+  }
+  meta.history.push({ status: status, by: currentUser.username, at: stamp, remark: remark || '' });
+  meta.updatedBy = currentUser.username;
+  meta.updatedAt = stamp;
+  meta.lastRemark = remark || '';
+  sub.mtnItems.__request = meta;
+  sub.mtnStatus = status;
+  sub.mtnBy = currentUser.username;
+  sub.mtnAt = stamp;
+  sub.mtnRemark = remark || '';
 }
 
-window.markIssueItemFixed = function(checkId, itemId){
-  if (isViewer()) return; 
-  askRemark({ title: 'Mark Item Fixed', label: 'បញ្ជាក់ការជួសជុល / Remark (optional):', placeholder: 'បានជួសជុលរួច...' }, function(remark){
+window.requestMtnRepair = function(checkId){
+  if (!mtnIsRequester()) { showAlert('Only Admin can make a repair request', 'warning'); return; }
+  const sub = (APP.submissions || []).find(x => x.checkId === checkId);
+  if (!sub) return;
+  const items = getIssueItems(sub);
+  if (!items.length) { showAlert('This checklist has no issues to repair', 'warning'); return; }
+  askRemark({
+    title: 'Request Repair',
+    label: 'ពិពណ៌នាបញ្ហាត្រូវជួសជុល / Describe the repair needed:',
+    placeholder: 'ឧ. ជួសជុលកង់ខាងមុខ និងភ្លើងស្តុប...'
+  }, function(remark){
     if (remark === null) return;
-    showLoading('កំពុងរក្សាទុក...');
+    showLoading('កំពុងបញ្ជូនសំណើជួសជុល...');
     google.script.run.withSuccessHandler(res => {
       hideLoading();
       if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); return; }
-      _applyLocalItemUpdate(checkId, itemId, 'Completed', remark);
-      showAlert('កត់ត្រាថាជួសជុលរួច', 'success'); renderDashboard();
-    }).withFailureHandler(handleError).resolveIssueItem({ checkId: checkId, itemId: itemId, username: currentUser.username, status: 'Completed', remark: remark });
+      _applyMtnLocal(checkId, 'Requested', remark);
+      showAlert('បានបញ្ជូនសំណើជួសជុល (' + items.length + ' បញ្ហា)', 'success');
+      renderDashboard();
+    }).withFailureHandler(handleError).updateMtnRequest({
+      checkId: checkId, status: 'Requested', username: currentUser.username, remark: remark || ''
+    });
   });
 };
 
-window.reopenIssueItem = function(checkId, itemId){
-  askRemark({ title: 'Reopen Issue', label: 'Reason for reopening (optional):', placeholder: 'មូលហេតុ...' }, function(remark){
-    if (remark === null) return;
+window.setMtnRepairStatus = function(checkId, status){
+  if (!mtnIsRepairer()) { showAlert('Only Repair Service can update the repair status', 'warning'); renderDashboard(); return; }
+  if (MTN_STATUS_LIST.indexOf(status) === -1) { renderDashboard(); return; }
+  const label = mtnStatusInfo(status).label;
+  askRemark({
+    title: 'Update Repair Status',
+    label: 'Set status to "' + label + '". Remark (optional):',
+    placeholder: 'ចំណាំបន្ថែម...'
+  }, function(remark){
+    if (remark === null) { renderDashboard(); return; }
     showLoading('កំពុងរក្សាទុក...');
     google.script.run.withSuccessHandler(res => {
       hideLoading();
-      if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); return; }
-      _applyLocalItemUpdate(checkId, itemId, 'Pending', '');
-      showAlert('បានបើកបញ្ហាឡើងវិញ', 'warning'); renderDashboard();
-    }).withFailureHandler(handleError).resolveIssueItem({ checkId: checkId, itemId: itemId, username: currentUser.username, status: 'Pending', remark: '' });
+      if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); renderDashboard(); return; }
+      _applyMtnLocal(checkId, status, remark);
+      showAlert('បានកំណត់ស្ថានភាព: ' + label, 'success');
+      renderDashboard();
+    }).withFailureHandler(handleError).updateMtnRequest({
+      checkId: checkId, status: status, username: currentUser.username, remark: remark || ''
+    });
   });
 };
 
-window.markAllIssuesFixed = function(checkId){
-  if (isViewer()) return; 
-  const sub = APP.submissions.find(x => x.checkId === checkId); if (!sub) return;
-  const items = getIssueItems(sub).filter(i => i.mtnStatus !== 'Completed'); if (items.length === 0) return;
-  askRemark({ title: 'Mark All Fixed', label: 'សម្គាល់ទាំង ' + items.length + ' បញ្ហាថាជួសជុលរួច? / Remark (optional):', placeholder: 'បានជួសជុលរួច...' }, function(remark){
-    if (remark === null) return;
-    showLoading('កំពុងរក្សាទុក...');
-    google.script.run.withSuccessHandler(res => {
-      hideLoading();
-      if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); return; }
-      items.forEach(i => _applyLocalItemUpdate(checkId, i.itemId, 'Completed', remark));
-      showAlert('បានកត់ត្រា ' + items.length + ' បញ្ហាថាជួសជុលរួច', 'success'); renderDashboard();
-    }).withFailureHandler(handleError).resolveIssueItem({ checkId: checkId, username: currentUser.username, status: 'Completed', remark: remark });
+
+/* =========================================================
+   MTN MANAGEMENT STATUS (table + filters)
+   ========================================================= */
+function mtnStatusRowsAll(){
+  const rows = [];
+  (APP.submissions || []).filter(s => s.overall === 'Issues').forEach(sub => {
+    const items = getIssueItems(sub);
+    if (!items.length) return;
+    const eq = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
+    rows.push({
+      sub: sub,
+      eq: eq,
+      items: items,
+      status: mtnCaseStatus(sub),
+      meta: mtnRequestMeta(sub),
+      last: mtnLastUpdate(sub),
+      company: String(eq.companyName || '').trim(),
+      ms: subMs(sub)
+    });
   });
+  return rows;
+}
+
+function mtnStatusFilterRows(rowsAll, ignoreStatus){
+  const search = String(mtnStatusSearch || '').trim().toLowerCase();
+  return rowsAll.filter(r => {
+    if (!ignoreStatus && mtnStatusFilter !== 'all' && r.status !== mtnStatusFilter) return false;
+    if (mtnStatusGroup !== 'all' && r.sub.group !== mtnStatusGroup) return false;
+    if (mtnStatusCompany !== 'all' && r.company !== mtnStatusCompany) return false;
+    if (mtnStatusMonth && mtnMonthOf(r.sub.date) !== mtnStatusMonth) return false;
+    if (search) {
+      const hay = [
+        r.sub.checkId, r.sub.equipmentId, r.eq.shortName || '', r.sub.group, r.company,
+        r.sub.username, r.sub.driverName || '', r.status,
+        r.meta.requestedBy || '', (r.last && r.last.by) || '', (r.last && r.last.remark) || '',
+        r.items.map(i => i.itemKhmer + ' ' + i.itemEng + ' ' + i.code).join(' ')
+      ].join(' ').toLowerCase();
+      if (hay.indexOf(search) === -1) return false;
+    }
+    return true;
+  });
+}
+
+function mtnStatusSortRows(rows){
+  const order = { '': 0, 'Requested': 1, 'Waiting Repair': 2, 'Waiting Spare Part': 3, 'Repaired': 4 };
+  const list = rows.slice();
+  if (mtnStatusSort === 'oldest') list.sort((a, b) => a.ms - b.ms);
+  else if (mtnStatusSort === 'status') list.sort((a, b) => (order[a.status] - order[b.status]) || (b.ms - a.ms));
+  else if (mtnStatusSort === 'equipment') list.sort((a, b) => String(a.eq.shortName || a.sub.equipmentId).localeCompare(String(b.eq.shortName || b.sub.equipmentId)));
+  else list.sort((a, b) => b.ms - a.ms);
+  return list;
+}
+
+
+function renderMtnStatusTab(subTabBar){
+  const rowsAll = mtnStatusRowsAll();
+
+  const groups = [];
+  rowsAll.forEach(r => { if (r.sub.group && groups.indexOf(r.sub.group) === -1) groups.push(r.sub.group); });
+  groups.sort();
+  const companyList = [];
+  rowsAll.forEach(r => { if (r.company && companyList.indexOf(r.company) === -1) companyList.push(r.company); });
+  companyList.sort();
+
+  const rowsForCounts = mtnStatusFilterRows(rowsAll, true);
+  const counts = { 'all': rowsForCounts.length, '': 0, 'Requested': 0, 'Waiting Repair': 0, 'Waiting Spare Part': 0, 'Repaired': 0 };
+  rowsForCounts.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
+
+  const rows = mtnStatusSortRows(mtnStatusFilterRows(rowsAll, false));
+  const shown = rows.slice(0, mtnStatusLimit);
+
+  const opt = (val, label, selected) => '<option value="' + escAttr(val) + '"' + (String(selected) === String(val) ? ' selected' : '') + '>' + esc(label) + '</option>';
+
+  const statusSelect = '<select class="form-select form-select-sm" onchange="setMtnStatusFilter(\'status\', this.value)">' +
+    opt('all', 'All statuses', mtnStatusFilter) + opt('', 'Not Requested', mtnStatusFilter) +
+    MTN_STATUS_LIST.map(s => opt(s, mtnStatusInfo(s).label, mtnStatusFilter)).join('') + '</select>';
+
+  const groupSelect = '<select class="form-select form-select-sm" onchange="setMtnStatusFilter(\'group\', this.value)">' +
+    opt('all', 'All groups', mtnStatusGroup) + groups.map(g => opt(g, g, mtnStatusGroup)).join('') + '</select>';
+
+  const companySelect = '<select class="form-select form-select-sm" onchange="setMtnStatusFilter(\'company\', this.value)">' +
+    opt('all', 'All companies', mtnStatusCompany) + companyList.map(c => opt(c, c, mtnStatusCompany)).join('') + '</select>';
+
+  const sortSelect = '<select class="form-select form-select-sm" onchange="setMtnStatusFilter(\'sort\', this.value)">' +
+    opt('newest', 'Newest first', mtnStatusSort) + opt('oldest', 'Oldest first', mtnStatusSort) +
+    opt('status', 'By status', mtnStatusSort) + opt('equipment', 'By equipment', mtnStatusSort) + '</select>';
+
+  const tableHead = '<th class="text-center" style="width:34px;">#</th><th style="min-width:88px;">Date</th><th style="min-width:150px;">Equipment</th><th class="d-none d-md-table-cell">Group</th>' +
+    (companyList.length ? '<th class="d-none d-lg-table-cell">Company</th>' : '') +
+    '<th style="min-width:130px;">Issues</th><th class="d-none d-md-table-cell">Requested</th><th style="min-width:130px;">Status</th>' +
+    '<th class="d-none d-lg-table-cell">Last update</th><th class="d-none d-xl-table-cell">Remark</th><th class="text-end" style="width:160px;">Action</th>';
+
+  let tbody = '';
+  shown.forEach((r, idx) => {
+    const last = r.last || {};
+    const issueCodes = r.items.map(i => '<span class="badge bg-danger me-1" style="font-size:.6rem;">' + esc(i.code) + '</span>').join('');
+    const issueNames = r.items.slice(0, 3).map(i => esc(i.itemKhmer)).join(' · ') + (r.items.length > 3 ? ' +' + (r.items.length - 3) + ' more' : '');
+    tbody += '<tr>' +
+      '<td class="text-center text-muted">' + (idx + 1) + '</td>' +
+      '<td><div class="fw-semibold">' + esc(r.sub.date) + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.time || '') + '</div></td>' +
+      '<td><div class="fw-semibold">' + esc(r.eq.shortName || r.sub.equipmentId) + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.checkId) + '</div></td>' +
+      '<td class="d-none d-md-table-cell">' + esc(r.sub.group) + '</td>' +
+      (companyList.length ? '<td class="d-none d-lg-table-cell">' + esc(r.company || '—') + '</td>' : '') +
+      '<td><div class="mb-1">' + issueCodes + '<span class="text-muted" style="font-size:.68rem;">(' + r.items.length + ')</span></div><div class="text-muted" style="font-size:.68rem;">' + issueNames + '</div></td>' +
+      '<td class="d-none d-md-table-cell"><div>' + esc(r.meta.requestedBy || '—') + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.meta.requestedAt || '') + '</div></td>' +
+      '<td>' + mtnStatusBadge(r.status) + '</td>' +
+      '<td class="d-none d-lg-table-cell"><div>' + esc(last.by || '—') + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(last.at || '') + '</div></td>' +
+      '<td class="d-none d-xl-table-cell" style="max-width:220px;"><div class="text-truncate" title="' + escAttr(last.remark || '') + '">' + esc(last.remark || '—') + '</div></td>' +
+      '<td class="text-end">' + mtnActionHtml(r.sub) + '</td>' +
+    '</tr>';
+  });
+
+  if (!shown.length) {
+    tbody = '<tr><td colspan="' + (companyList.length ? 11 : 10) + '" class="text-center text-muted py-4">No checklist matches these filters.</td></tr>';
+  }
+
+
+  const card = (f, color, label, count) => {
+    const active = (mtnStatusFilter === f) ? ' active' : '';
+    return '<div class="col-6 col-md-2"><div class="stat-card clickable-card' + active + '" onclick="setMtnStatusFilter(\'status\', \'' + escAttr(f) + '\')"><div class="num text-' + color + '">' + count + '</div><div class="lbl" style="font-size:.62rem;">' + esc(label) + '</div></div></div>';
+  };
+
+  const loadMore = rows.length > mtnStatusLimit
+    ? '<div class="text-center mt-3"><button class="btn btn-sm btn-outline-primary" onclick="loadMoreMtnStatus()"><i class="bi bi-arrow-down-circle me-1"></i>Load more (' + (rows.length - mtnStatusLimit) + ' remaining)</button></div>'
+    : '';
+
+  const header = '<div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0"><i class="bi bi-clipboard2-pulse me-2"></i>MTN Management Status</h5><small class="text-muted">Repair requests · ' + esc(currentUser.group === 'ALL' ? 'All groups' : currentUser.group) + '</small></div><button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onclick="syncAllData(true)"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size:.75rem;min-width:55px;">--:--:--</span></button></div>';
+
+  const filters = '<div class="card mb-3"><div class="card-body py-2">' +
+    '<div class="row g-2 align-items-end">' +
+      '<div class="col-12 col-md-3"><label class="small fw-bold text-muted mb-1">Status</label>' + statusSelect + '</div>' +
+      '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Group</label>' + groupSelect + '</div>' +
+      (companyList.length ? '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Company</label>' + companySelect + '</div>' : '') +
+      '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Month</label><input type="month" class="form-control form-control-sm" value="' + escAttr(mtnStatusMonth) + '" onchange="setMtnStatusFilter(\'month\', this.value)"></div>' +
+      '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Sort</label>' + sortSelect + '</div>' +
+    '</div>' +
+    '<div class="row g-2 align-items-end mt-1">' +
+      '<div class="col-12 col-md-7"><label class="small fw-bold text-muted mb-1">Search</label><input type="text" id="mtnStatusSearch" class="form-control form-control-sm" placeholder="Equipment, item, check ID, technician, remark…" value="' + escAttr(mtnStatusSearch) + '" oninput="setMtnStatusFilter(\'search\', this.value)"></div>' +
+      '<div class="col-6 col-md-3"><button class="btn btn-sm btn-outline-secondary w-100" onclick="clearMtnStatusFilters()"><i class="bi bi-x-circle me-1"></i>Reset filters</button></div>' +
+      '<div class="col-6 col-md-2"><button class="btn btn-sm btn-outline-success w-100" onclick="exportMtnStatusCsv()"><i class="bi bi-file-earmark-excel me-1"></i>Export</button></div>' +
+    '</div>' +
+  '</div></div>';
+
+  $('#app').html('<div class="container-fluid px-0">' + header + subTabBar +
+    '<div class="row g-2 mb-3">' +
+      card('all', 'secondary', 'All cases', counts['all']) +
+      card('', 'warning', 'Not Requested', counts['']) +
+      card('Requested', 'dark', 'Requested', counts['Requested']) +
+      card('Waiting Repair', 'info', 'Waiting Repairing', counts['Waiting Repair']) +
+      card('Waiting Spare Part', 'primary', 'Waiting Spare Part', counts['Waiting Spare Part']) +
+      card('Repaired', 'success', 'Repaired', counts['Repaired']) +
+    '</div>' + filters +
+    '<div class="card"><div class="card-body p-0"><div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0" style="font-size:.78rem;"><thead style="background:var(--bg-color);"><tr>' + tableHead + '</tr></thead><tbody>' + tbody + '</tbody></table></div></div>' +
+    '<div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2 small text-muted"><span>Showing ' + shown.length + ' of ' + rows.length + ' case(s)</span><span>' + (mtnCanAct() ? (mtnIsRequester() ? 'Admin: create requests' : 'Repair Service: update status') : 'Read-only view') + '</span></div></div>' +
+    loadMore + '<div style="padding-bottom:100px;"></div></div>');
+
+  if (window._mtnStatusFocusSearch) {
+    window._mtnStatusFocusSearch = false;
+    const el = document.getElementById('mtnStatusSearch');
+    if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {} }
+  }
+}
+
+
+/* ---------- MTN status tab: filters / export ---------- */
+window.setMtnStatusFilter = function(field, value){
+  if (field === 'status') mtnStatusFilter = (value == null) ? 'all' : String(value);
+  else if (field === 'group') mtnStatusGroup = value || 'all';
+  else if (field === 'company') mtnStatusCompany = value || 'all';
+  else if (field === 'month') mtnStatusMonth = value || '';
+  else if (field === 'sort') mtnStatusSort = value || 'newest';
+  else if (field === 'search') { mtnStatusSearch = value || ''; window._mtnStatusFocusSearch = true; }
+  mtnStatusLimit = 25;
+  renderDashboard();
+};
+
+window.clearMtnStatusFilters = function(){
+  mtnStatusFilter = 'all';
+  mtnStatusGroup = 'all';
+  mtnStatusCompany = 'all';
+  mtnStatusMonth = '';
+  mtnStatusSearch = '';
+  mtnStatusSort = 'newest';
+  mtnStatusLimit = 25;
+  renderDashboard();
+};
+
+window.loadMoreMtnStatus = function(){
+  mtnStatusLimit += 25;
+  renderDashboard();
+};
+
+window.exportMtnStatusCsv = function(){
+  const rows = mtnStatusSortRows(mtnStatusFilterRows(mtnStatusRowsAll(), false));
+  if (!rows.length) { showAlert('No data to export', 'warning'); return; }
+  const cell = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const header = ['Date', 'Check ID', 'Equipment', 'Group', 'Company', 'Issues', 'Requested By', 'Requested At', 'Status', 'Updated By', 'Updated At', 'Remark'];
+  const lines = [header.map(cell).join(',')];
+  rows.forEach(r => {
+    const last = r.last || {};
+    lines.push([
+      r.sub.date, r.sub.checkId, (r.eq.shortName || r.sub.equipmentId), r.sub.group, r.company,
+      r.items.map(i => i.itemKhmer + ' (' + i.code + ')').join(' | '),
+      r.meta.requestedBy || '', r.meta.requestedAt || '', mtnStatusInfo(r.status).label,
+      last.by || '', last.at || '', last.remark || ''
+    ].map(cell).join(','));
+  });
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'MTN_Status_' + isoToday() + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); if (a.parentNode) a.remove(); }, 500);
+  showAlert('CSV exported', 'success');
 };
 
 /* =========================================================
