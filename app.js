@@ -1138,8 +1138,10 @@ function renderHomeViewToggle(){
 }
 
 function renderHomeHistoryTable(){
+  const isManagerViewing = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer');
+  const myGroup = isManagerViewing ? (window.managerReportGroup || 'រថយន្ត') : currentUser.group;
+  
   const ym      = homeHistoryMonth;
-  const myGroup = currentUser.group;
   const currentYM = isoToday().slice(0, 7);
   const isCurrent = ym === currentYM;
   
@@ -1149,15 +1151,37 @@ function renderHomeHistoryTable(){
   while (tempYM >= '2026-01') { monthOptions.push(tempYM); tempYM = shiftMonth(tempYM, -1); }
   const monthSelectOptions = monthOptions.map(m => '<option value="' + escAttr(m) + '"' + (m === ym ? ' selected' : '') + '>' + esc(monthLabel(m)) + (m === currentYM ? ' (current)' : '') + '</option>').join('');
 
+  // Prepare Groups for Dropdown (if Manager)
+  const GROUP_ORDER = ['រថយន្ត', 'RTG', 'គ្រឿងចក្រ', 'TCC&FCC'];
+  const eqGroups = [...new Set((APP.equipment || []).map(e => e.group).filter(Boolean))];
+  const availableGroups = GROUP_ORDER.filter(g => eqGroups.indexOf(g) !== -1);
+
   let html = '<div class="card mb-3">';
   html += '<div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-table me-2"></i>Checklist History</span></div>';
   
-  // Month Selector
-  html += '<div class="p-3 border-bottom" style="border-color:var(--border-color) !important;"><div class="row g-2 align-items-center"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="homePrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onHistoryMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="homeNextMonth()"' + (isCurrent ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>';
-  html += '</div><div class="card-body p-0">';
+  // Month Selector & Group Selector Row
+  html += '<div class="p-3 border-bottom" style="border-color:var(--border-color) !important;"><div class="row g-2 align-items-end">';
+  
+  // Month Controls
+  html += '<div class="col-12 col-md-6"><div class="row g-2 align-items-center">';
+  html += '<div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="homePrevMonth()"><i class="bi bi-chevron-left"></i></button></div>';
+  html += '<div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onHistoryMonthChange(this.value)">' + monthSelectOptions + '</select></div>';
+  html += '<div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="homeNextMonth()"' + (isCurrent ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div>';
+  html += '</div></div>';
+  
+  // Group Dropdown (Only for Manager)
+  if (isManagerViewing) {
+    html += '<div class="col-12 col-md-6">';
+    html += '<label class="small fw-bold text-muted mb-1"><i class="bi bi-diagram-3 me-1"></i>Select Group</label>';
+    html += '<select class="form-select form-select-sm fw-bold text-primary" onchange="onManagerReportGroupChange(this.value)">';
+    html += availableGroups.map(g => '<option value="' + escAttr(g) + '"' + (g === myGroup ? ' selected' : '') + '>' + esc(g) + '</option>').join('');
+    html += '</select></div>';
+  }
+  
+  html += '</div></div><div class="card-body p-0">';
 
   // ==========================================
-  // 👇 NEW LOGIC FOR TCC&FCC 👇
+  // 👇 TCC&FCC LOGIC 👇
   // ==========================================
   if (myGroup === 'TCC&FCC') {
     const monthSubs = (APP.submissions || []).filter(s => s.group === myGroup && isInMonth(s.date, ym));
@@ -1215,7 +1239,7 @@ function renderHomeHistoryTable(){
   // 👇 EXISTING LOGIC FOR OTHER GROUPS 👇
   // ==========================================
   else {
-    const eqList  = APP.equipment || [];
+    const eqList  = (APP.equipment || []).filter(e => e.group === myGroup);
     const monthSubs = (APP.submissions || []).filter(s => s.group === myGroup && isInMonth(s.date, ym));
     
     const byEq = {};
