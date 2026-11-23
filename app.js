@@ -1487,7 +1487,10 @@ function renderTechnicianReportTab(){
     '</div>' +
 
     // Generate Missing PDFs
-    '<div class="d-flex gap-2 flex-wrap mb-3"><button class="btn btn-success flex-fill" onclick="generateMissingPdfs(\'' + ym + '\')"><i class="bi bi-cloud-arrow-up me-1"></i>Generate Missing PDFs to Drive</button></div></div></div>' +
+        // 👇 HIDE FOR MANAGER/DIRECTOR 👇
+    (currentUser.role === 'manager' || currentUser.role === 'manager-viewer' ? '' : 
+      '<div class="d-flex gap-2 flex-wrap mb-3"><button class="btn btn-success flex-fill" onclick="generateMissingPdfs(\'' + ym + '\')"><i class="bi bi-cloud-arrow-up me-1"></i>Generate Missing PDFs to Drive</button></div>'
+    ) + '</div></div>' +  
     
     // Preview Wrapper
     '<div id="reportPreviewWrapper" style="background:#e9ecef; padding: 8px; border-radius:8px; width: 100%; display: flex; align-items: flex-start; overflow: hidden; transition: height 0.2s; position: relative;">' +
