@@ -8172,18 +8172,22 @@ function buildMonthlyReportBody(ym){
 }
 
 function buildTCCMonthlyReportBody(ym) {
-  const myGroup = currentUser.group;
+  // 👇 1. Determine the ACTUAL group to render 👇
+  const isManagerViewing = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer');
+  const myGroup = isManagerViewing ? (window.managerReportGroup || 'TCC&FCC') : currentUser.group;
   
-  // 👇 FILTER BY COMPANY (Case-Insensitive & Trimmed) 👇
-  const selectedCompany = (currentUser.role === 'manager' || currentUser.role === 'manager-viewer') ? 'ALL' : (window.tccCompanyFilter || 'PPAP');
+  // 👇 2. Determine the company filter 👇
+  const selectedCompany = isManagerViewing ? 'ALL' : (window.tccCompanyFilter || 'PPAP');
   
-    const monthSubs = (APP.submissions || []).filter(s => {
+  // 👇 3. Filter submissions using the correct group and company 👇
+  const monthSubs = (APP.submissions || []).filter(s => {
     if (s.group !== myGroup || !isInMonth(s.date, ym)) return false;
-    if (selectedCompany === 'ALL') return true; // 👈 Keep all for Manager
+    if (selectedCompany === 'ALL') return true; 
     const eqData = APP.equipmentMap[s.equipmentId] || {};
     const eqCompany = String(eqData.companyName || 'PPAP').trim().toUpperCase();
     return eqCompany === selectedCompany;
   }).sort((a, b) => parseDmyToMs(a.date) - parseDmyToMs(b.date)); 
+
 
   const [y, m]   = ym.split('-');
   const khMonths = ['មករា','កុម្ភៈ','មីនា','មេសា','ឧសភា','មិថុនា','កក្កដា','សីហា','កញ្ញា','តុលា','វិច្ឆិកា','ធ្នូ'];
@@ -8465,8 +8469,9 @@ async function generateMonthlyReportOutput(ym, mode) {
     window.isGeneratingPdfMode = true;
     
     const canvas = await html2canvas(target, {
-      scale: scale, useCORS: true, allowTaint: true, logging: false,
+      scale: 1.5, useCORS: true, allowTaint: true, logging: false,
       backgroundColor: '#ffffff',
+      removeContainer: false, // 👈 ADD THIS LINE
       windowWidth: CONTENT_W_PX, width: CONTENT_W_PX,
       scrollX: 0, scrollY: 0
     });
