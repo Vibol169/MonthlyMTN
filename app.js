@@ -580,6 +580,7 @@ window.handleSessionExpired = function() {
   authToken = null;
   currentUser = null;
   APP.loaded = false;
+  try { LS.del(BOOTSTRAP_CACHE_KEY); } catch (e) {}
   if (APP.submissions) APP.submissions = [];
   if (APP.dailySubmissions) APP.dailySubmissions = [];
   if (window.pendingChecklist) window.pendingChecklist = null;
@@ -620,12 +621,12 @@ function showApp(){
 }
 
 function renderBottomNav(){
-  const role = currentUser.role;
+  const role = String((currentUser && currentUser.role) || '').trim().toLowerCase();
   let nav = '<a href="#" data-page="home"><i class="bi bi-house-door"></i>Home</a>';
   
   if (role === 'repair') {
-    // Repair Service: status workspace + dashboard only
-    nav = '<a href="#" data-page="home"><i class="bi bi-tools"></i>MTN Status</a>' +
+    // Repair Service: List + Dashboard (Dashboard opens the MTN status workspace)
+    nav = '<a href="#" data-page="list"><i class="bi bi-list-ul"></i>List</a>' +
           '<a href="#" data-page="dashboard"><i class="bi bi-bar-chart"></i>Dashboard</a>';
   } else if (role === 'driver' && currentApp === 'monthly') { 
     nav += '<a href="#" data-page="list"><i class="bi bi-clock-history"></i>History</a>'; 
@@ -668,7 +669,18 @@ function bootLoad(){
   if (!authToken) { showLogin(); return; } // ★ ADD THIS LINE
   
   let cached = null;
-  try { const raw = LS.get(BOOTSTRAP_CACHE_KEY, ''); if (raw) { const obj = JSON.parse(raw); if (obj && obj.user && obj.savedAt && (Date.now() - obj.savedAt < BOOTSTRAP_CACHE_TTL)) cached = obj; } } catch (e) { cached = null; }
+  try {
+    const raw = LS.get(BOOTSTRAP_CACHE_KEY, '');
+    if (raw) {
+      const obj = JSON.parse(raw);
+      if (obj && obj.token === authToken && obj.user && obj.savedAt && (Date.now() - obj.savedAt < BOOTSTRAP_CACHE_TTL)) {
+        cached = obj;
+      } else if (obj && obj.token && obj.token !== authToken) {
+        // Cache belongs to a different sign-in (or a previous user) — never reuse it
+        LS.del(BOOTSTRAP_CACHE_KEY);
+      }
+    }
+  } catch (e) { cached = null; }
 
   if (cached) {
     delete cached.savedAt;
@@ -735,7 +747,7 @@ function fetchBothDatasets(silent){
       if (!resM.success) { 
         if(!silent) {
           showAlert('Load failed. Please check your internet or login again.', 'danger'); 
-          authToken = null; LS.del('authToken'); showLogin(); 
+          authToken = null; LS.del('authToken'); LS.del(BOOTSTRAP_CACHE_KEY); showLogin(); 
         }
         resolve(); return; 
       }
@@ -746,7 +758,7 @@ function fetchBothDatasets(silent){
       LS.set('lastSyncTime', lastSyncTime);
 
       if (!silent) {
-        try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+        try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: authToken, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
         showApp();
       } else {
         if (safeToRefresh()) showPage($('#bottomNav a.active').data('page') || 'home');
@@ -858,7 +870,7 @@ window.syncAllData = function(silent) {
             }
           } else {
             // Hard update (manual refresh or initial load)
-            try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+            try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: authToken, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
             showApp(); // (showApp calls showPage, which handles the UI update)
             fetchExtendedData(true);
           }
@@ -881,6 +893,7 @@ window.reloadAll = function() {
 
 function applyBootstrap(resM, resD){
   APP.user = resM.user; APP.scope = resM.scope || {}; 
+  if (APP.user) APP.user.role = String(APP.user.role || '').trim().toLowerCase();
   APP.users = resM.users || []; 
   APP.equipment = resM.equipment || []; APP.trailers = resM.trailers || [];
   APP.templates = resM.templates || {}; APP.submissions = resM.submissions || [];
@@ -906,7 +919,7 @@ function applyBootstrap(resM, resD){
   APP.loaded = true;
   
   currentUser = { 
-    username: APP.user.username, role: APP.user.role, 
+    username: APP.user.username, role: String(APP.user.role || '').trim().toLowerCase(), 
     group: APP.user.group, equipment: APP.user.equipment || [], 
     fullName: APP.user.fullName 
   };
@@ -987,6 +1000,8 @@ $(document).ready(function(){
     google.script.run.withSuccessHandler(user => {
       if (user) {
         currentUser = user;
+        currentUser.role = String(currentUser.role || '').trim().toLowerCase();
+        currentUser.equipment = currentUser.equipment || [];
         
         // ★ ADD THIS LINE: Hide login form immediately
         $('#loginContainer').hide(); 
@@ -1012,6 +1027,7 @@ $(document).ready(function(){
       if (res.success) {
         authToken = res.token; 
         LS.set('authToken', authToken);
+        try { LS.del(BOOTSTRAP_CACHE_KEY); } catch (e) {}
         currentUser = { username: res.username };
         
         $('#loginContainer').hide(); 
@@ -1046,7 +1062,7 @@ function renderHome(){
   // Repair Service lands directly on the MTN status workspace
   if (currentUser.role === 'repair') {
     dashboardSubTab = 'status';
-    renderDashboard();
+    showPage('dashboard');
     return;
   }
   
@@ -4967,10 +4983,7 @@ function mtnActionHtml(sub){
     return '<span class="small text-muted"><i class="bi bi-hourglass-split me-1"></i>Awaiting Repair Service</span>';
   }
   if (mtnIsRepairer() && st !== '') {
-    return '<select class="form-select form-select-sm fw-semibold" style="min-width:140px;" onchange="setMtnRepairStatus(\'' + cid + '\', this.value)">' +
-      '<option value="">Update status…</option>' +
-      MTN_STATUS_LIST.map(s => '<option value="' + escAttr(s) + '"' + (s === st ? ' selected' : '') + '>' + esc(mtnStatusInfo(s).label) + '</option>').join('') +
-    '</select>';
+    return '<button class="btn btn-sm btn-outline-primary" onclick="openMtnStatusEditor(\'' + cid + '\')"><i class="bi bi-pencil-square me-1"></i>Update</button>';
   }
   return '<span class="small text-muted">—</span>';
 }
@@ -5346,19 +5359,108 @@ window.setMtnRepairStatus = function(checkId, status){
     placeholder: 'ចំណាំបន្ថែម...'
   }, function(remark){
     if (remark === null) { renderDashboard(); return; }
-    showLoading('កំពុងរក្សាទុក...');
-    google.script.run.withSuccessHandler(res => {
-      hideLoading();
-      if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); renderDashboard(); return; }
-      _applyMtnLocal(checkId, status, remark);
-      showAlert('បានកំណត់ស្ថានភាព: ' + label, 'success');
-      renderDashboard();
-    }).withFailureHandler(handleError).updateMtnRequest({
-      checkId: checkId, status: status, username: currentUser.username, remark: remark || ''
-    });
+    _submitMtnStatus(checkId, status, remark || '');
   });
 };
 
+
+/* ---------- Repair status editor (same modal "vibe" as the rest of the app) ---------- */
+function _mtnEditorRow(label, valueHtml){
+  return '<div class="d-flex justify-content-between align-items-start gap-2 py-1 border-bottom" style="border-color:var(--border-color)!important;">' +
+    '<span class="text-muted" style="font-size:.72rem;">' + label + '</span>' +
+    '<span class="text-end fw-semibold" style="font-size:.75rem;">' + valueHtml + '</span></div>';
+}
+
+window.openMtnStatusEditor = function(checkId){
+  if (!mtnIsRepairer()) { showAlert('Only Repair Service can update the repair status', 'warning'); return; }
+  const sub = (APP.submissions || []).find(x => x.checkId === checkId);
+  if (!sub) { showAlert('Checklist not found', 'danger'); return; }
+  const st = mtnCaseStatus(sub);
+  if (!st) { showAlert('This checklist has no repair request yet', 'warning'); return; }
+
+  const items = getIssueItems(sub);
+  const meta = mtnRequestMeta(sub);
+  const last = mtnLastUpdate(sub) || {};
+  const eq = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
+  const company = String(eq.companyName || '').trim();
+
+  const issueChips = items.length
+    ? items.map(i => '<span class="badge bg-danger me-1 mb-1" style="font-size:.62rem;">' + esc(i.code) + '</span>').join('')
+    : '<span class="text-muted small">—</span>';
+  const issueNames = items.slice(0, 8).map(i => esc(i.itemKhmer)).join(' · ') + (items.length > 8 ? ' +' + (items.length - 8) + ' more' : '');
+
+  const choices = MTN_STATUS_LIST.map(s => {
+    const info = mtnStatusInfo(s);
+    const on = (s === st);
+    return '<button type="button" class="btn btn-sm mtn-choice' + (on ? ' btn-' + info.badge + ' active' : ' btn-outline-' + info.badge) + '" data-status="' + escAttr(s) + '" onclick="pickMtnStatus(this)">' +
+      '<i class="bi ' + info.icon + ' me-1"></i>' + esc(info.label) + '</button>';
+  }).join('');
+
+  const html = '<div class="p-3">' +
+    '<div class="card mb-3" style="background:var(--card-bg);"><div class="card-body py-2 px-3">' +
+      _mtnEditorRow('Equipment', esc(eq.shortName || sub.equipmentId)) +
+      _mtnEditorRow('Checklist', esc(sub.date + ' · ' + (sub.time || '') + ' · ' + sub.checkId)) +
+      _mtnEditorRow('Group', esc(sub.group || '—') + (company ? ' · ' + esc(company) : '')) +
+      _mtnEditorRow('Requested by', esc(meta.requestedBy || '—') + (meta.requestedAt ? '<div class="text-muted fw-normal" style="font-size:.68rem;">' + esc(meta.requestedAt) + '</div>' : '')) +
+      _mtnEditorRow('Last update', esc(last.by || '—') + (last.at ? '<div class="text-muted fw-normal" style="font-size:.68rem;">' + esc(last.at) + '</div>' : '')) +
+    '</div></div>' +
+    '<div class="d-flex flex-wrap gap-1 mb-2">' + issueChips + '</div>' +
+    '<div class="text-muted mb-3" style="font-size:.72rem;">' + issueNames + '</div>' +
+    '<label class="form-label small fw-bold mb-1">Repair status</label>' +
+    '<div id="mtnEditorStatus" class="d-flex flex-wrap gap-2 mb-3">' + choices + '</div>' +
+    '<label class="form-label small fw-bold mb-1" for="mtnEditorRemark">Remark (optional)</label>' +
+    '<textarea id="mtnEditorRemark" class="form-control form-control-sm" rows="3" placeholder="ចំណាំបន្ថែម...">' + esc(last.remark || '') + '</textarea>' +
+    '<div class="d-flex gap-2 mt-3">' +
+      '<button type="button" class="btn btn-sm btn-outline-secondary flex-fill" data-bs-dismiss="modal">Cancel</button>' +
+      '<button type="button" class="btn btn-sm btn-primary flex-fill" onclick="saveMtnStatusEditor(\'' + escAttr(sub.checkId) + '\')"><i class="bi bi-check2-circle me-1"></i>Save</button>' +
+    '</div>' +
+  '</div>';
+
+  $('#modalActionButtons').addClass('d-none');
+  $('#modalTitle').text('Update Repair Status');
+  $('#modalBody').html(html);
+  if (window.currentDetailModal) window.currentDetailModal.show();
+  else { const m = new bootstrap.Modal(document.getElementById('detailModal')); m.show(); window.currentDetailModal = m; }
+};
+
+window.pickMtnStatus = function(btn){
+  const box = document.getElementById('mtnEditorStatus');
+  if (!box || !btn) return;
+  box.querySelectorAll('.mtn-choice').forEach(b => {
+    const s = b.getAttribute('data-status');
+    const badge = mtnStatusInfo(s).badge;
+    b.classList.remove('active', 'btn-' + badge);
+    b.classList.add('btn-outline-' + badge);
+  });
+  const st = btn.getAttribute('data-status');
+  btn.classList.remove('btn-outline-' + mtnStatusInfo(st).badge);
+  btn.classList.add('btn-' + mtnStatusInfo(st).badge, 'active');
+};
+
+window.saveMtnStatusEditor = function(checkId){
+  const box = document.getElementById('mtnEditorStatus');
+  const active = box ? box.querySelector('.mtn-choice.active') : null;
+  const status = active ? active.getAttribute('data-status') : '';
+  if (!status) { showAlert('Choose a repair status first', 'warning'); return; }
+  const remarkEl = document.getElementById('mtnEditorRemark');
+  const remark = remarkEl ? String(remarkEl.value || '').trim() : '';
+  if (window.currentDetailModal) window.currentDetailModal.hide();
+  _submitMtnStatus(checkId, status, remark);
+};
+
+function _submitMtnStatus(checkId, status, remark){
+  const label = mtnStatusInfo(status).label;
+  showLoading('កំពុងរក្សាទុក...');
+  google.script.run.withSuccessHandler(res => {
+    hideLoading();
+    if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); renderDashboard(); return; }
+    _applyMtnLocal(checkId, status, remark);
+    showAlert('បានកំណត់ស្ថានភាព: ' + label, 'success');
+    renderDashboard();
+  }).withFailureHandler(handleError).updateMtnRequest({
+    checkId: checkId, status: status, username: currentUser.username, remark: remark || ''
+  });
+}
 
 /* =========================================================
    MTN MANAGEMENT STATUS (table + filters)
