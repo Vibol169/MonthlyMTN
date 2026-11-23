@@ -4954,6 +4954,52 @@ function mtnLastUpdate(sub){
   }
   return null;
 }
+/* ---------- Per issue-item repair status ---------- */
+function mtnItemStatuses(sub){
+  const meta = mtnRequestMeta(sub);
+  return (meta && meta.itemStatus && typeof meta.itemStatus === 'object') ? meta.itemStatus : {};
+}
+function mtnItemStatusOf(sub, itemId){
+  const rec = mtnItemStatuses(sub)[itemId];
+  const st = rec ? mtnNormStatus(rec.status) : '';
+  if (st) return st;
+  // Legacy rows only have one case-level status -> it applies to every item.
+  return mtnCaseStatus(sub);
+}
+function mtnItemUpdatedAt(sub, itemId){
+  const rec = mtnItemStatuses(sub)[itemId];
+  return rec ? { by: String(rec.by || ''), at: String(rec.at || '') } : { by: '', at: '' };
+}
+function mtnItemProgress(sub){
+  const items = getIssueItems(sub);
+  let done = 0;
+  items.forEach(i => { if (mtnItemStatusOf(sub, i.itemId) === 'Repaired') done++; });
+  return { done: done, total: items.length };
+}
+function mtnDeriveCaseStatus(sub, overrides){
+  const items = getIssueItems(sub);
+  if (!items.length) return mtnCaseStatus(sub);
+  let done = 0, spare = false, wait = false;
+  items.forEach(i => {
+    const st = (overrides && overrides[i.itemId]) ? mtnNormStatus(overrides[i.itemId]) : mtnItemStatusOf(sub, i.itemId);
+    if (st === 'Repaired') done++;
+    else if (st === 'Waiting Spare Part') spare = true;
+    else if (st === 'Waiting Repair') wait = true;
+  });
+  if (done === items.length) return 'Repaired';
+  if (spare) return 'Waiting Spare Part';
+  if (wait) return 'Waiting Repair';
+  return 'Requested';
+}
+/* true only when the last update is not simply the request itself
+   (prevents "Requested by A · 22:33 / Updated by A · 22:33" duplicates) */
+function mtnHasRealUpdate(sub){
+  const meta = mtnRequestMeta(sub);
+  const last = mtnLastUpdate(sub);
+  if (!last || !last.by) return false;
+  if (meta.requestedBy && last.by === meta.requestedBy && String(last.at || '') === String(meta.requestedAt || '')) return false;
+  return true;
+}
 function mtnIsRequester(){ return !!currentUser && currentUser.role === 'admin'; }
 function mtnIsRepairer(){ return !!currentUser && currentUser.role === 'repair'; }
 function mtnCanAct(){ return mtnIsRequester() || mtnIsRepairer(); }
@@ -4966,9 +5012,19 @@ function mtnMonthOf(dateStr){
   return m ? (m[3] + '-' + String(m[2]).padStart(2, '0')) : '';
 }
 function mtnStatusBadge(subOrStatus){
-  const st = (typeof subOrStatus === 'string') ? mtnNormStatus(subOrStatus) : mtnCaseStatus(subOrStatus);
+  const isSub = !!(subOrStatus && typeof subOrStatus === 'object');
+  const st = isSub ? mtnCaseStatus(subOrStatus) : mtnNormStatus(subOrStatus);
   const info = mtnStatusInfo(st);
-  return '<span class="badge bg-' + info.badge + '" style="font-size:.68rem;font-weight:' + (st ? '600' : '500') + ';' + (st ? '' : 'opacity:.75;') + '"><i class="bi ' + info.icon + ' me-1"></i>' + esc(info.label) + '</span>';
+  let text = info.label;
+  let tip = info.label;
+  if (isSub && st) {
+    const p = mtnItemProgress(subOrStatus);
+    if (p.total > 1) {
+      text += ' · ' + p.done + '/' + p.total;
+      tip += ' — ' + p.done + ' of ' + p.total + ' issue item(s) repaired';
+    }
+  }
+  return '<span class="badge bg-' + info.badge + '" title="' + escAttr(tip) + '" style="font-size:.68rem;font-weight:' + (st ? '600' : '500') + ';' + (st ? '' : 'opacity:.75;') + '"><i class="bi ' + info.icon + ' me-1"></i>' + esc(text) + '</span>';
 }
 function mtnActionHtml(sub){
   const st = mtnCaseStatus(sub);
@@ -5208,15 +5264,18 @@ function renderMtnManagement(subTabBar){
   };
   const cardCls = (f) => 'stat-card clickable-card' + (mtnFilter === f ? ' active' : '');
 
-  const issueRow = (item) => {
+  const issueRow = (sub, item) => {
     let locChip = '';
     if (item.frequency) locChip += '<span class="badge bg-info text-dark ms-1" style="font-size:.6rem;">' + esc(item.frequency) + '</span>';
     else {
       if (item.location.indexOf('L') !== -1) locChip += '<span class="badge bg-secondary ms-1" style="font-size:.6rem;">L</span>';
       if (item.location.indexOf('R') !== -1) locChip += '<span class="badge bg-secondary ms-1" style="font-size:.6rem;">R</span>';
     }
+    const ist = mtnItemStatusOf(sub, item.itemId);
+    const istInfo = mtnStatusInfo(ist);
+    const istChip = '<span class="badge bg-' + istInfo.badge + ' ms-auto flex-shrink-0" style="font-size:.56rem;" title="Repair status"><i class="bi ' + istInfo.icon + ' me-1"></i>' + esc(istInfo.label) + '</span>';
     return '<div class="p-2 mb-2" style="background:var(--bg-color);border-radius:8px;">' +
-      '<div class="fw-semibold small" style="line-height:1.25;"><span class="badge bg-danger me-1" style="font-size:.65rem;">' + esc(item.code) + '</span>' + esc(item.itemKhmer) + locChip + '</div>' +
+      '<div class="fw-semibold small d-flex align-items-start gap-1" style="line-height:1.25;"><span class="badge bg-danger me-1 flex-shrink-0" style="font-size:.65rem;">' + esc(item.code) + '</span><span class="flex-grow-1" style="min-width:0;">' + esc(item.itemKhmer) + locChip + '</span>' + istChip + '</div>' +
       (item.itemEng ? '<div class="small text-muted" style="font-size:.7rem;">' + esc(item.itemEng) + '</div>' : '') +
       (item.note ? '<div class="small text-muted mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(item.note) + '</div>' : '') +
     '</div>';
@@ -5237,7 +5296,7 @@ function renderMtnManagement(subTabBar){
     const reqLine = meta.requestedBy
       ? '<div class="small mt-1"><i class="bi bi-send me-1 text-muted"></i>Requested by <strong>' + esc(meta.requestedBy) + '</strong>' + (meta.requestedAt ? ' · ' + esc(meta.requestedAt) : '') + '</div>'
       : '';
-    const updLine = (last && last.by)
+    const updLine = (last && last.by && mtnHasRealUpdate(sub))
       ? '<div class="small mt-1"><i class="bi bi-clock-history me-1 text-muted"></i>Updated by <strong>' + esc(last.by) + '</strong>' + (last.at ? ' · ' + esc(last.at) : '') + (last.remark ? '<div class="mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(last.remark) + '</div>' : '') + '</div>'
       : '';
 
@@ -5245,8 +5304,8 @@ function renderMtnManagement(subTabBar){
       '<div class="card-body py-2">' +
         '<div class="small mb-1"><i class="bi bi-tag me-1 text-muted"></i>' + esc(sub.group) + ' · <i class="bi bi-calendar me-1 text-muted ms-2"></i>' + esc(sub.date) + ' ' + esc(sub.time) + '</div>' +
         '<div class="small mb-2"><i class="bi bi-person me-1 text-muted"></i>Inspector: ' + esc(sub.driverName || sub.username) + ' · <span class="text-muted">' + esc(sub.checkId) + '</span></div>' +
-        '<div class="small text-danger fw-semibold mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Issues (' + items.length + ')</div>' +
-        displayItems.map(issueRow).join('') + reqLine + updLine +
+        '<div class="small text-danger fw-semibold mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Issues (' + items.length + ')' + (function(){ const p = mtnItemProgress(sub); return p.done ? '<span class="text-muted fw-normal ms-1">· ' + p.done + ' repaired</span>' : ''; })() + '</div>' +
+        displayItems.map(i => issueRow(sub, i)).join('') + reqLine + updLine +
         '<div class="d-flex gap-2 mt-3 flex-wrap"><button class="btn btn-sm btn-outline-primary flex-fill" onclick="viewCheck(\'' + escAttr(sub.checkId) + '\')"><i class="bi bi-eye me-1"></i>View Checklist</button>' + mtnActionHtml(sub) + '</div>' +
       '</div></div>';
   };
@@ -5314,11 +5373,44 @@ function _applyMtnLocal(checkId, status, remark){
     meta.requestedAt = stamp;
   }
   meta.history.push({ status: status, by: currentUser.username, at: stamp, remark: remark || '' });
+  if (!meta.itemStatus || typeof meta.itemStatus !== 'object') meta.itemStatus = {};
+  getIssueItems(sub).forEach(i => {
+    meta.itemStatus[i.itemId] = { status: status, by: currentUser.username, at: stamp, remark: remark || '' };
+  });
   meta.updatedBy = currentUser.username;
   meta.updatedAt = stamp;
   meta.lastRemark = remark || '';
   sub.mtnItems.__request = meta;
   sub.mtnStatus = status;
+  sub.mtnBy = currentUser.username;
+  sub.mtnAt = stamp;
+  sub.mtnRemark = remark || '';
+}
+
+/* Per issue-item update: same bookkeeping, but the case status is the rollup */
+function _applyMtnItemsLocal(checkId, updates, remark){
+  const sub = (APP.submissions || []).find(x => x.checkId === checkId);
+  if (!sub || !updates || !updates.length) return;
+  const stamp = dmyToday() + ' ' + nowTimeStr();
+  if (!sub.mtnItems) sub.mtnItems = {};
+  let meta = (sub.mtnItems.__request && typeof sub.mtnItems.__request === 'object') ? sub.mtnItems.__request : {};
+  if (!Array.isArray(meta.history)) meta.history = [];
+  if (!meta.itemStatus || typeof meta.itemStatus !== 'object') meta.itemStatus = {};
+  if (!meta.requestedBy) { meta.requestedBy = currentUser.username; meta.requestedAt = stamp; }
+  const overrides = {};
+  updates.forEach(u => {
+    meta.itemStatus[u.itemId] = { status: u.status, by: currentUser.username, at: stamp, remark: remark || '' };
+    meta.history.push({ status: u.status, itemId: u.itemId, by: currentUser.username, at: stamp, remark: remark || '' });
+    overrides[u.itemId] = u.status;
+  });
+  sub.mtnItems.__request = meta;
+  const derived = mtnDeriveCaseStatus(sub, overrides);
+  meta.updatedBy = currentUser.username;
+  meta.updatedAt = stamp;
+  meta.lastRemark = remark || '';
+  if (derived === 'Repaired') { meta.repairedBy = currentUser.username; meta.repairedAt = stamp; }
+  else { meta.repairedBy = ''; meta.repairedAt = ''; }
+  sub.mtnStatus = derived;
   sub.mtnBy = currentUser.username;
   sub.mtnAt = stamp;
   sub.mtnRemark = remark || '';
@@ -5364,11 +5456,37 @@ window.setMtnRepairStatus = function(checkId, status){
 };
 
 
-/* ---------- Repair status editor (same modal "vibe" as the rest of the app) ---------- */
+/* ---------- Repair status editor: one status per issue item ---------- */
 function _mtnEditorRow(label, valueHtml){
   return '<div class="d-flex justify-content-between align-items-start gap-2 py-1 border-bottom" style="border-color:var(--border-color)!important;">' +
     '<span class="text-muted" style="font-size:.72rem;">' + label + '</span>' +
     '<span class="text-end fw-semibold" style="font-size:.75rem;">' + valueHtml + '</span></div>';
+}
+
+const MTN_ITEM_COLORS = { 'Requested': '#ffc107', 'Waiting Repair': '#0dcaf0', 'Waiting Spare Part': '#0d6efd', 'Repaired': '#198754' };
+const MTN_ITEM_TEXT_COLORS = { '': '#6c757d', 'Requested': '#b8860b', 'Waiting Repair': '#0aa2c0', 'Waiting Spare Part': '#0a58ca', 'Repaired': '#146c43' };
+function _mtnItemColor(status){ return MTN_ITEM_COLORS[status] || '#adb5bd'; }
+function _mtnItemTextColor(status){ return MTN_ITEM_TEXT_COLORS[status] || '#6c757d'; }
+
+function _mtnItemEditorRow(sub, item){
+  const st = mtnItemStatusOf(sub, item.itemId) || 'Requested';
+  const rec = mtnItemUpdatedAt(sub, item.itemId);
+  const meta = mtnRequestMeta(sub);
+  // Do not repeat the request itself as a per-item "updated" line
+  const upd = (rec.by && !(rec.by === meta.requestedBy && rec.at === meta.requestedAt)) ? rec : { by: '', at: '' };
+  const opts = MTN_STATUS_LIST.map(s => '<option value="' + escAttr(s) + '"' + (s === st ? ' selected' : '') + '>' + esc(mtnStatusInfo(s).label) + '</option>').join('');
+  return '<div class="mtn-item-row p-2 mb-2" data-item-id="' + escAttr(item.itemId) + '" style="background:var(--bg-color);border-radius:8px;border-left:3px solid ' + _mtnItemColor(st) + ';">' +
+    '<div class="d-flex align-items-start gap-2">' +
+      '<span class="badge bg-danger flex-shrink-0" style="font-size:.6rem;">' + esc(item.code) + '</span>' +
+      '<div class="flex-grow-1" style="min-width:0;">' +
+        '<div class="fw-semibold" style="font-size:.76rem;line-height:1.25;">' + esc(item.itemKhmer) + '</div>' +
+        (item.itemEng ? '<div class="text-muted" style="font-size:.68rem;">' + esc(item.itemEng) + '</div>' : '') +
+        (item.note ? '<div class="text-muted" style="font-size:.66rem;"><i class="bi bi-chat-left-text me-1"></i>' + esc(item.note) + '</div>' : '') +
+        (upd.by ? '<div class="text-muted" style="font-size:.64rem;"><i class="bi bi-clock-history me-1"></i>' + esc(upd.by) + (upd.at ? ' · ' + esc(upd.at) : '') + '</div>' : '') +
+      '</div>' +
+      '<select class="form-select form-select-sm mtn-item-status flex-shrink-0" style="max-width:158px;font-size:.72rem;" onchange="onMtnItemStatusChange(this)">' + opts + '</select>' +
+    '</div>' +
+  '</div>';
 }
 
 window.openMtnStatusEditor = function(checkId){
@@ -5380,21 +5498,16 @@ window.openMtnStatusEditor = function(checkId){
 
   const items = getIssueItems(sub);
   const meta = mtnRequestMeta(sub);
-  const last = mtnLastUpdate(sub) || {};
+  const last = mtnHasRealUpdate(sub) ? (mtnLastUpdate(sub) || {}) : {};
   const eq = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
   const company = String(eq.companyName || '').trim();
 
-  const issueChips = items.length
-    ? items.map(i => '<span class="badge bg-danger me-1 mb-1" style="font-size:.62rem;">' + esc(i.code) + '</span>').join('')
-    : '<span class="text-muted small">—</span>';
-  const issueNames = items.slice(0, 8).map(i => esc(i.itemKhmer)).join(' · ') + (items.length > 8 ? ' +' + (items.length - 8) + ' more' : '');
-
-  const choices = MTN_STATUS_LIST.map(s => {
+  const setAllBtns = MTN_STATUS_LIST.map(s => {
     const info = mtnStatusInfo(s);
-    const on = (s === st);
-    return '<button type="button" class="btn btn-sm mtn-choice' + (on ? ' btn-' + info.badge + ' active' : ' btn-outline-' + info.badge) + '" data-status="' + escAttr(s) + '" onclick="pickMtnStatus(this)">' +
-      '<i class="bi ' + info.icon + ' me-1"></i>' + esc(info.label) + '</button>';
+    return '<button type="button" class="btn btn-sm py-0 px-2 btn-outline-' + info.badge + '" style="font-size:.66rem;" onclick="setAllMtnItems(\'' + escAttr(s) + '\')"><i class="bi ' + info.icon + ' me-1"></i>' + esc(info.label) + '</button>';
   }).join('');
+  const doneInit = items.filter(i => (mtnItemStatusOf(sub, i.itemId) || 'Requested') === 'Repaired').length;
+  const initTone = (items.length && doneInit === items.length) ? 'success' : (doneInit ? 'info' : 'secondary');
 
   const html = '<div class="p-3">' +
     '<div class="card mb-3" style="background:var(--card-bg);"><div class="card-body py-2 px-3">' +
@@ -5402,17 +5515,22 @@ window.openMtnStatusEditor = function(checkId){
       _mtnEditorRow('Checklist', esc(sub.date + ' · ' + (sub.time || '') + ' · ' + sub.checkId)) +
       _mtnEditorRow('Group', esc(sub.group || '—') + (company ? ' · ' + esc(company) : '')) +
       _mtnEditorRow('Requested by', esc(meta.requestedBy || '—') + (meta.requestedAt ? '<div class="text-muted fw-normal" style="font-size:.68rem;">' + esc(meta.requestedAt) + '</div>' : '')) +
-      _mtnEditorRow('Last update', esc(last.by || '—') + (last.at ? '<div class="text-muted fw-normal" style="font-size:.68rem;">' + esc(last.at) + '</div>' : '')) +
+      _mtnEditorRow('Last update', (last.by ? esc(last.by) : '—') + (last.at ? '<div class="text-muted fw-normal" style="font-size:.68rem;">' + esc(last.at) + '</div>' : '')) +
     '</div></div>' +
-    '<div class="d-flex flex-wrap gap-1 mb-2">' + issueChips + '</div>' +
-    '<div class="text-muted mb-3" style="font-size:.72rem;">' + issueNames + '</div>' +
-    '<label class="form-label small fw-bold mb-1">Repair status</label>' +
-    '<div id="mtnEditorStatus" class="d-flex flex-wrap gap-2 mb-3">' + choices + '</div>' +
-    '<label class="form-label small fw-bold mb-1" for="mtnEditorRemark">Remark (optional)</label>' +
-    '<textarea id="mtnEditorRemark" class="form-control form-control-sm" rows="3" placeholder="ចំណាំបន្ថែម...">' + esc(last.remark || '') + '</textarea>' +
+    '<div class="d-flex justify-content-between align-items-center mb-1">' +
+      '<label class="form-label small fw-bold mb-0"><i class="bi bi-list-check me-1 text-primary"></i>Issue items (' + items.length + ')</label>' +
+      '<span id="mtnEditorProgress" class="badge bg-' + initTone + '" style="font-size:.62rem;">' + doneInit + ' of ' + items.length + ' repaired</span>' +
+    '</div>' +
+    '<div class="d-flex flex-wrap gap-1 align-items-center mb-2">' +
+      '<span class="text-muted" style="font-size:.68rem;">Set all:</span>' + setAllBtns +
+    '</div>' +
+    '<div id="mtnEditorItems">' + items.map(i => _mtnItemEditorRow(sub, i)).join('') + '</div>' +
+    (items.length ? '' : '<div class="text-muted small text-center py-3">No issue items</div>') +
+    '<label class="form-label small fw-bold mb-1 mt-2" for="mtnEditorRemark">Remark (optional)</label>' +
+    '<textarea id="mtnEditorRemark" class="form-control form-control-sm" rows="2" placeholder="ចំណាំបន្ថែម..."></textarea>' +
     '<div class="d-flex gap-2 mt-3">' +
       '<button type="button" class="btn btn-sm btn-outline-secondary flex-fill" data-bs-dismiss="modal">Cancel</button>' +
-      '<button type="button" class="btn btn-sm btn-primary flex-fill" onclick="saveMtnStatusEditor(\'' + escAttr(sub.checkId) + '\')"><i class="bi bi-check2-circle me-1"></i>Save</button>' +
+      '<button type="button" class="btn btn-sm btn-primary flex-fill" onclick="saveMtnItemsEditor(\'' + escAttr(sub.checkId) + '\')"><i class="bi bi-check2-circle me-1"></i>Save</button>' +
     '</div>' +
   '</div>';
 
@@ -5421,32 +5539,79 @@ window.openMtnStatusEditor = function(checkId){
   $('#modalBody').html(html);
   if (window.currentDetailModal) window.currentDetailModal.show();
   else { const m = new bootstrap.Modal(document.getElementById('detailModal')); m.show(); window.currentDetailModal = m; }
+  updateMtnEditorProgress();
 };
 
-window.pickMtnStatus = function(btn){
-  const box = document.getElementById('mtnEditorStatus');
-  if (!box || !btn) return;
-  box.querySelectorAll('.mtn-choice').forEach(b => {
-    const s = b.getAttribute('data-status');
-    const badge = mtnStatusInfo(s).badge;
-    b.classList.remove('active', 'btn-' + badge);
-    b.classList.add('btn-outline-' + badge);
+/* Current select state of the editor: [{ itemId, status }] */
+function mtnEditorSelection(){
+  const out = [];
+  const box = document.getElementById('mtnEditorItems');
+  if (!box) return out;
+  box.querySelectorAll('.mtn-item-row').forEach(row => {
+    const sel = row.querySelector('.mtn-item-status');
+    if (!sel) return;
+    out.push({ itemId: row.getAttribute('data-item-id'), status: String(sel.value || '') });
   });
-  const st = btn.getAttribute('data-status');
-  btn.classList.remove('btn-outline-' + mtnStatusInfo(st).badge);
-  btn.classList.add('btn-' + mtnStatusInfo(st).badge, 'active');
+  return out;
+}
+
+function updateMtnEditorProgress(){
+  const el = document.getElementById('mtnEditorProgress');
+  if (!el) return;
+  const sel = mtnEditorSelection();
+  const done = sel.filter(x => x.status === 'Repaired').length;
+  el.className = 'badge bg-' + ((sel.length && done === sel.length) ? 'success' : (done ? 'info' : 'secondary'));
+  el.textContent = done + ' of ' + sel.length + ' repaired';
+}
+
+window.onMtnItemStatusChange = function(sel){
+  const row = (sel && sel.closest) ? sel.closest('.mtn-item-row') : null;
+  if (row) row.style.borderLeftColor = _mtnItemColor(sel.value);
+  updateMtnEditorProgress();
 };
 
-window.saveMtnStatusEditor = function(checkId){
-  const box = document.getElementById('mtnEditorStatus');
-  const active = box ? box.querySelector('.mtn-choice.active') : null;
-  const status = active ? active.getAttribute('data-status') : '';
-  if (!status) { showAlert('Choose a repair status first', 'warning'); return; }
+window.setAllMtnItems = function(status){
+  const box = document.getElementById('mtnEditorItems');
+  if (!box) return;
+  box.querySelectorAll('.mtn-item-row').forEach(row => {
+    const sel = row.querySelector('.mtn-item-status');
+    if (!sel) return;
+    sel.value = status;
+    row.style.borderLeftColor = _mtnItemColor(status);
+  });
+  updateMtnEditorProgress();
+};
+
+window.saveMtnItemsEditor = function(checkId){
+  const sub = (APP.submissions || []).find(x => x.checkId === checkId);
+  if (!sub) { showAlert('Checklist not found', 'danger'); return; }
+  const sel = mtnEditorSelection();
+  if (!sel.length) { showAlert('This checklist has no issue item', 'warning'); return; }
+  const changed = sel.filter(x => (mtnItemStatusOf(sub, x.itemId) || 'Requested') !== x.status);
+  if (!changed.length) { showAlert('No status changed yet', 'warning'); return; }
+  const overrides = {};
+  sel.forEach(x => { overrides[x.itemId] = x.status; });
+  const caseStatus = mtnDeriveCaseStatus(sub, overrides);
   const remarkEl = document.getElementById('mtnEditorRemark');
   const remark = remarkEl ? String(remarkEl.value || '').trim() : '';
   if (window.currentDetailModal) window.currentDetailModal.hide();
-  _submitMtnStatus(checkId, status, remark);
+  _submitMtnItems(checkId, changed, caseStatus, remark);
 };
+
+function _submitMtnItems(checkId, changed, caseStatus, remark){
+  showLoading('កំពុងរក្សាទុក...');
+  google.script.run.withSuccessHandler(res => {
+    hideLoading();
+    if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); renderDashboard(); return; }
+    _applyMtnItemsLocal(checkId, changed, remark);
+    const sub = (APP.submissions || []).find(x => x.checkId === checkId);
+    const p = sub ? mtnItemProgress(sub) : { done: 0, total: changed.length };
+    showAlert('បានរក្សាទុក ' + changed.length + ' ចំណុច · ' + p.done + '/' + p.total + ' repaired', 'success');
+    renderDashboard();
+  }).withFailureHandler(handleError).updateMtnRequest({
+    checkId: checkId, status: caseStatus, items: changed, username: currentUser.username, remark: remark || ''
+  });
+}
 
 function _submitMtnStatus(checkId, status, remark){
   const label = mtnStatusInfo(status).label;
@@ -5557,19 +5722,32 @@ function renderMtnStatusTab(subTabBar){
   let tbody = '';
   shown.forEach((r, idx) => {
     const last = r.last || {};
-    const issueCodes = r.items.map(i => '<span class="badge bg-danger me-1" style="font-size:.6rem;">' + esc(i.code) + '</span>').join('');
-    const issueNames = r.items.slice(0, 3).map(i => esc(i.itemKhmer)).join(' · ') + (r.items.length > 3 ? ' +' + (r.items.length - 3) + ' more' : '');
+    const hasUpd = mtnHasRealUpdate(r.sub);
+    const remarkTxt = hasUpd ? (last.remark || '') : '';
+    // One line per issue item (no wrapping): code badge + item name + its repair status
+    const issueLines = r.items.map(i => {
+      const ist = mtnItemStatusOf(r.sub, i.itemId);
+      const iInfo = mtnStatusInfo(ist);
+      const tip = i.itemKhmer + (i.itemEng ? ' · ' + i.itemEng : '') + ' — ' + iInfo.label;
+      return '<div class="d-flex align-items-center gap-1" style="max-width:250px;">' +
+        '<span class="badge bg-danger flex-shrink-0" style="font-size:.56rem;">' + esc(i.code) + '</span>' +
+        '<span class="text-truncate" style="font-size:.7rem;" title="' + escAttr(tip) + '">' + esc(i.itemKhmer) + '</span>' +
+        '<i class="bi ' + iInfo.icon + ' flex-shrink-0" style="font-size:.66rem;color:' + _mtnItemTextColor(ist) + ';" title="' + escAttr(iInfo.label) + '"></i>' +
+      '</div>';
+    }).join('');
     tbody += '<tr>' +
       '<td class="text-center text-muted">' + (idx + 1) + '</td>' +
       '<td><div class="fw-semibold">' + esc(r.sub.date) + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.time || '') + '</div></td>' +
       '<td><div class="fw-semibold">' + esc(r.eq.shortName || r.sub.equipmentId) + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.checkId) + '</div></td>' +
       '<td class="d-none d-md-table-cell">' + esc(r.sub.group) + '</td>' +
       (companyList.length ? '<td class="d-none d-lg-table-cell">' + esc(r.company || '—') + '</td>' : '') +
-      '<td><div class="mb-1">' + issueCodes + '<span class="text-muted" style="font-size:.68rem;">(' + r.items.length + ')</span></div><div class="text-muted" style="font-size:.68rem;">' + issueNames + '</div></td>' +
+      '<td><div class="text-muted mb-1" style="font-size:.64rem;">' + r.items.length + ' item(s)</div>' + issueLines + '</td>' +
       '<td class="d-none d-md-table-cell"><div>' + esc(r.meta.requestedBy || '—') + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.meta.requestedAt || '') + '</div></td>' +
-      '<td>' + mtnStatusBadge(r.status) + '</td>' +
-      '<td class="d-none d-lg-table-cell"><div>' + esc(last.by || '—') + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(last.at || '') + '</div></td>' +
-      '<td class="d-none d-xl-table-cell" style="max-width:220px;"><div class="text-truncate" title="' + escAttr(last.remark || '') + '">' + esc(last.remark || '—') + '</div></td>' +
+      '<td>' + mtnStatusBadge(r.sub) + '</td>' +
+      '<td class="d-none d-lg-table-cell">' + (hasUpd
+        ? '<div>' + esc(last.by || '') + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(last.at || '') + '</div>'
+        : '<span class="text-muted">—</span>') + '</td>' +
+      '<td class="d-none d-xl-table-cell" style="max-width:220px;"><div class="text-truncate" title="' + escAttr(remarkTxt) + '">' + esc(remarkTxt || '—') + '</div></td>' +
       '<td class="text-end">' + mtnActionHtml(r.sub) + '</td>' +
     '</tr>';
   });
@@ -5614,7 +5792,7 @@ function renderMtnStatusTab(subTabBar){
       card('Waiting Spare Part', 'primary', 'Waiting Spare Part', counts['Waiting Spare Part']) +
       card('Repaired', 'success', 'Repaired', counts['Repaired']) +
     '</div>' + filters +
-    '<div class="card"><div class="card-body p-0"><div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0" style="font-size:.78rem;"><thead style="background:var(--bg-color);"><tr>' + tableHead + '</tr></thead><tbody>' + tbody + '</tbody></table></div></div>' +
+    '<div class="card"><div class="card-body p-0"><div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0" style="font-size:.78rem;white-space:nowrap;"><thead style="background:var(--bg-color);"><tr>' + tableHead + '</tr></thead><tbody>' + tbody + '</tbody></table></div></div>' +
     '<div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2 small text-muted"><span>Showing ' + shown.length + ' of ' + rows.length + ' case(s)</span><span>' + (mtnCanAct() ? (mtnIsRequester() ? 'Admin: create requests' : 'Repair Service: update status') : 'Read-only view') + '</span></div></div>' +
     loadMore + '<div style="padding-bottom:100px;"></div></div>');
 
@@ -5658,15 +5836,18 @@ window.exportMtnStatusCsv = function(){
   const rows = mtnStatusSortRows(mtnStatusFilterRows(mtnStatusRowsAll(), false));
   if (!rows.length) { showAlert('No data to export', 'warning'); return; }
   const cell = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const header = ['Date', 'Check ID', 'Equipment', 'Group', 'Company', 'Issues', 'Requested By', 'Requested At', 'Status', 'Updated By', 'Updated At', 'Remark'];
+  const header = ['Date', 'Check ID', 'Equipment', 'Group', 'Company', 'Issues', 'Requested By', 'Requested At', 'Status', 'Repaired / Total', 'Updated By', 'Updated At', 'Remark'];
   const lines = [header.map(cell).join(',')];
   rows.forEach(r => {
     const last = r.last || {};
+    const hasUpd = mtnHasRealUpdate(r.sub);
+    const p = mtnItemProgress(r.sub);
     lines.push([
       r.sub.date, r.sub.checkId, (r.eq.shortName || r.sub.equipmentId), r.sub.group, r.company,
-      r.items.map(i => i.itemKhmer + ' (' + i.code + ')').join(' | '),
+      r.items.map(i => i.itemKhmer + ' (' + i.code + ') [' + mtnStatusInfo(mtnItemStatusOf(r.sub, i.itemId)).label + ']').join(' | '),
       r.meta.requestedBy || '', r.meta.requestedAt || '', mtnStatusInfo(r.status).label,
-      last.by || '', last.at || '', last.remark || ''
+      p.done + ' / ' + p.total,
+      hasUpd ? (last.by || '') : '', hasUpd ? (last.at || '') : '', hasUpd ? (last.remark || '') : ''
     ].map(cell).join(','));
   });
   const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
