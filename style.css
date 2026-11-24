@@ -232,6 +232,67 @@ body.dark-mode .metric-pill.is-danger { background:rgba(255,107,107,.16); color:
 .rpt-lbl { display:block; font-size:.66rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color: var(--tab-text); margin-bottom:4px; }
 
 /* =========================================================
+   MTN STATUS WORKSPACE
+   ========================================================= */
+/* stat strip: 5 equal cards that always fill the row */
+.mtn-stat { padding: 9px 6px; border-radius: 10px; }
+.mtn-stat .num { font-size: 1.35rem; }
+.mtn-stat .lbl { font-size: .63rem; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mtn-stat .lbl i { font-size: .66rem; opacity: .85; }
+.mtn-num-all  { color: #0d6efd; }
+.mtn-num-nr   { color: var(--tab-text); }
+.mtn-num-req  { color: #b8860b; }
+.mtn-num-pend { color: #0aa2c0; }
+.mtn-num-done { color: #198754; }
+body.dark-mode .mtn-num-all  { color: #8bb9fe; }
+body.dark-mode .mtn-num-req  { color: #ffc107; }
+body.dark-mode .mtn-num-pend { color: #4dd0e1; }
+body.dark-mode .mtn-num-done { color: #8bc34a; }
+
+/* filter panel */
+.mtn-filters { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.06); }
+.mtn-search .input-group-text { background: var(--bg-color); color: var(--tab-text); border-color: var(--input-border); }
+
+/* soft status pills (same language as .metric-pill) */
+.mtn-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: .68rem; font-weight: 700; line-height: 1.5; white-space: nowrap; border: 1px solid transparent; }
+.mtn-pill i { font-size: .72rem; line-height: 1; }
+.mtn-pill-c { padding: 0 5px; border-radius: 8px; background: rgba(0,0,0,.07); font-size: .62rem; font-weight: 700; }
+.mtn-pill.is-nr   { background: rgba(108,117,125,.1);  color: #5c636a; border-color: rgba(108,117,125,.24); }
+.mtn-pill.is-req  { background: rgba(255,193,7,.16);   color: #8a6100; border-color: rgba(255,193,7,.4); }
+.mtn-pill.is-pend { background: rgba(13,202,240,.14);  color: #0a7d90; border-color: rgba(13,202,240,.34); }
+.mtn-pill.is-done { background: rgba(25,135,84,.12);   color: #157347; border-color: rgba(25,135,84,.24); }
+body.dark-mode .mtn-pill.is-nr   { background: rgba(173,181,189,.14); color: #ced4da; border-color: rgba(173,181,189,.28); }
+body.dark-mode .mtn-pill.is-req  { background: rgba(255,193,7,.14);  color: #ffc107; border-color: rgba(255,193,7,.3); }
+body.dark-mode .mtn-pill.is-pend { background: rgba(13,202,240,.16); color: #4dd0e1; border-color: rgba(13,202,240,.3); }
+body.dark-mode .mtn-pill.is-done { background: rgba(139,195,74,.16); color: #a5d76e; border-color: rgba(139,195,74,.28); }
+body.dark-mode .mtn-pill-c { background: rgba(255,255,255,.14); }
+
+/* case table */
+.mtn-table-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 12px; background: var(--header-bg); border-bottom: 1px solid var(--border-color); font-size: .74rem; }
+.mtn-table { font-size: .78rem; color: var(--text-color); margin-bottom: 0; }
+.mtn-table thead th { padding: 7px 8px; background: var(--bg-color); color: var(--tab-text); font-size: .64rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+.mtn-table tbody td { padding: 7px 8px; border-bottom: 1px solid var(--border-color); vertical-align: middle; color: var(--text-color); }
+.mtn-table tbody tr:last-child td { border-bottom: 0; }
+.mtn-table tbody tr:hover > td { background: rgba(13,110,253,.05); }
+.mtn-table .mtn-cell-main { font-size: .76rem; font-weight: 600; line-height: 1.25; }
+.mtn-table .mtn-cell-sub { font-size: .66rem; color: var(--tab-text); line-height: 1.3; }
+.mtn-issue-meta { font-size: .62rem; color: var(--tab-text); margin-bottom: 3px; }
+.mtn-issue-line { display: flex; align-items: center; gap: 4px; max-width: 260px; }
+.mtn-issue-line .mtn-issue-name { font-size: .7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mtn-item-ic { flex: 0 0 auto; font-size: .7rem; }
+.mtn-item-ic.is-nr   { color: #6c757d; }
+.mtn-item-ic.is-req  { color: #b8860b; }
+.mtn-item-ic.is-pend { color: #0aa2c0; }
+.mtn-item-ic.is-part { color: #0a58ca; }
+.mtn-item-ic.is-done { color: #146c43; }
+body.dark-mode .mtn-item-ic.is-nr   { color: #adb5bd; }
+body.dark-mode .mtn-item-ic.is-req  { color: #ffc107; }
+body.dark-mode .mtn-item-ic.is-pend { color: #4dd0e1; }
+body.dark-mode .mtn-item-ic.is-part { color: #8bb9fe; }
+body.dark-mode .mtn-item-ic.is-done { color: #a5d76e; }
+.mtn-part-banner { display: inline-flex; align-items: center; gap: 4px; font-size: .56rem; font-weight: 700; color: var(--tab-active); background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 0 5px; margin: 2px 0 3px; }
+
+/* =========================================================
    LOADING + LOGIN
    ========================================================= */
 .loading-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,.6); display:flex; justify-content:center; align-items:center; z-index:9999; flex-direction:column; color:#fff; }
