@@ -65,6 +65,13 @@ function roleLabel(role){
   const k = normRole(role);
   return ROLE_LABELS[k] || (k ? k : '—');
 }
+/* The Daily Check app belongs to drivers / admins / managers. Technicians and
+   the repair roles work on the monthly checklist only, so the Daily tab is
+   hidden for them and switchApp() refuses the app. */
+function dailyAppAllowed(){
+  const r = normRole(currentUser && currentUser.role);
+  return r !== 'technician' && r !== 'repair' && r !== 'repair-manager';
+}
 
 window.activeReportForm = 'standard'; // 'standard' or 'table'
 
@@ -528,7 +535,7 @@ window.toggleSideNav = function() {
 
 window.switchApp = function(app) {
   const _role = normRole(currentUser && currentUser.role);
-  if ((_role === 'repair' || _role === 'repair-manager') && app === 'daily') {
+  if (!dailyAppAllowed() && app === 'daily') {
     showAlert('Daily checklist is not available for ' + roleLabel(_role), 'warning');
     return;
   }
@@ -658,6 +665,9 @@ function showApp(){
   } else {
     currentApp = (normRole(currentUser && currentUser.role) === 'driver') ? 'daily' : 'monthly';
   }
+  // Roles without the Daily app can never land on it (even from a saved choice)
+  if (!dailyAppAllowed()) currentApp = 'monthly';
+  $('#tabDaily').toggle(dailyAppAllowed());
   $('#tabMonthly').toggleClass('active', currentApp === 'monthly');
   $('#tabDaily').toggleClass('active', currentApp === 'daily');
 
@@ -703,7 +713,7 @@ function showPage(page){
   pendingChecklist = null; editingCheckId = null;
   // Leaving the page always drops a half-filled daily form (submitting / cancelling clears it first)
   if (typeof pendingDailyChecklist !== 'undefined') pendingDailyChecklist = null;
-  if (typeof dailyFinishState !== 'undefined') dailyFinishState = { checkId: '', items: [], answers: {} };
+  if (typeof dailyFinishState !== 'undefined') dailyFinishState = { checkId: '', items: [], answers: {}, extras: {} };
   
   if (page === 'home')           renderHome();
   else if (page === 'list')      renderList();
@@ -2494,7 +2504,7 @@ function renderDailyDriverHome() {
       '</div>' +
       '<div class="card-body py-2">' +
         '<div class="small"><i class="bi bi-person-badge text-muted me-1"></i><strong>'+esc(driverName)+'</strong></div>' +
-        '<div class="small text-muted mb-1">'+esc(eq.equipmentId || eqId)+' · '+esc(eq.group || '')+(eq.model ? ' · '+esc(eq.model) : '')+'</div>' +
+        '<div class="small text-muted mb-1">'+esc(eq.group || '')+(eq.model ? ' · '+esc(eq.model) : '')+'</div>' +
         infoLine + weeklyLine +
         '<div class="d-flex gap-2 flex-wrap justify-content-end mt-2">' + actions + weeklyBtn + '</div>' +
       '</div>' +
@@ -3200,6 +3210,9 @@ window.handlePhotoSourceSelection = function(inputEl, itemId) {
   if (itemId === 'DAILY') {
     nokPhotos = Array.from(inputEl.files || []);
     renderCheckPhotos();
+  } else if ($('.daily-form-page').length && dailyPhotoBag(itemId)) {
+    // Daily checklist / Finished Form item (or one of the extra fuel fields)
+    onDailyItemPhotoPick(itemId, inputEl);
   } else {
     onItemPhotoPick(itemId, inputEl);
   }
@@ -6736,7 +6749,7 @@ window.cancelAssignBatch = function(batchId, singleId){
 let pendingDailyChecklist = null;
 let nokPhotos = [];
 // Finished Form draft (kept here so showPage() can always clear it safely)
-let dailyFinishState = { checkId: '', items: [], answers: {} };
+let dailyFinishState = { checkId: '', items: [], answers: {}, extras: {} };
 let dailyDetailFilter = 'all';
 
 let dailyDashboardSubTab = 'overview';
@@ -6750,7 +6763,8 @@ let needAttentionViewAllDaily = false;
 let topIssuesViewAllDaily = false;
 
 let dailyListFilters = {
-  status: 'all', group: 'all', equipmentId: 'all', driver: 'all',
+  status: 'all', checkType: 'all', confirmStatus: 'all', opStatus: 'all',
+  group: 'all', equipmentId: 'all', driver: 'all',
   dateFrom: '', dateTo: '', search: '', nokItemIds: [], nokItemLabel: ''
 };
 
@@ -6759,7 +6773,8 @@ let dailyListFilters = {
    ========================================================= */
 window.drillToDaily = function(params) {
   dailyListFilters = {
-    status: 'all', group: 'all', equipmentId: 'all', driver: 'all',
+    status: 'all', checkType: 'all', confirmStatus: 'all', opStatus: 'all',
+    group: 'all', equipmentId: 'all', driver: 'all',
     dateFrom: '', dateTo: '', search: '', nokItemIds: [], nokItemLabel: ''
   };
   Object.keys(params || {}).forEach(k => { dailyListFilters[k] = params[k]; });
@@ -6822,6 +6837,14 @@ function dailyUserLabel(username){
   if (!u) return '';
   const found = (APP.users || []).find(x => x.username === u);
   return (found && found.fullName) ? found.fullName : u;
+}
+
+// Show a trailer short name when we know it, otherwise the raw trailer id
+function dailyTrailerShort(trailerId){
+  const id = String(trailerId || '').trim();
+  if (!id) return '';
+  const t = (APP.trailers || []).find(x => x && String(x.trailerId) === id);
+  return t ? String(t.shortName || t.trailerId) : id;
 }
 
 // Newest DAILY shift for one equipment (weekly checks never own the equipment)
@@ -7011,6 +7034,17 @@ function dailySessionCard(s){
 }
 
 /* Read-only Finished Form answers (OK / NOT OK / N/A + note per item) */
+/* Read-only photo thumbnails for stored ids ({fileId} entries only) */
+function dailyPhotoIdsHtml(photos, size){
+  const list = (Array.isArray(photos) ? photos : []).filter(p => p && p.fileId);
+  if (!list.length) return '';
+  const ids = list.map(p => p.fileId).join(',');
+  return '<div class="photo-gallery mt-1">' + list.map((p, i) =>
+    '<div class="photo-tile" onclick="openLightboxByIds(\'' + escAttr(ids) + '\',' + i + ')">' +
+      '<img src="' + driveThumbUrl(p.fileId, size || 200) + '" loading="lazy" decoding="async" alt="">' +
+    '</div>').join('') + '</div>';
+}
+
 function dailyFinishChecksHtml(s){
   const list = Array.isArray(s && s.finishChecks) ? s.finishChecks : [];
   if (!list.length) return '';
@@ -7026,10 +7060,34 @@ function dailyFinishChecksHtml(s){
         '<span class="small text-nowrap">'+esc(labels[c.status] || c.status) + ' <i class="bi bi-'+icon+'"></i></span>' +
       '</div>' +
       (c.note ? '<div class="small text-danger mt-1"><i class="bi bi-chat-left-text me-1"></i>'+esc(c.note)+'</div>' : '') +
+      dailyPhotoIdsHtml(c.photos) +
     '</div>';
   }).join('');
   return '<div class="card mb-3"><div class="group-header"><i class="bi bi-flag me-2 text-danger"></i>Finished Form</div>' +
     '<div class="card-body p-2">' + rows + '</div></div>';
+}
+
+/* Fuel fields saved with the Finished Form (numbers + their photos) */
+function dailyFinishExtraHtml(s){
+  const fx = (s && s.finishExtra) || {};
+  const defs = [
+    { key: 'fuelLevel', label: 'កម្រិតប្រេងម៉ាស៊ូត', en: 'Diesel level' },
+    { key: 'fuelAdded', label: 'បរិមាណបេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', en: 'Fuel added' }
+  ];
+  const rows = defs.filter(d => {
+    const v = fx[d.key] || {};
+    return (v.value !== '' && v.value != null) || (Array.isArray(v.photos) && v.photos.length);
+  });
+  if (!rows.length) return '';
+  return '<div class="card mb-3"><div class="group-header"><i class="bi bi-fuel-pump me-2"></i>Fuel — Finished Form</div>' +
+    '<div class="card-body py-2">' +
+      rows.map(d => {
+        const v = fx[d.key] || {};
+        return '<div class="mb-2"><div class="small text-muted">' + esc(d.label) + ' <span class="fw-normal">(' + esc(d.en) + ')</span></div>' +
+          '<div class="fw-bold">' + esc(v.value === '' || v.value == null ? '—' : dailyNumText(v.value)) + '</div>' +
+          dailyPhotoIdsHtml(v.photos) + '</div>';
+      }).join('') +
+    '</div></div>';
 }
 
 /* Operational panel used inside the daily detail modal */
@@ -7149,7 +7207,13 @@ function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, hand
     return;
   }
   const starts = (type === DAILY_FREQ_DAILY) ? dailyShiftStartValues(prevSub) : { odo: '', hour: '' };
-  
+  const eqInfo = APP.equipmentMap[equipmentId] || {};
+  // Trailer: inherited from the previous shift when possible, else the default
+  // trailer of the equipment. Weekly checks have no trailer.
+  const trailerDefault = (type === DAILY_FREQ_DAILY)
+    ? String((prevSub && prevSub.trailerId) || eqInfo.trailerId || '')
+    : '';
+
   pendingDailyChecklist = {
     equipmentId: equipmentId, group: group, shortName: shortName,
     checkType: type,
@@ -7158,14 +7222,16 @@ function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, hand
     prevDriverName: prevSub ? (prevSub.driverName || '') : '',
     startOdo: starts.odo,
     startHour: starts.hour,
+    trailerId: trailerDefault,
     agreed: false,
     items: items.slice(), 
+    remarkPhotos: [],
     checks: {}
   };
   
   items.forEach(it => { 
     // OK is the default answer — the driver only changes the items that are not OK
-    pendingDailyChecklist.checks[it.itemId] = { itemId: it.itemId, status: 'ok', note: '' }; 
+    pendingDailyChecklist.checks[it.itemId] = { itemId: it.itemId, status: 'ok', note: '', photos: [] }; 
   });
   
   renderDailyChecklistForm();
@@ -7381,6 +7447,7 @@ function renderDailyChecklistForm(){
         '<button type="button" class="check-btn '+(st==='na'?'selected-na':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
       '</div>' +
       '<div class="nok-note '+(st==='ok'?'':'visible')+'"><input type="text" class="form-control form-control-sm js-nok-note" placeholder="សូមបញ្ជាក់បញ្ហា / ចំណាំ..." value="'+esc(sel.note)+'" oninput="setDailyNokNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
+      dailyPhotoGalleryHtml(it.itemId, sel.photos || []) +
     '</div>';
   }).join('');
 
@@ -7428,7 +7495,24 @@ function renderDailyChecklistForm(){
 
   const counts = dailyAnswerCounts(c);
   const myPhone = (currentUser && currentUser.phone) ? currentUser.phone : '';
-  const trl = (APP.trailers || []).find(t => t.trailerId && String(t.trailerId) === String(eq.trailerId || ''));
+  const trailerId = String(c.trailerId || '');
+  const trailerChoices = (APP.trailers || []).filter(t => t && t.trailerId);
+  const trailerOptions = ['<option value="">— គ្មានរ៉ឺម៉ក / No trailer —</option>']
+    .concat(trailerChoices.map(t => {
+      const id = String(t.trailerId);
+      const label = (t.shortName || id) + (t.status ? ' · ' + t.status : '');
+      return '<option value="' + escAttr(id) + '"' + (trailerId === id ? ' selected' : '') + '>' + esc(label) + '</option>';
+    })).join('');
+  const trailerCard = (!isWeekly && trailerChoices.length)
+    ? '<div class="col-12"><div class="p-3 border rounded-3 bg-white h-100 shadow-sm daily-info-card">' +
+        '<div class="d-flex align-items-center mb-2">' +
+          '<i class="bi bi-link text-secondary me-2" style="font-size:1.1rem;"></i>' +
+          '<span class="text-muted small" style="letter-spacing:.5px;font-family:\'Battambang\',\'Kantumruy Pro\',sans-serif;font-weight:400;">រ៉ឺម៉ក · Trailer</span>' +
+        '</div>' +
+        '<select class="form-select form-select-sm" id="dailyTrailerSelect" onchange="setDailyTrailer(this.value)">' + trailerOptions + '</select>' +
+        '<div class="small text-muted mt-1"><i class="bi bi-info-circle me-1"></i>ជ្រើសរើសរ៉ឺម៉កសម្រាប់ការត្រួតពិនិត្យនេះ</div>' +
+      '</div></div>'
+    : '';
 
   const headerCard =
     '<div class="row g-2 mb-3">' +
@@ -7437,7 +7521,7 @@ function renderDailyChecklistForm(){
         '<div class="small text-muted fw-normal mt-1">' + esc(c.equipmentId) +
           (eq.model ? ' · ' + esc(eq.model) : '') +
           (eq.specificGroup ? ' - ' + esc(eq.specificGroup) : '') + '</div>', 'primary') +
-      (trl ? dailyInfoCard('link', 'រ៉ឺម៉ក', esc(trl.shortName || trl.trailerId), 'secondary') : '') +
+      trailerCard +
       dailyInfoCard('person', 'អ្នកត្រួតពិនិត្យ', dailyInfoCardName((currentUser && currentUser.fullName) || '', myPhone), 'success') +
       (c.prevDriverName ? dailyInfoCard('person-badge', 'អ្នកបើកបរ (រង្វង់មុន)', esc(c.prevDriverName), 'info') : '') +
       dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(dmyToday()) + ' ' + esc(nowTimeStr()), 'warning') +
@@ -7462,12 +7546,8 @@ function renderDailyChecklistForm(){
         '<label class="form-label fw-bold">Remark</label>' +
         '<textarea class="form-control form-control-sm" id="checkRemark" rows="2" placeholder="កំណត់សម្គាល់បន្ថែម..."></textarea>' +
         '<div class="photo-upload-box mt-2">' +
-          '<div class="d-flex align-items-center flex-wrap gap-2">' +
-            '<input type="file" id="checkPhotos" accept="image/*" multiple style="display:none;">' +
-            '<button type="button" class="btn btn-outline-primary btn-sm" onclick="$(\'#checkPhotos\').click()"><i class="bi bi-image me-1"></i>ភ្ជាប់រូបថត</button>' +
-            '<span id="checkPhotoCount" class="text-muted small">0 រូប</span>' +
-          '</div>' +
-          '<div id="checkPhotosPreview" class="photo-thumb-grid"></div>' +
+          '<div class="small fw-bold mb-1"><i class="bi bi-image me-1"></i>រូបថតបន្ថែម · Remark photos</div>' +
+          dailyPhotoGalleryHtml('remark', c.remarkPhotos || []) +
         '</div>' +
       '</div></div>' +
       '<button class="btn btn-primary w-100" style="margin-bottom: 100px !important;" onclick="submitDailyChecklistForm()"><i class="bi bi-check-circle me-1"></i>' +
@@ -7475,17 +7555,13 @@ function renderDailyChecklistForm(){
     '</div>'
   );
   window.scrollTo(0, 0);
-
-  nokPhotos = [];
-  $('#checkPhotos').on('change', function(){
-    nokPhotos = Array.from(this.files || []);
-    renderCheckPhotos();
-  });
-  $(document).off('click', '#checkPhotosPreview .remove-photo').on('click', '#checkPhotosPreview .remove-photo', function(){
-    const idx = parseInt($(this).data('idx'), 10);
-    if (!isNaN(idx)) { nokPhotos.splice(idx, 1); renderCheckPhotos(); }
-  });
 }
+
+/* Trailer chosen at the start of a daily checklist */
+window.setDailyTrailer = function(trailerId){
+  if (!pendingDailyChecklist) return;
+  pendingDailyChecklist.trailerId = String(trailerId || '');
+};
 
 window.toggleDailyAgreement = function(checked){
   if (!pendingDailyChecklist) return;
@@ -7503,6 +7579,135 @@ window.toggleDailyAgreement = function(checked){
           (checked ? 'Driver confirmed the safety agreement' : 'Waiting for Driver to confirm'));
 };
 
+/* ---------- Daily item photos (same camera / gallery UX as the monthly form) ----------
+   Every daily checklist item, every Finished Form item and the two extra fuel
+   fields keep their own photo bag: { status, note, photos:[{fileId, thumb, …}] }. */
+const DAILY_PHOTO_MAX = 10;
+
+function dailyPhotoBag(key){
+  key = String(key || '');
+  if (!key) return null;
+  // The Finished Form owns the page while it is open (answers + the two extra fields)
+  if (dailyFinishState && dailyFinishState.checkId) {
+    if (dailyFinishState.extras && dailyFinishState.extras[key]) return dailyFinishState.extras[key];
+    if (dailyFinishState.answers && dailyFinishState.answers[key]) return dailyFinishState.answers[key];
+  }
+  if (pendingDailyChecklist && pendingDailyChecklist.checks) {
+    if (key === 'remark') {
+      if (!pendingDailyChecklist.remarkPhotos) pendingDailyChecklist.remarkPhotos = [];
+      return { photos: pendingDailyChecklist.remarkPhotos };
+    }
+    if (pendingDailyChecklist.checks[key]) return pendingDailyChecklist.checks[key];
+  }
+  return null;
+}
+
+function dailyPhotoCheckId(){
+  if (dailyFinishState && dailyFinishState.checkId) return dailyFinishState.checkId;
+  return 'NEW';
+}
+
+function dailyPhotoTilesHtml(key, photos){
+  photos = photos || [];
+  const tiles = photos.map((p, idx) => {
+    const src = photoSrc(p, 200);
+    return '<div class="photo-tile" data-photo-idx="' + idx + '" onclick="openDailyPhotoLightbox(\'' + escAttr(key) + '\',' + idx + ')">' +
+      (src ? '<img src="' + src + '" loading="lazy" decoding="async" alt="">'
+           : '<div style="width:90px;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;"><i class="bi bi-image"></i></div>') +
+      (p._uploading ? '<div class="photo-uploading-spinner"><div class="spinner-border spinner-border-sm text-light"></div></div>' : '') +
+      '<button type="button" class="photo-remove-btn" onclick="event.stopPropagation();removeDailyItemPhoto(\'' + escAttr(key) + '\',' + idx + ')">×</button></div>';
+  }).join('');
+  const addTile = (photos.length < DAILY_PHOTO_MAX)
+    ? '<div class="photo-tile photo-add-tile" onclick="takePhotoDirectly(\'' + escAttr(key) + '\')" style="color:#0d6efd;border-color:#0d6efd;" title="Take Photo"><i class="bi bi-camera"></i></div>' +
+      '<div class="photo-tile photo-add-tile" onclick="pickFromGalleryDirectly(\'' + escAttr(key) + '\')" title="Gallery"><i class="bi bi-image"></i></div>'
+    : '';
+  return tiles + addTile;
+}
+
+function dailyPhotoGalleryHtml(key, photos){
+  return '<div class="item-photo-row mt-2"><div class="photo-gallery" data-daily-item="' + escAttr(key) + '">' +
+    dailyPhotoTilesHtml(key, photos || []) + '</div></div>';
+}
+
+function renderDailyItemPhotoPreviews(key){
+  const bag = dailyPhotoBag(key); if (!bag) return;
+  $('.photo-gallery[data-daily-item="' + key + '"]').html(dailyPhotoTilesHtml(key, bag.photos || []));
+}
+
+window.removeDailyItemPhoto = function(key, idx){
+  const bag = dailyPhotoBag(key); if (!bag || !bag.photos) return;
+  bag.photos.splice(idx, 1);
+  renderDailyItemPhotoPreviews(key);
+};
+
+window.openDailyPhotoLightbox = function(key, startIndex){
+  const bag = dailyPhotoBag(key); if (!bag || !bag.photos || !bag.photos.length) return;
+  openLightbox(bag.photos.map(p => ({ fileId: p.fileId || '', dataUrl: p._full || p.thumb || '' })), startIndex);
+};
+
+window.onDailyItemPhotoPick = async function(key, inputEl){
+  const files = Array.from((inputEl && inputEl.files) || []);
+  if (inputEl) inputEl.value = '';
+  const bag = dailyPhotoBag(key); if (!bag || files.length === 0) return;
+  if (!bag.photos) bag.photos = [];
+
+  let processed = [];
+  try { processed = await Promise.all(files.map(f => processImageFile(f).catch(() => null))); } catch (e) { processed = []; }
+
+  const pushed = [];
+  processed.forEach(p => {
+    if (!p) return;
+    const entry = { fileId: '', thumb: p.thumb, _full: p.full, _uploading: true };
+    bag.photos.push(entry); pushed.push(entry);
+  });
+  renderDailyItemPhotoPreviews(key);
+  if (!pushed.length) return;
+
+  const base = bag.photos.length - pushed.length;
+  const payload = pushed.map((p, i) => ({ itemId: key, idx: base + i, dataUrl: p._full }));
+
+  const clearUploading = () => {
+    pushed.forEach(p => {
+      if (!p.fileId) { const idx = bag.photos.indexOf(p); if (idx > -1) bag.photos.splice(idx, 1); }
+      delete p._full; delete p._uploading;
+    });
+    renderDailyItemPhotoPreviews(key);
+  };
+
+  google.script.run
+    .withSuccessHandler(res => {
+      if (res && res.success && res.photoIds) {
+        pushed.forEach((p, i) => {
+          const id = res.photoIds[key + '|' + payload[i].idx];
+          if (id) p.fileId = id;
+        });
+      }
+      clearUploading();
+    })
+    .withFailureHandler(() => { clearUploading(); })
+    .uploadChecklistPhotos({ checkId: dailyPhotoCheckId(), photos: payload, daily: true });
+};
+
+/* True while a photo is still being compressed/uploaded — blocks submit. */
+function dailyHasPendingUploads(state){
+  if (!state) return false;
+  const bags = [];
+  if (state.checks)  Object.keys(state.checks).forEach(k => bags.push(state.checks[k]));
+  if (state.answers) Object.keys(state.answers).forEach(k => bags.push(state.answers[k]));
+  if (state.extras)  Object.keys(state.extras).forEach(k => bags.push(state.extras[k]));
+  if (state.remarkPhotos) bags.push({ photos: state.remarkPhotos });
+  return bags.some(b => ((b && b.photos) || []).some(p => p._uploading || (!p.fileId && p._full)));
+}
+
+/* Only uploaded ids travel to the sheet (never a data URL). */
+function dailyPhotosPayload(photos){
+  return (Array.isArray(photos) ? photos : [])
+    .filter(p => p && p.fileId)
+    .slice(0, DAILY_PHOTO_MAX)
+    .map(p => ({ fileId: p.fileId }));
+}
+
+/* Preview grid for the remark-level photos of the daily checklist */
 function renderCheckPhotos(){
   const c = document.getElementById('checkPhotosPreview');
   if (!c) return;
@@ -7552,17 +7757,29 @@ window.submitDailyChecklistForm = function(){
   const missing = c.items.filter(it => !c.checks[it.itemId].status);
   if (missing.length > 0) { showAlert('សូមជ្រើសរើសគ្រប់ចំណុច ('+missing.length+' ទៀត)', 'warning'); return; }
   if (!c.agreed) { showAlert('Please tick the confirmation box before submitting.', 'warning'); return; }
+  if (dailyHasPendingUploads(c)) { showAlert('រូបថតកំពុងផ្ទុកឡើង — សូមរង់ចាំបន្តិច (photos still uploading)', 'warning'); return; }
 
-  const checks = c.items.map(it => ({ itemId: it.itemId, status: c.checks[it.itemId].status, note: c.checks[it.itemId].note || '' }));
+  const checks = c.items.map(it => {
+    const ans = c.checks[it.itemId] || {};
+    const entry = {
+      itemId: it.itemId, itemKhmer: it.itemKhmer || '', itemEng: it.itemEng || '',
+      status: ans.status, note: ans.note || ''
+    };
+    const photos = dailyPhotosPayload(ans.photos);
+    if (photos.length) entry.photos = photos;
+    return entry;
+  });
   const overall = checks.some(x => x.status === 'nok') ? 'Issues' : 'OK';
+  const remarkPhotoIds = dailyPhotosPayload(c.remarkPhotos).map(p => p.fileId);
 
   const payload = {
     username: currentUser.username, fullName: currentUser.fullName,
     equipmentId: c.equipmentId, group: c.group, overallStatus: overall,
-    checks: checks, remark: $('#checkRemark').val() || '', photoIds: [],
+    checks: checks, remark: $('#checkRemark').val() || '', photoIds: remarkPhotoIds,
     handoverCheckId: c.handoverCheckId || '', handoverRemark: c.handoverRemark || '',
     startOdo: c.startOdo === '' || c.startOdo == null ? '' : c.startOdo,
     startHour: c.startHour === '' || c.startHour == null ? '' : c.startHour,
+    trailerId: isWeekly ? '' : (c.trailerId || ''),
     checkType: isWeekly ? DAILY_FREQ_WEEKLY : DAILY_FREQ_DAILY,
     agreed: true
   };
@@ -7591,7 +7808,7 @@ window.submitDailyChecklistForm = function(){
         date: dmyToday(), time: nowTimeStr(),
         username: currentUser.username, driverName: currentUser.fullName,
         equipmentId: c.equipmentId, group: c.group, overall: overall,
-        checks: checks, remark: payload.remark, photoIds: [],
+        checks: checks, remark: payload.remark, photoIds: remarkPhotoIds,
         handoverCheckId: c.handoverCheckId || '',
         reviewedBy: '', reviewedRemark: '', reviewedAt: '',
         confirmStatus: 'Pending', confirmedBy: '', confirmedAt: '', confirmRemark: '',
@@ -7601,6 +7818,7 @@ window.submitDailyChecklistForm = function(){
         opAt: isWeekly ? '' : stamp, opBy: isWeekly ? '' : currentUser.username,
         startOdo: (res.startOdo === undefined ? payload.startOdo : res.startOdo),
         startHour: (res.startHour === undefined ? payload.startHour : res.startHour),
+        trailerId: isWeekly ? '' : (res.trailerId === undefined ? payload.trailerId : res.trailerId),
         endOdo: '', endHour: '', endRemark: '', finishedAt: '', finishedBy: '',
         handoverBy: '', handoverAt: '', handoverRemark: '',
         checkType: isWeekly ? DAILY_FREQ_WEEKLY : DAILY_FREQ_DAILY,
@@ -7700,6 +7918,12 @@ window.setDailyFinishNote = function(itemId, val){
   dailyFinishState.answers[itemId].note = val;
 };
 
+/* Fuel Level / Fuel Added values (photos are kept by the shared photo bag) */
+window.setDailyFinishExtraValue = function(key, val){
+  if (!dailyFinishState || !dailyFinishState.extras || !dailyFinishState.extras[key]) return;
+  dailyFinishState.extras[key].value = String(val == null ? '' : val);
+};
+
 window.openDailyFinishForm = function(checkId){
   const s = (APP.dailySubmissions || []).find(x => x.checkId === checkId);
   if (!s) return;
@@ -7710,17 +7934,31 @@ window.openDailyFinishForm = function(checkId){
   const items = dailyTplItems(s.group, DAILY_FREQ_FINISH);
   const answers = {};
   // OK is the default for every item (same as the daily checklist)
-  items.forEach(it => { answers[it.itemId] = { status: 'ok', note: '' }; });
+  items.forEach(it => { answers[it.itemId] = { status: 'ok', note: '', photos: [] }; });
   (s.finishChecks || []).forEach(f => {
     if (!answers[f.itemId]) return;
     if (f.status) answers[f.itemId].status = f.status;
     answers[f.itemId].note = f.note || '';
+    answers[f.itemId].photos = (Array.isArray(f.photos) ? f.photos : [])
+      .filter(p => p && p.fileId).map(p => ({ fileId: p.fileId }));
   });
-  dailyFinishState = { checkId: checkId, items: items, answers: answers };
+
+  // Two extra fields, each with its own photos (saved in Finish-Extra-JSON)
+  const fx = s.finishExtra || {};
+  const extras = {};
+  ['fuelLevel', 'fuelAdded'].forEach(k => {
+    const v = fx[k] || {};
+    extras[k] = {
+      value: (v.value === '' || v.value == null) ? '' : String(v.value),
+      photos: (Array.isArray(v.photos) ? v.photos : []).filter(p => p && p.fileId).map(p => ({ fileId: p.fileId }))
+    };
+  });
+
+  dailyFinishState = { checkId: checkId, items: items, answers: answers, extras: extras };
 
   const itemsHtml = items.length
     ? items.map((it, i) => {
-        const a = answers[it.itemId] || { status: 'ok', note: '' };
+        const a = answers[it.itemId] || { status: 'ok', note: '', photos: [] };
         const st = a.status || 'ok';
         return '<div class="check-item '+st+'" data-finish="'+escAttr(it.itemId)+'" data-status="'+escAttr(st)+'">' +
           '<div class="row-line"><div class="label-part"><span class="item-num">'+(i+1)+'.</span><div class="item-text">' +
@@ -7733,6 +7971,7 @@ window.openDailyFinishForm = function(checkId){
             '<button type="button" class="check-btn '+(st==='na'?'selected-na':'')+'" onclick="setDailyFinishCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
           '</div>' +
           '<div class="nok-note '+(st==='ok'?'':'visible')+'"><input type="text" class="form-control form-control-sm" placeholder="ចំណាំ / បញ្ហា..." value="'+esc(a.note)+'" oninput="setDailyFinishNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
+          dailyPhotoGalleryHtml(it.itemId, a.photos || []) +
         '</div>';
       }).join('')
     : '<div class="text-muted small text-center py-3">No Finished Form items configured for this group.</div>';
@@ -7767,10 +8006,31 @@ window.openDailyFinishForm = function(checkId){
     '<div class="op-finish-tip text-muted mb-3"><i class="bi bi-info-circle me-1"></i>Fill at least one end meter. After submitting, the equipment becomes <strong>Waiting Handover</strong> and your shift ends.</div>' +
     (weeklyItems.length ? '<div class="small text-muted mb-3"><i class="bi bi-calendar-week me-1"></i>' + weeklyItems.length + ' weekly items are part of this group (Weekly check stays separate).</div>' : '');
 
+  // Extra Finished Form fields — both photo-capable (camera / gallery)
+  const extraField = (key, labelKh, labelEn, placeholder) =>
+    '<div class="col-12">' +
+      '<label class="form-label small fw-bold mb-1">' + esc(labelKh) + ' <span class="text-muted fw-normal">(' + esc(labelEn) + ')</span></label>' +
+      '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="daily_' + key + '" placeholder="' + escAttr(placeholder) + '" value="' + escAttr(extras[key].value) + '" oninput="setDailyFinishExtraValue(\'' + key + '\', this.value)">' +
+      dailyPhotoGalleryHtml(key, extras[key].photos) +
+    '</div>';
+
+  const fuelCard =
+    '<div class="card mb-3">' +
+      '<div class="group-header d-flex justify-content-between align-items-center">' +
+        '<span><i class="bi bi-fuel-pump me-2"></i>ប្រេងម៉ាស៊ូត · Fuel</span>' +
+        '<small class="text-muted">2 fields</small>' +
+      '</div>' +
+      '<div class="card-body"><div class="row g-3">' +
+        extraField('fuelLevel', 'កម្រិតប្រេងម៉ាស៊ូត', 'Diesel level', '0.0') +
+        extraField('fuelAdded', 'បរិមាណបេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', 'Fuel added during operation', '0.0') +
+      '</div></div>' +
+    '</div>';
+
   $('#app').html(
     '<div class="container-fluid px-0 daily-form-page">' +
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyFinish()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
       infoGrid +
+      fuelCard +
       dailyCountCards(weekCounts.ok, weekCounts.nok, 'dailyFinish') +
       '<div class="card mb-3 legend-card">' +
         '<div class="legend-title">FINISHED FORM</div>' +
@@ -7795,7 +8055,7 @@ window.openDailyFinishForm = function(checkId){
 
 window.cancelDailyFinish = function(){
   if (!confirm('បោះបង់ការបញ្ជូន Finished Form?')) return;
-  dailyFinishState = { checkId: '', items: [], answers: {} };
+  dailyFinishState = { checkId: '', items: [], answers: {}, extras: {} };
   showPage('home');
 };
 
@@ -7824,7 +8084,7 @@ window.submitDailyFinishForm = function(checkId){
   }
 
   // Every configured Finished Form item must be answered (OK / NOT OK / N/A)
-  const st = dailyFinishState || { items: [], answers: {} };
+  const st = dailyFinishState || { items: [], answers: {}, extras: {} };
   const unanswered = (st.items || []).filter(it => {
     const a = st.answers[it.itemId];
     return !a || ['ok', 'nok', 'na'].indexOf(a.status) === -1;
@@ -7832,13 +8092,44 @@ window.submitDailyFinishForm = function(checkId){
   if (unanswered.length) {
     showAlert('Please answer every Finished Form item (' + unanswered.length + ' left)', 'warning'); return;
   }
-  const finishChecks = (st.items || []).map(it => ({
-    itemId: it.itemId,
-    itemKhmer: it.itemKhmer || '',
-    itemEng: it.itemEng || '',
-    status: st.answers[it.itemId].status,
-    note: st.answers[it.itemId].note || ''
-  }));
+  if (dailyHasPendingUploads(st)) {
+    showAlert('រូបថតកំពុងផ្ទុកឡើង — សូមរង់ចាំបន្តិច (photos still uploading)', 'warning'); return;
+  }
+
+  const finishChecks = (st.items || []).map(it => {
+    const a = st.answers[it.itemId] || {};
+    const entry = {
+      itemId: it.itemId,
+      itemKhmer: it.itemKhmer || '',
+      itemEng: it.itemEng || '',
+      status: a.status,
+      note: a.note || ''
+    };
+    const photos = dailyPhotosPayload(a.photos);
+    if (photos.length) entry.photos = photos;
+    return entry;
+  });
+
+  // Fuel level + fuel added — numbers with their own photos (Photos stay as ids)
+  const extras = st.extras || {};
+  const finishExtra = {};
+  const extraNums = {};
+  let badField = '';
+  Object.keys(extras).forEach(k => {
+    const raw = String(extras[k].value == null ? '' : extras[k].value).trim();
+    let value = '';
+    if (raw !== '') {
+      const n = parseFloat(raw);
+      if (isNaN(n) || n < 0) badField = k;
+      else value = n;
+    }
+    finishExtra[k] = { value: value, photos: dailyPhotosPayload(extras[k].photos) };
+    extraNums[k] = value;
+  });
+  if (badField) {
+    showAlert(badField === 'fuelLevel' ? 'កម្រិតប្រេងម៉ាស៊ូត must be a positive number' : 'បរិមាណបេងបានចាក់ must be a positive number', 'warning');
+    return;
+  }
 
   showLoading('កំពុងបញ្ជូន...');
   google.script.run
@@ -7860,21 +8151,38 @@ window.submitDailyFinishForm = function(checkId){
       s.finishedAt = res.finishedAt || s.opAt;
       s.finishedBy = res.finishedBy || currentUser.username;
       s.finishChecks = Array.isArray(res.finishChecks) ? res.finishChecks : finishChecks;
+      s.finishExtra  = (res.finishExtra && typeof res.finishExtra === 'object') ? res.finishExtra : finishExtra;
 
       // Leave the form page first, then repaint from the updated local copy
-      dailyFinishState = { checkId: '', items: [], answers: {} };
+      dailyFinishState = { checkId: '', items: [], answers: {}, extras: {} };
       hideDailyFlowModal();
       showAlert('Finished — equipment is waiting for handover', 'success');
       showPage('home');
       dailySyncNow();
     })
     .withFailureHandler(err => { hideLoading(); handleError(err); })
-    .finishDailyShift({ checkId: checkId, endOdo: odo, endHour: hour, remark: remark, finishChecks: finishChecks });
+    .finishDailyShift({
+      checkId: checkId, endOdo: odo, endHour: hour, remark: remark,
+      finishChecks: finishChecks,
+      fuelLevel: extraNums.fuelLevel === '' ? '' : extraNums.fuelLevel,
+      fuelAdded: extraNums.fuelAdded === '' ? '' : extraNums.fuelAdded,
+      finishExtra: finishExtra
+    });
 };
 
 /* =========================================================
    DAILY LIST VIEW
    ========================================================= */
+/* One horizontally scrollable filter tab bar (same look as the Monthly list). */
+function dailyListTabBar(id, key, items, current) {
+  let h = '<div class="tab-bar mb-1" id="' + id + '" style="display: flex; overflow-x: auto; white-space: nowrap; -ms-overflow-style: none; scrollbar-width: none; border: none; background: transparent; padding-bottom: 2px;">';
+  items.forEach(it => {
+    h += '<div class="tab list-tab ' + (current === it.value ? 'active' : '') + '" data-key="' + key + '" data-value="' + escAttr(it.value) + '"' +
+         ' onclick="setDailyListFilter(\'' + key + '\',\'' + escAttr(it.value) + '\')">' + esc(it.label) + '</div>';
+  });
+  return h + '</div>';
+}
+
 window.renderDailyList = function() {
   const groups    = APP.filterOptions.groups;
   const isDriver  = currentUser.role === 'driver';
@@ -7886,7 +8194,36 @@ window.renderDailyList = function() {
   shell += '<div class="d-flex gap-1 mb-2 flex-wrap"><button class="btn btn-sm btn-outline-primary date-preset" data-preset="today" onclick="setDailyDatePreset(\'today\')">ថ្ងៃនេះ</button><button class="btn btn-sm btn-outline-primary date-preset" data-preset="7d" onclick="setDailyDatePreset(\'7d\')">7 ថ្ងៃ</button><button class="btn btn-sm btn-outline-primary date-preset" data-preset="30d" onclick="setDailyDatePreset(\'30d\')">30 ថ្ងៃ</button><button class="btn btn-sm btn-outline-primary date-preset" data-preset="all" onclick="setDailyDatePreset(\'all\')">ទាំងអស់</button></div>';
   shell += '<div class="row g-2 mb-2"><div class="col-6"><input type="date" class="form-control form-control-sm" id="fDailyFrom" value="'+dailyListFilters.dateFrom+'" onchange="onDailyListDateChange()"></div><div class="col-6"><input type="date" class="form-control form-control-sm" id="fDailyTo" value="'+dailyListFilters.dateTo+'" onchange="onDailyListDateChange()"></div></div>';
   
-  shell += '<div class="tab-bar mb-1"><div class="tab list-tab '+(dailyListFilters.status==='all'?'active':'')+'" data-key="status" data-value="all" onclick="setDailyListFilter(\'status\',\'all\')">ទាំងអស់</div><div class="tab list-tab '+(dailyListFilters.status==='OK'?'active':'')+'" data-key="status" data-value="OK" onclick="setDailyListFilter(\'status\',\'OK\')">OK</div><div class="tab list-tab '+(dailyListFilters.status==='Issues'?'active':'')+'" data-key="status" data-value="Issues" onclick="setDailyListFilter(\'status\',\'Issues\')">Issues</div></div>';
+  shell += dailyListTabBar('dailyStatusTabBar', 'status', [
+    { value: 'all',    label: 'ទាំងអស់' },
+    { value: 'OK',     label: 'OK' },
+    { value: 'Issues', label: 'Issues' }
+  ], dailyListFilters.status);
+
+  // Frequency — daily shift checks vs weekly checks
+  shell += dailyListTabBar('dailyTypeTabBar', 'checkType', [
+    { value: 'all',    label: 'ទាំងអស់' },
+    { value: 'daily',  label: 'Daily' },
+    { value: 'weekly', label: 'Weekly' }
+  ], dailyListFilters.checkType);
+
+  // Confirmation workflow — same two-step flow as the Monthly list
+  shell += dailyListTabBar('dailyConfirmTabBar', 'confirmStatus', [
+    { value: 'all',             label: 'ទាំងអស់' },
+    { value: 'Pending-Admin',   label: 'រង់ចាំ Admin' },
+    { value: 'Pending-Manager', label: 'រង់ចាំ Manager' },
+    { value: 'Confirmed',       label: 'បានបញ្ជាក់' },
+    { value: 'Rejected',        label: 'បដិសេធ' }
+  ], dailyListFilters.confirmStatus);
+
+  // Equipment / shift status (Operating, Stand By, …)
+  shell += dailyListTabBar('dailyOpTabBar', 'opStatus', [
+    { value: 'all',              label: 'ទាំងអស់' },
+    { value: DAILY_OP_OPERATING, label: 'Operating' },
+    { value: DAILY_OP_STANDBY,   label: 'Stand By' },
+    { value: DAILY_OP_WAITING,   label: 'Waiting Handover' },
+    { value: DAILY_OP_HANDED,    label: 'Handed Over' }
+  ], dailyListFilters.opStatus);
 
   if (groups.length > 1 && !isDriver) {
     shell += '<div class="tab-bar mb-1"><div class="tab list-tab '+(dailyListFilters.group==='all'?'active':'')+'" data-key="group" data-value="all" onclick="setDailyListFilter(\'group\',\'all\')">ក្រុមទាំងអស់</div>';
@@ -7911,6 +8248,33 @@ window.renderDailyList = function() {
 function applyDailyListFilters(list) {
   let out = list.slice();
   if (dailyListFilters.status !== 'all') out = out.filter(s => s.overall === dailyListFilters.status);
+
+  // Frequency: daily shift checks vs weekly checks
+  if (dailyListFilters.checkType === 'daily')  out = out.filter(s => !dailyIsWeekly(s));
+  if (dailyListFilters.checkType === 'weekly') out = out.filter(s => dailyIsWeekly(s));
+
+  // Confirmation workflow (Admin first, then Manager) — mirrors the Monthly list
+  const stage = dailyListFilters.confirmStatus;
+  if (stage && stage !== 'all') {
+    if (stage === 'Pending-Admin') {
+      out = out.filter(s => (s.confirmStatus || 'Pending') === 'Pending');
+    } else if (stage === 'Pending-Manager') {
+      out = out.filter(s => (s.confirmStatus || 'Pending') === 'Confirmed' && !s.directorStatus);
+    } else if (stage === 'Confirmed') {
+      out = out.filter(s => s.directorStatus === 'Confirmed');
+    } else if (stage === 'Rejected') {
+      out = out.filter(s => s.confirmStatus === 'Rejected' || s.directorStatus === 'Rejected');
+    } else {
+      out = out.filter(s => (s.confirmStatus || 'Pending') === stage);
+    }
+  }
+
+  // Equipment / shift status chosen in the Daily home or the Finished form
+  if (dailyListFilters.opStatus && dailyListFilters.opStatus !== 'all') {
+    if (dailyListFilters.opStatus === 'none') out = out.filter(s => !dailyNormOp(s.opStatus));
+    else out = out.filter(s => dailyNormOp(s.opStatus) === dailyListFilters.opStatus);
+  }
+
   if (dailyListFilters.group !== 'all')  out = out.filter(s => s.group === dailyListFilters.group);
   if (dailyListFilters.equipmentId !== 'all') out = out.filter(s => s.equipmentId === dailyListFilters.equipmentId);
   if (dailyListFilters.driver !== 'all') out = out.filter(s => s.username === dailyListFilters.driver);
@@ -7924,11 +8288,13 @@ function applyDailyListFilters(list) {
   }
   if (dailyListFilters.search) {
     const q = dailyListFilters.search.toLowerCase();
-    out = out.filter(s =>
-      String(s.equipmentId).toLowerCase().includes(q) ||
-      String(s.driverName).toLowerCase().includes(q) ||
-      String(s.checkId).toLowerCase().includes(q)
-    );
+    out = out.filter(s => {
+      const shortName = String(eqShort(s.equipmentId) || '').toLowerCase();
+      return String(s.equipmentId).toLowerCase().includes(q) ||
+        shortName.includes(q) ||
+        String(s.driverName).toLowerCase().includes(q) ||
+        String(s.checkId).toLowerCase().includes(q);
+    });
   }
   if (dailyListFilters.nokItemIds && dailyListFilters.nokItemIds.length > 0) {
     const idSet = new Set(dailyListFilters.nokItemIds);
@@ -7948,23 +8314,24 @@ function updateDailyListResults() {
   const filtered = applyDailyListFilters(APP.dailySubmissions || []);
   const rows = filtered.map((s, i) => {
     const cls = s.overall === 'Issues' ? 'nok' : 'ok';
-    const mgrStatus = s.confirmStatus || 'Pending';
-    const dirStatus = s.directorStatus || '';
-    const mgrCls = mgrStatus === 'Confirmed' ? 'ok' : mgrStatus === 'Rejected' ? 'nok' : 'pending';
-    const dirCls = dirStatus === 'Confirmed' ? 'ok' : dirStatus === 'Rejected' ? 'nok' : 'pending';
-    
-    let confirmLine = '<div class="small mt-1 d-flex gap-1 align-items-center flex-wrap"><span class="status-badge status-'+mgrCls+'" style="font-size:.65rem;min-width:auto;padding:2px 8px;"><i class="bi bi-person-check me-1"></i>Admin: '+esc(mgrStatus) + '</span>' + (dirStatus ? '<span class="status-badge status-'+dirCls+'" style="font-size:.65rem;min-width:auto;padding:2px 8px;"><i class="bi bi-patch-check me-1"></i>Manager: '+esc(dirStatus) + '</span>' : (mgrStatus === 'Confirmed' ? '<span class="status-badge status-pending" style="font-size:.65rem;min-width:auto;padding:2px 8px;"><i class="bi bi-hourglass-split me-1"></i>Manager: Pending</span>' : '')) + '</div>';
+    const ci = dailyConfirmInfo(s);
+    let confirmLine = '<div class="small mt-1 d-flex gap-1 align-items-center flex-wrap">' +
+      '<span class="status-badge status-' + ci.cls + '" style="font-size:.65rem;min-width:auto;padding:2px 8px;">' +
+        '<i class="bi bi-' + ci.icon + ' me-1"></i>' + esc(ci.label) +
+      '</span></div>';
+
+    const trailerShort = dailyTrailerShort(s.trailerId || (APP.equipmentMap[s.equipmentId] || {}).trailerId);
 
     return '<div class="card mb-2 clickable-card" onclick="viewDailyCheck(\''+escAttr(s.checkId)+'\')">' +
       '<div class="group-header d-flex justify-content-between align-items-center">' +
-        '<span><span class="text-muted me-2">'+(i+1)+'.</span><strong>'+esc(eqShort(s.equipmentId))+'</strong>'+(dailyIsWeekly(s) ? ' <span class="badge bg-info text-dark" style="font-size:.6rem;">Weekly</span>' : '')+'</span>' +
+        '<span><span class="text-muted me-2">'+(i+1)+'.</span><strong>'+esc(eqShort(s.equipmentId))+'</strong>'+(dailyIsWeekly(s) ? ' <span class="badge bg-info text-dark" style="font-size:.6rem;">Weekly</span>' : '')+(trailerShort ? ' <span class="badge bg-secondary" style="font-size:.6rem;">'+esc(trailerShort)+'</span>' : '')+'</span>' +
         '<span class="d-flex align-items-center gap-1">' + (s.opStatus ? dailyOpBadge(s.opStatus) : '') + '<span class="status-badge status-'+cls+'">'+esc(s.overall)+'</span></span>' +
       '</div>' +
       '<div class="card-body py-2">' +
         '<div class="row small g-1">' +
           '<div class="col-6"><i class="bi bi-person me-1"></i>'+esc(s.driverName)+'</div>' +
           '<div class="col-6"><i class="bi bi-calendar me-1"></i>'+esc(s.date)+' '+esc(s.time)+'</div>' +
-          '<div class="col-6"><i class="bi bi-tag me-1"></i>'+esc(s.equipmentId)+' · '+esc(s.group)+'</div>' +
+          '<div class="col-6"><i class="bi bi-tag me-1"></i>'+esc(s.group)+'</div>' +
           '<div class="col-6"><i class="bi bi-hash me-1"></i>'+esc(s.checkId)+'</div>' +
         '</div>' +
         confirmLine +
@@ -7989,6 +8356,9 @@ window.setDailyListFilter = function(key, value) {
       dailyListFilters.search = '';
       dailyListFilters.nokItemIds = [];
       dailyListFilters.nokItemLabel = '';
+      dailyListFilters.checkType = 'all';
+      dailyListFilters.confirmStatus = 'all';
+      dailyListFilters.opStatus = 'all';
     }
   }
   renderDailyList();
@@ -8047,7 +8417,8 @@ function applyDailyDatePresetActive(explicit) {
 
 window.clearDailyListFilters = function() {
   dailyListFilters = {
-    status:'all', group:'all', equipmentId:'all', driver:'all',
+    status:'all', checkType:'all', confirmStatus:'all', opStatus:'all',
+    group:'all', equipmentId:'all', driver:'all',
     dateFrom:'', dateTo:'', search:'', nokItemIds: [], nokItemLabel: ''
   };
   renderDailyList();
@@ -8080,7 +8451,8 @@ function renderDailyDetailModal(s) {
     itemId: c.itemId,
     itemKhmer: (tplMap[c.itemId] && tplMap[c.itemId].itemKhmer) || c.itemId,
     itemEng: (tplMap[c.itemId] && tplMap[c.itemId].itemEng) || '',
-    status: c.status, note: c.note || ''
+    status: c.status, note: c.note || '',
+    photos: Array.isArray(c.photos) ? c.photos : []
   }));
 
   const okCount  = enriched.filter(c => c.status === 'ok').length;
@@ -8088,7 +8460,10 @@ function renderDailyDetailModal(s) {
   const naCount  = enriched.filter(c => c.status === 'na').length;
 
   const drv = (APP.users || []).find(u => u.username === s.username) || {};
-  const trl = (APP.trailers || []).find(t => t.trailerId && String(t.trailerId) === String((APP.equipmentMap[s.equipmentId] || {}).trailerId || ''));
+  const rawRemarkPhotos = Array.isArray(s.photoIds) ? s.photoIds : String(s.photoIds || '').split(',');
+  const remarkPhotos = rawRemarkPhotos.map(x => String(x || '').trim()).filter(Boolean).map(id => ({ fileId: id }));
+  const trailerId = String(s.trailerId || (APP.equipmentMap[s.equipmentId] || {}).trailerId || '');
+  const trl = (APP.trailers || []).find(t => t.trailerId && String(t.trailerId) === trailerId);
 
   const info =
     '<div class="p-3">' +
@@ -8106,6 +8481,7 @@ function renderDailyDetailModal(s) {
 
       dailyOpSectionHtml(s) +
       dailyFinishChecksHtml(s) +
+      dailyFinishExtraHtml(s) +
 
       (s.reviewedBy
         ? (s.reviewedRemark
@@ -8134,51 +8510,84 @@ function renderDailyDetailModal(s) {
                 '<span class="status-badge '+badge+'" style="min-width:auto;padding:2px 8px;font-size:.65rem;">'+lbl+'</span>' +
               '</div>' +
               (c.note ? '<div class="small text-danger mt-1"><i class="bi bi-chat-left-text me-1"></i>'+esc(c.note)+'</div>' : '') +
+              dailyPhotoIdsHtml(c.photos) +
             '</div>';
           }).join('') +
         '</div>' +
       '</div>' +
 
-      (s.remark ? '<div class="card mb-3"><div class="card-body"><div class="small text-muted">Remark</div><div>'+esc(s.remark)+'</div></div></div>' : '') +
+      ((s.remark || remarkPhotos.length)
+        ? '<div class="card mb-3"><div class="card-body">' +
+            (s.remark ? '<div class="small text-muted">Remark</div><div>' + esc(s.remark) + '</div>' : '') +
+            (remarkPhotos.length ? '<div class="small text-muted mt-2">រូបថតបន្ថែម · Remark photos</div>' + dailyPhotoIdsHtml(remarkPhotos) : '') +
+          '</div></div>'
+        : '') +
     '</div>';
 
   $('#modalBody').html(info);
   currentDetailModal.show();
 }
 
+/* Current confirmation stage of a daily shift: Admin first, then Manager. */
+function dailyConfirmInfo(s){
+  const mgr = String((s && s.confirmStatus) || 'Pending');
+  const dir = String((s && s.directorStatus) || '');
+  const stage = (mgr === 'Rejected' || dir === 'Rejected') ? 'Rejected'
+    : (mgr === 'Confirmed' ? (dir === 'Confirmed' ? 'Confirmed' : 'Pending-Manager') : 'Pending-Admin');
+  const label = {
+    'Pending-Admin':   'រង់ចាំ Admin',
+    'Pending-Manager': 'រង់ចាំ Manager',
+    'Confirmed':       'បានបញ្ជាក់',
+    'Rejected':        'បដិសេធ'
+  }[stage];
+  const icon = {
+    'Pending-Admin':   'hourglass-split',
+    'Pending-Manager': 'hourglass-split',
+    'Confirmed':       'patch-check',
+    'Rejected':        'x-circle'
+  }[stage];
+  const cls = stage === 'Confirmed' ? 'ok' : stage === 'Rejected' ? 'nok' : 'pending';
+  return { stage: stage, label: label, icon: icon, cls: cls };
+}
+
+/* One compact card with the current confirmation stage — the daily flow is
+   Admin first, Manager second; the card only shows the stage that is relevant. */
 function buildDailyConfirmSection(s) {
   const isManagerRole = (currentUser.role === 'manager'); const isAdminRole = (currentUser.role === 'admin');
   const mgrStatus = s.confirmStatus || 'Pending'; const dirStatus = s.directorStatus || '';
-  const mgrCls = mgrStatus === 'Confirmed' ? 'ok' : mgrStatus === 'Rejected' ? 'nok' : 'pending';
-  const dirCls = dirStatus === 'Confirmed' ? 'ok' : dirStatus === 'Rejected' ? 'nok' : 'pending';
-  let html = '';
+  const ci = dailyConfirmInfo(s);
+  const stage = ci.stage;
+  const stageLabel = ci.label;
+  const stageCls = ci.cls;
+  const border = stage === 'Confirmed' ? '#198754' : stage === 'Rejected' ? '#dc3545' : '#0dcaf0';
 
-  html += '<div class="card mb-3 confirm-box" style="border-left:4px solid #0dcaf0;"><div class="group-header d-flex justify-content-between align-items-center" style="background:transparent;border-bottom:1px solid var(--border-color);"><span><i class="bi bi-person-check me-2 text-info"></i>Admin Confirmation</span><span class="status-badge status-'+mgrCls+'">'+esc(mgrStatus)+'</span></div><div class="card-body">';
-  if (s.confirmedBy) html += '<div class="small mb-1"><i class="bi bi-person-check me-1"></i>By <strong>' + esc(s.confirmedBy)+'</strong>' + (s.confirmedAt ? ' · '+esc(s.confirmedAt) : '') + '</div>';
-  else html += '<div class="small text-muted mb-1"><i class="bi bi-hourglass-split me-1"></i>Waiting for Admin</div>';
-  if (s.confirmRemark) html += '<div class="small mb-2"><i class="bi bi-chat-left-text me-1"></i>'+esc(s.confirmRemark)+'</div>';
-  
-  if (isAdminRole && mgrStatus === 'Pending') {
-    html += '<button class="btn btn-sm btn-outline-primary w-100" onclick="renderDailyConfirmInput(\''+escAttr(s.checkId)+'\',\'admin\')"><i class="bi bi-pencil-square me-1"></i>Confirm</button>';
-  } else if (mgrStatus !== 'Pending') {
-    html += '<div class="small text-muted"><i class="bi bi-lock me-1"></i>Locked — no further edits</div>';
-  }
-  html += '</div></div>';
+  let html = '<div class="card mb-3 confirm-box" style="border-left:4px solid ' + border + ';">' +
+    '<div class="group-header d-flex justify-content-between align-items-center" style="background:transparent;border-bottom:1px solid var(--border-color);">' +
+      '<span><i class="bi bi-patch-check me-2 text-info"></i>ការបញ្ជាក់ · Confirmation</span>' +
+      '<span class="status-badge status-' + stageCls + '">' + esc(stageLabel) + '</span>' +
+    '</div><div class="card-body">' +
+    '<div class="small mb-1"><i class="bi bi-person-check me-1"></i>Admin: <strong>' +
+      esc(mgrStatus === 'Pending' ? 'រង់ចាំ' : mgrStatus) + '</strong>' +
+      (s.confirmedBy ? ' · ' + esc(s.confirmedBy) : '') + (s.confirmedAt ? ' · ' + esc(s.confirmedAt) : '') + '</div>' +
+    (s.confirmRemark ? '<div class="small text-muted mb-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(s.confirmRemark) + '</div>' : '') +
+    '<div class="small mb-1"><i class="bi bi-patch-check me-1"></i>Manager: <strong>' +
+      esc(dirStatus || 'រង់ចាំ') + '</strong>' +
+      (s.directorBy ? ' · ' + esc(s.directorBy) : '') + (s.directorAt ? ' · ' + esc(s.directorAt) : '') + '</div>' +
+    (s.directorRemark ? '<div class="small text-muted mb-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(s.directorRemark) + '</div>' : '');
 
-  html += '<div class="card mb-3 confirm-box" style="border-left:4px solid #0d6efd;"><div class="group-header d-flex justify-content-between align-items-center" style="background:transparent;border-bottom:1px solid var(--border-color);"><span><i class="bi bi-patch-check me-2 text-primary"></i>Manager Confirmation</span><span class="status-badge status-'+dirCls+'">'+esc(dirStatus || 'Pending')+'</span></div><div class="card-body">';
-  if (dirStatus) {
-    html += '<div class="small mb-1"><i class="bi bi-person-check me-1"></i>By <strong>' + esc(s.directorBy)+'</strong>' + (s.directorAt ? ' · '+esc(s.directorAt) : '') + '</div>';
-    if (s.directorRemark) html += '<div class="small mb-2"><i class="bi bi-chat-left-text me-1"></i>'+esc(s.directorRemark)+'</div>';
-    html += '<div class="small text-muted"><i class="bi bi-lock me-1"></i>Locked — no further edits</div>';
-  } else if (mgrStatus !== 'Confirmed') {
-    html += '<div class="small text-warning"><i class="bi bi-hourglass-split me-1"></i>Waiting for Admin first</div>';
-  } else if (isManagerRole) {
-    html += '<button class="btn btn-sm btn-success w-100" onclick="renderDailyConfirmInput(\''+escAttr(s.checkId)+'\',\'manager\')"><i class="bi bi-check-circle me-1"></i>Confirm</button>';
+  if (stage === 'Pending-Admin' && isAdminRole) {
+    html += '<button class="btn btn-sm btn-outline-primary w-100 mt-1" onclick="renderDailyConfirmInput(\'' + escAttr(s.checkId) + '\',\'admin\')"><i class="bi bi-pencil-square me-1"></i>Confirm</button>';
+  } else if (stage === 'Pending-Manager' && isManagerRole) {
+    html += '<button class="btn btn-sm btn-success w-100 mt-1" onclick="renderDailyConfirmInput(\'' + escAttr(s.checkId) + '\',\'manager\')"><i class="bi bi-check-circle me-1"></i>Confirm</button>';
+  } else if (stage === 'Pending-Admin') {
+    html += '<div class="small text-muted mt-1"><i class="bi bi-hourglass-split me-1"></i>Waiting for Admin</div>';
+  } else if (stage === 'Pending-Manager') {
+    html += '<div class="small text-muted mt-1"><i class="bi bi-hourglass-split me-1"></i>Waiting for Manager</div>';
   } else {
-    html += '<div class="small text-muted"><i class="bi bi-hourglass-split me-1"></i>Waiting for Manager</div>';
+    html += '<div class="small text-muted mt-1"><i class="bi bi-lock me-1"></i>Locked — no further edits</div>';
   }
-  html += '</div></div>';
 
+  html += '</div></div>';
   return html;
 }
 
@@ -8390,7 +8799,16 @@ window.renderDailyDashboard = function() {
   const recentHtml = recent.length > 0 ? '<div class="card mb-3"><div class="group-header"><i class="bi bi-clock-history me-2"></i>Recent Activity</div><div class="card-body p-0">' + recent.map(s => '<div class="activity-row" onclick="viewDailyCheck(\''+escAttr(s.checkId)+'\')"><span class="dot '+(s.overall === 'Issues' ? 'nok' : 'ok')+'"></span><div class="info"><strong>'+esc(eqShort(s.equipmentId))+'</strong> · '+esc(s.driverName)+'<small>'+esc(s.group)+' · '+esc(s.checkId)+'</small></div><span class="time">'+esc(s.time)+'</span></div>').join('') + '</div></div>' : '';
 
   // 6. Summary
-  const summaryHtml = '<div class="row g-2 mb-3"><div class="col-6 col-md-3"><div class="stat-card clickable-card" onclick="drillToDaily({status:\'all\',confirmStatus:\'all\',dateFrom:\'\',dateTo:\'\',group:\'all\',driver:\'all\',equipmentId:\'all\'})"><div class="num text-primary">'+subs.length+'</div><div class="lbl">សរុប</div></div></div><div class="col-6 col-md-3"><div class="stat-card clickable-card" onclick="drillToDaily({dateFrom:\''+isoToday()+'\',dateTo:\''+isoToday()+'\',status:\'all\'})"><div class="num text-info">'+todaySubs.length+'</div><div class="lbl">ថ្ងៃនេះ</div></div></div><div class="col-6 col-md-3"><div class="stat-card clickable-card" onclick="drillToDaily({confirmStatus:\'Pending-Admin\',dateFrom:\'\',dateTo:\'\',status:\'all\'})"><div class="num text-warning">'+pending.length+'</div><div class="lbl">រង់ចាំ Admin</div></div></div><div class="col-6 col-md-3"><div class="stat-card clickable-card" onclick="drillToDaily({status:\'Issues\',dateFrom:\'\',dateTo:\'\'})"><div class="num text-danger">'+issues.length+'</div><div class="lbl">Issues</div></div></div></div>';
+  const resetParams = "status:'all',checkType:'all',confirmStatus:'all',opStatus:'all',group:'all',driver:'all',equipmentId:'all'";
+  const summaryTile = (count, color, label, params) =>
+    '<div class="col-6 col-md-3"><div class="stat-card clickable-card" onclick="drillToDaily({' + params + '})">' +
+      '<div class="num text-' + color + '">' + count + '</div><div class="lbl">' + label + '</div></div></div>';
+  const summaryHtml = '<div class="row g-2 mb-3">' +
+    summaryTile(subs.length, 'primary', 'សរុប', resetParams + ",dateFrom:'',dateTo:''") +
+    summaryTile(todaySubs.length, 'info', 'ថ្ងៃនេះ', resetParams + ",dateFrom:'" + isoToday() + "',dateTo:'" + isoToday() + "'") +
+    summaryTile(pending.length, 'warning', 'រង់ចាំ Admin', resetParams + ",confirmStatus:'Pending-Admin',dateFrom:'',dateTo:''") +
+    summaryTile(issues.length, 'danger', 'Issues', resetParams + ",status:'Issues',dateFrom:'',dateTo:''") +
+  '</div>';
 
   // 7. Live shift board — Operating / Stand By / Waiting Handover / Handed Over
   const shiftSubs = dailyShiftOnly(subs);
@@ -8419,7 +8837,8 @@ window.renderDailyDashboard = function() {
     { label: 'Not started',      icon: 'bi-dash-circle',       color: '#adb5bd', count: opCount.none }
   ].map(r => {
     const pct = Math.round(r.count / totalUnits * 100);
-    return '<div class="dash-bar mb-2"><span class="lbl"><i class="bi ' + r.icon + ' me-1" style="color:' + r.color + ';"></i>' + r.label + '</span>' +
+    const drill = "drillToDaily({opStatus:'" + (r.label === 'Not started' ? 'none' : r.label) + "',status:'all',checkType:'all',confirmStatus:'all',dateFrom:'',dateTo:'',group:'all',driver:'all',equipmentId:'all'})";
+    return '<div class="dash-bar mb-2 clickable-card" onclick="' + drill + '"><span class="lbl"><i class="bi ' + r.icon + ' me-1" style="color:' + r.color + ';"></i>' + r.label + '</span>' +
       '<div class="track"><div class="fill" style="width:' + pct + '%;background:' + r.color + ';"></div></div>' +
       '<span class="val">' + r.count + '</span></div>';
   }).join('');
@@ -8436,7 +8855,7 @@ window.renderDailyDashboard = function() {
   const weeklyPct  = weeklyList.length ? Math.round(weeklyDone.length / weeklyList.length * 100) : 0;
   const weeklyRows = weeklyDue.slice(0, 8).map(x => {
     const eq = x.eq;
-    return '<div class="driver-status-row clickable-card" onclick="drillToDaily({equipmentId:\'' + escAttr(eq.equipmentId) + '\',status:\'all\',dateFrom:\'\',dateTo:\'\'})">' +
+    return '<div class="driver-status-row clickable-card" onclick="drillToDaily({equipmentId:\'' + escAttr(eq.equipmentId) + '\',checkType:\'weekly\',status:\'all\',dateFrom:\'\',dateTo:\'\'})">' +
       '<div class="left"><i class="bi bi-exclamation-circle text-warning" style="font-size:1.1rem;"></i>' +
         '<div><div class="name">' + esc(eq.shortName || eq.equipmentId) + '</div>' +
         '<div class="eqs">' + (x.info.never ? 'never done' : 'last ' + esc(x.info.last.date)) + ' · ' + esc(eq.group || '—') + '</div></div></div>' +
@@ -8674,17 +9093,20 @@ function renderManageDriversList(){
   }
 
   const html = drivers.map(d => {
-    const driverEqIds = d.equipment || [];
-    const checkboxes = groupEquipment.map(e => {
-      const checked = driverEqIds.indexOf(e.equipmentId) !== -1;
-      return '<div class="form-check form-check-inline mb-1">' +
-        '<input class="form-check-input driver-eq-check" type="checkbox" ' +
-          'data-driver="' + escAttr(d.username) + '" ' +
-          'value="' + escAttr(e.equipmentId) + '"' +
-          (checked ? ' checked' : '') + '>' +
-        '<label class="form-check-label small">' + esc(e.shortName || e.equipmentId) + '</label>' +
-      '</div>';
-    }).join('');
+    const driverEqIds = (d.equipment || []).map(String);
+    const currentNames = driverEqIds.map(id => {
+      const e = groupEquipment.find(x => String(x.equipmentId) === id) || { equipmentId: id };
+      return e.shortName || e.equipmentId || id;
+    });
+
+    // "New equipment" — one dropdown per driver (current assignment shown above)
+    const options = ['<option value="">— គ្មាន / none —</option>']
+      .concat(groupEquipment.map(e => {
+        const id = String(e.equipmentId);
+        const sel = (driverEqIds.length && driverEqIds[0] === id) ? ' selected' : '';
+        const label = (e.shortName || id) + (myGroup === 'ALL' && e.group ? ' · ' + e.group : '');
+        return '<option value="' + escAttr(id) + '"' + sel + '>' + esc(label) + '</option>';
+      })).join('');
 
     return '<div class="card mb-2"><div class="card-body py-2">' +
       '<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">' +
@@ -8694,10 +9116,15 @@ function renderManageDriversList(){
           'onclick="saveDriverEquipment(\'' + escAttr(d.username) + '\')">' +
           '<i class="bi bi-check2 me-1"></i>Save</button>' +
       '</div>' +
-      '<div class="small fw-bold mb-1">Assigned Equipment:</div>' +
-      '<div class="d-flex flex-wrap gap-2">' +
-        (checkboxes || '<em class="text-muted small">No equipment</em>') +
+      '<div class="small fw-bold mb-1">បច្ចុប្បន្ន · Current equipment:</div>' +
+      '<div class="d-flex flex-wrap gap-1 mb-2">' +
+        (currentNames.length
+          ? currentNames.map(n => '<span class="badge bg-secondary">' + esc(n) + '</span>').join('')
+          : '<em class="text-muted small">No equipment</em>') +
       '</div>' +
+      '<div class="small fw-bold mb-1">ឧបករណ៍ថ្មី · New equipment:</div>' +
+      '<select class="form-select form-select-sm driver-eq-select" data-driver="' + escAttr(d.username) + '">' +
+        options + '</select>' +
     '</div></div>';
   }).join('');
 
@@ -8706,9 +9133,16 @@ function renderManageDriversList(){
 
 window.saveDriverEquipment = function(username){
   const equipmentIds = [];
-  $('.driver-eq-check[data-driver="' + username + '"]:checked').each(function(){
-    equipmentIds.push($(this).val());
-  });
+  const $sel = $('.driver-eq-select[data-driver="' + username + '"]');
+  if ($sel.length) {
+    const picked = $sel.val();
+    if (picked) equipmentIds.push(picked);
+  } else {
+    // Legacy checkbox markup (kept as a fallback)
+    $('.driver-eq-check[data-driver="' + username + '"]:checked').each(function(){
+      equipmentIds.push($(this).val());
+    });
+  }
 
   showLoading('កំពុងរក្សាទុក...');
   google.script.run
@@ -8722,9 +9156,11 @@ window.saveDriverEquipment = function(username){
 
       // Mirror on local caches so dropdowns reflect the change
       const u = (APP.users  || []).find(x => x.username === username);
-      if (u) u.equipment = equipmentIds;
+      if (u) u.equipment = equipmentIds.slice();
       const drv = (APP.drivers || []).find(x => x.username === username);
-      if (drv) drv.equipment = equipmentIds;
+      if (drv) drv.equipment = equipmentIds.slice();
+      // Repaint the modal so "Current equipment" shows the new value
+      renderManageDriversList();
     })
     .withFailureHandler(handleError)
     .updateUserEquipment(username, equipmentIds);
