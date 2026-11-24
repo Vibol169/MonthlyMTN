@@ -292,6 +292,19 @@ body.dark-mode .mtn-item-ic.is-part { color: #8bb9fe; }
 body.dark-mode .mtn-item-ic.is-done { color: #a5d76e; }
 .mtn-part-banner { display: inline-flex; align-items: center; gap: 4px; font-size: .56rem; font-weight: 700; color: var(--tab-active); background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 0 5px; margin: 2px 0 3px; }
 
+/* Repair Manager sign-off (Done -> Confirmed) */
+.mtn-num-conf  { color: #6f42c1; }
+body.dark-mode .mtn-num-conf { color: #c4a7f0; }
+.mtn-pill.is-conf { background: rgba(111,66,193,.12); color: #5a32a3; border-color: rgba(111,66,193,.28); }
+body.dark-mode .mtn-pill.is-conf { background: rgba(160,120,232,.18); color: #c4a7f0; border-color: rgba(160,120,232,.36); }
+
+/* shared bits reused by the MTN Management card list */
+.mtn-cell-sub { font-size: .68rem; color: var(--tab-text); line-height: 1.3; }
+.mtn-hint { display: flex; align-items: flex-start; gap: 6px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 7px 10px; margin-bottom: 12px; font-size: .72rem; color: var(--tab-text); }
+.mtn-hint i { color: var(--tab-active); line-height: 1.4; }
+.mtn-chip { display: inline-flex; align-items: center; padding: 0 5px; border-radius: 6px; background: var(--card-bg); border: 1px solid var(--border-color); color: var(--tab-text); font-size: .56rem; font-weight: 700; line-height: 1.6; }
+.mtn-table-head.standalone { border: 1px solid var(--border-color); border-radius: 10px; }
+
 /* =========================================================
    LOADING + LOGIN
    ========================================================= */
