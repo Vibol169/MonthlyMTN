@@ -5109,16 +5109,17 @@ function mtnStatusBadge(subOrStatus){
   const isSub = !!(subOrStatus && typeof subOrStatus === 'object');
   const st = isSub ? mtnCaseStatus(subOrStatus) : mtnNormCaseStatus(subOrStatus);
   const info = mtnStatusInfo(st);
-  let text = info.label;
+  const tone = st === 'Done' ? 'done' : (st === 'Pending' ? 'pend' : (st === 'Requested' ? 'req' : 'nr'));
   let tip = info.label;
+  let countHtml = '';
   if (isSub && st) {
     const p = mtnItemProgress(subOrStatus);
     if (p.total > 1) {
-      text += ' · ' + p.done + '/' + p.total;
+      countHtml = '<span class="mtn-pill-c">' + p.done + '/' + p.total + '</span>';
       tip += ' — ' + p.done + ' of ' + p.total + ' issue item(s) done';
     }
   }
-  return '<span class="badge bg-' + info.badge + '" title="' + escAttr(tip) + '" style="font-size:.68rem;font-weight:' + (st ? '600' : '500') + ';' + (st ? '' : 'opacity:.75;') + '"><i class="bi ' + info.icon + ' me-1"></i>' + esc(text) + '</span>';
+  return '<span class="mtn-pill is-' + tone + '" title="' + escAttr(tip) + '"><i class="bi ' + info.icon + '"></i>' + esc(info.label) + countHtml + '</span>';
 }
 function mtnActionHtml(sub){
   const st = mtnCaseStatus(sub);
@@ -5601,6 +5602,14 @@ const MTN_ITEM_COLORS = { 'Requested': '#ffc107', 'Not Request': '#6c757d', 'Wai
 const MTN_ITEM_TEXT_COLORS = { '': '#6c757d', 'Requested': '#b8860b', 'Not Request': '#495057', 'Waiting Repairing': '#0aa2c0', 'Waiting Spare Part': '#0a58ca', 'Repaired': '#146c43' };
 function _mtnItemColor(status){ return MTN_ITEM_COLORS[status] || '#adb5bd'; }
 function _mtnItemTextColor(status){ return MTN_ITEM_TEXT_COLORS[status] || '#6c757d'; }
+/* theme-aware icon tone for the per-item status glyph */
+function _mtnItemTone(status){
+  if (status === 'Repaired') return 'done';
+  if (status === 'Waiting Repairing') return 'pend';
+  if (status === 'Waiting Spare Part') return 'part';
+  if (status === 'Requested') return 'req';
+  return 'nr';
+}
 
 function _mtnItemEditorRow(sub, item){
   const st = mtnItemStatusOf(sub, item.itemId) || 'Requested';
@@ -5862,9 +5871,9 @@ function renderMtnStatusTab(subTabBar){
     opt('newest', 'Newest first', mtnStatusSort) + opt('oldest', 'Oldest first', mtnStatusSort) +
     opt('status', 'By status', mtnStatusSort) + opt('equipment', 'By equipment', mtnStatusSort) + '</select>';
 
-  const tableHead = '<th class="text-center" style="width:34px;">#</th><th style="min-width:88px;">Date</th><th style="min-width:150px;">Equipment</th>' +
-    '<th style="min-width:130px;">Issues (per item)</th><th class="d-none d-md-table-cell">Requested</th><th style="min-width:130px;">Checklist status</th>' +
-    '<th class="d-none d-lg-table-cell">Last update</th><th class="d-none d-xl-table-cell">Remark</th><th class="text-end" style="width:160px;">Action</th>';
+  const tableHead = '<th class="text-center" style="width:32px;">#</th><th style="width:92px;">Date</th><th style="min-width:150px;">Equipment</th>' +
+    '<th style="min-width:220px;">Issues (per item)</th><th class="d-none d-md-table-cell" style="width:130px;">Requested</th><th style="width:150px;">Checklist status</th>' +
+    '<th class="d-none d-lg-table-cell" style="width:130px;">Last update</th><th class="d-none d-xl-table-cell">Remark</th><th class="text-end" style="width:150px;">Action</th>';
 
   let tbody = '';
   shown.forEach((r, idx) => {
@@ -5872,19 +5881,19 @@ function renderMtnStatusTab(subTabBar){
     const hasUpd = mtnHasRealUpdate(r.sub);
     const remarkTxt = hasUpd ? (last.remark || '') : '';
     const prog = mtnItemProgress(r.sub);
-    // One line per issue item (no wrapping): code badge + item name + its repair status
+    // One line per issue item: code pill + item name + its repair status
     const issueLine = (i) => {
       const ist = mtnItemStatusOf(r.sub, i.itemId);
       const iInfo = mtnStatusInfo(ist);
       const tip = i.itemKhmer + (i.itemEng ? ' · ' + i.itemEng : '') + (i.isExtra ? ' · Extra item' : '') + ' — ' + iInfo.label;
-      return '<div class="d-flex align-items-center gap-1" style="max-width:250px;">' +
+      return '<div class="mtn-issue-line" title="' + escAttr(tip) + '">' +
         mtnCodeBadge(i.code, '.56rem') +
-        '<span class="text-truncate" style="font-size:.7rem;" title="' + escAttr(tip) + '">' + esc(i.itemKhmer) + '</span>' +
-        '<i class="bi ' + iInfo.icon + ' flex-shrink-0" style="font-size:.66rem;color:' + _mtnItemTextColor(ist) + ';" title="' + escAttr(iInfo.label) + '"></i>' +
+        '<span class="mtn-issue-name">' + esc(i.itemKhmer) + '</span>' +
+        '<i class="bi ' + iInfo.icon + ' mtn-item-ic is-' + _mtnItemTone(ist) + '"></i>' +
       '</div>';
     };
     // Tractor / Trailer mini-banners, same split as the checklist view
-    const partBanner = (label, icon) => '<div class="d-inline-flex align-items-center gap-1" style="font-size:.56rem;font-weight:700;color:var(--tab-active);background:var(--bg-color);border:1px solid var(--border-color);border-radius:4px;padding:0 5px;margin:2px 0 3px;"><i class="bi ' + icon + '"></i>' + label + '</div>';
+    const partBanner = (label, icon) => '<div class="mtn-part-banner"><i class="bi ' + icon + '"></i>' + label + '</div>';
     let issueLines;
     if (r.isTruckGroup) {
       const truckItems = r.items.filter(i => mtnItemPartOf(i.itemId) === 'truck');
@@ -5900,18 +5909,20 @@ function renderMtnStatusTab(subTabBar){
     }
     tbody += '<tr class="history-row-clickable" style="cursor:pointer;" title="Click to view checklist" onclick="viewCheck(\'' + escAttr(r.sub.checkId) + '\')">' +
       '<td class="text-center text-muted">' + (idx + 1) + '</td>' +
-      '<td><div class="fw-semibold">' + esc(r.sub.date) + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.time || '') + '</div></td>' +
-      '<td><div class="fw-semibold d-flex align-items-center gap-1 flex-wrap">' + esc(r.eq.shortName || r.sub.equipmentId) +
+      '<td><div class="mtn-cell-main">' + esc(r.sub.date) + '</div><div class="mtn-cell-sub">' + esc(r.sub.time || '') + '</div></td>' +
+      '<td><div class="mtn-cell-main d-flex align-items-center gap-1 flex-wrap">' + esc(r.eq.shortName || r.sub.equipmentId) +
         ((r.isTruckGroup && r.trailerName) ? ' <span class="badge bg-secondary" style="font-size:.56rem;font-weight:600;" title="រ៉ឺម៉ក · Trailer">' + esc(r.trailerName) + '</span>' : '') +
-      '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.checkId) + '</div></td>' +
-      '<td><div class="text-muted mb-1" style="font-size:.64rem;">' + r.items.length + ' item(s) · ' + prog.done + '/' + prog.total + ' done</div>' + issueLines + '</td>' +
-      '<td class="d-none d-md-table-cell"><div>' + esc(r.meta.requestedBy || '—') + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.meta.requestedAt || '') + '</div></td>' +
+      '</div><div class="mtn-cell-sub">' + esc(r.sub.checkId) + '</div></td>' +
+      '<td><div class="mtn-issue-meta"><i class="bi bi-list-check me-1"></i>' + r.items.length + ' issue · ' + prog.done + '/' + prog.total + ' done</div>' + issueLines + '</td>' +
+      '<td class="d-none d-md-table-cell">' + (r.meta.requestedBy
+        ? '<div class="mtn-cell-main">' + esc(r.meta.requestedBy) + '</div><div class="mtn-cell-sub">' + esc(r.meta.requestedAt || '') + '</div>'
+        : '<span class="text-muted">—</span>') + '</td>' +
       '<td>' + mtnStatusBadge(r.sub) + '</td>' +
       '<td class="d-none d-lg-table-cell">' + (hasUpd
-        ? '<div>' + esc(last.by || '') + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(last.at || '') + '</div>'
+        ? '<div class="mtn-cell-main">' + esc(last.by || '') + '</div><div class="mtn-cell-sub">' + esc(last.at || '') + '</div>'
         : '<span class="text-muted">—</span>') + '</td>' +
-      '<td class="d-none d-xl-table-cell" style="max-width:220px;"><div class="text-truncate" title="' + escAttr(remarkTxt) + '">' + esc(remarkTxt || '—') + '</div></td>' +
-      '<td class="text-end" onclick="event.stopPropagation()">' + mtnActionHtml(r.sub) + '</td>' +
+      '<td class="d-none d-xl-table-cell" style="max-width:220px;"><div class="text-truncate text-muted" style="font-size:.72rem;"' + (remarkTxt ? ' title="' + escAttr(remarkTxt) + '"' : '') + '>' + esc(remarkTxt || '—') + '</div></td>' +
+      '<td class="text-end" style="min-width:150px;" onclick="event.stopPropagation()">' + mtnActionHtml(r.sub) + '</td>' +
     '</tr>';
   });
 
@@ -5920,9 +5931,13 @@ function renderMtnStatusTab(subTabBar){
   }
 
 
-  const card = (f, color, label, count) => {
+  const card = (f, tone, icon, label, count) => {
     const active = (mtnStatusFilter === f) ? ' active' : '';
-    return '<div class="col-6 col-md-2"><div class="stat-card clickable-card' + active + '" onclick="setMtnStatusFilter(\'status\', \'' + escAttr(f) + '\')"><div class="num text-' + color + '">' + count + '</div><div class="lbl" style="font-size:.62rem;">' + esc(label) + '</div></div></div>';
+    return '<div class="col-6 col-md-4 col-lg">' +
+      '<div class="stat-card mtn-stat' + active + '" onclick="setMtnStatusFilter(\'status\', \'' + escAttr(f) + '\')">' +
+        '<div class="num mtn-num-' + tone + '">' + count + '</div>' +
+        '<div class="lbl"><i class="bi ' + icon + ' me-1"></i>' + esc(label) + '</div>' +
+      '</div></div>';
   };
 
   const loadMore = rows.length > mtnStatusLimit
@@ -5931,32 +5946,36 @@ function renderMtnStatusTab(subTabBar){
 
   const header = '<div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0"><i class="bi bi-clipboard2-pulse me-2"></i>MTN Management Status</h5><small class="text-muted">Repair requests · ' + esc(currentUser.group === 'ALL' ? 'All groups' : currentUser.group) + '</small></div><button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onclick="syncAllData(true)"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size:.75rem;min-width:55px;">--:--:--</span></button></div>';
 
-  const filters = '<div class="card mb-3"><div class="card-body py-2">' +
-    '<div class="row g-2 align-items-end">' +
-      '<div class="col-6 col-md-3"><label class="small fw-bold text-muted mb-1">Checklist status</label>' + statusSelect + '</div>' +
-      '<div class="col-6 col-md-3"><label class="small fw-bold text-muted mb-1">Item status</label>' + itemSelect + '</div>' +
-      '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Group</label>' + groupSelect + '</div>' +
-      (companyList.length ? '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Company</label>' + companySelect + '</div>' : '') +
-      '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Month</label><input type="month" class="form-control form-control-sm" value="' + escAttr(mtnStatusMonth) + '" onchange="setMtnStatusFilter(\'month\', this.value)"></div>' +
-    '</div>' +
-    '<div class="row g-2 align-items-end mt-1">' +
-      '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Sort</label>' + sortSelect + '</div>' +
-      '<div class="col-12 col-md-6"><label class="small fw-bold text-muted mb-1">Search</label><input type="text" id="mtnStatusSearch" class="form-control form-control-sm" placeholder="Equipment, item, status, check ID, technician, remark…" value="' + escAttr(mtnStatusSearch) + '" oninput="setMtnStatusFilter(\'search\', this.value)"></div>' +
-      '<div class="col-6 col-md-2"><button class="btn btn-sm btn-outline-secondary w-100" onclick="clearMtnStatusFilters()"><i class="bi bi-x-circle me-1"></i>Reset</button></div>' +
-      '<div class="col-6 col-md-2"><button class="btn btn-sm btn-outline-success w-100" onclick="exportMtnStatusCsv()"><i class="bi bi-file-earmark-excel me-1"></i>Export</button></div>' +
-    '</div>' +
+  const filters = '<div class="mtn-filters"><div class="row g-2 align-items-end">' +
+      '<div class="col-6 col-lg-3"><label class="rpt-lbl"><i class="bi bi-clipboard-check me-1"></i>Checklist status</label>' + statusSelect + '</div>' +
+      '<div class="col-6 col-lg-3"><label class="rpt-lbl"><i class="bi bi-wrench me-1"></i>Item status</label>' + itemSelect + '</div>' +
+      '<div class="col-6 col-lg-2"><label class="rpt-lbl"><i class="bi bi-people me-1"></i>Group</label>' + groupSelect + '</div>' +
+      (companyList.length ? '<div class="col-6 col-lg-2"><label class="rpt-lbl"><i class="bi bi-building me-1"></i>Company</label>' + companySelect + '</div>' : '') +
+      '<div class="col-6 col-lg-2"><label class="rpt-lbl"><i class="bi bi-calendar3 me-1"></i>Month</label><input type="month" class="form-control form-control-sm" value="' + escAttr(mtnStatusMonth) + '" onchange="setMtnStatusFilter(\'month\', this.value)"></div>' +
+      '<div class="col-6 col-lg-2"><label class="rpt-lbl"><i class="bi bi-sort-down me-1"></i>Sort</label>' + sortSelect + '</div>' +
+      '<div class="col-12 col-lg-6"><label class="rpt-lbl"><i class="bi bi-search me-1"></i>Search</label>' +
+        '<div class="input-group input-group-sm mtn-search"><span class="input-group-text"><i class="bi bi-search"></i></span>' +
+        '<input type="text" id="mtnStatusSearch" class="form-control" placeholder="Equipment, item, status, check ID, technician, remark…" value="' + escAttr(mtnStatusSearch) + '" oninput="setMtnStatusFilter(\'search\', this.value)"></div></div>' +
+      '<div class="col-12 col-lg-4"><div class="d-flex gap-2 justify-content-lg-end">' +
+        '<button class="btn btn-sm btn-outline-secondary flex-fill flex-lg-grow-0 px-3" onclick="clearMtnStatusFilters()"><i class="bi bi-x-circle me-1"></i>Reset</button>' +
+        '<button class="btn btn-sm btn-outline-success flex-fill flex-lg-grow-0 px-3" onclick="exportMtnStatusCsv()"><i class="bi bi-file-earmark-excel me-1"></i>Export</button>' +
+      '</div></div>' +
   '</div></div>';
 
   $('#app').html('<div class="container-fluid px-0">' + header + subTabBar +
-    '<div class="row g-2 mb-3">' +
-      card('all', 'secondary', 'All cases', counts['all']) +
-      card('', 'warning', 'Not Requested', counts['']) +
-      card('Requested', 'dark', 'Requested', counts['Requested']) +
-      card('Pending', 'info', 'Pending', counts['Pending']) +
-      card('Done', 'success', 'Done', counts['Done']) +
+    '<div class="row g-2 mb-3 mtn-stats">' +
+      card('all', 'all', 'bi-collection', 'All cases', counts['all']) +
+      card('', 'nr', 'bi-dash-circle', 'Not Requested', counts['']) +
+      card('Requested', 'req', 'bi-send-check', 'Requested', counts['Requested']) +
+      card('Pending', 'pend', 'bi-hourglass-split', 'Pending', counts['Pending']) +
+      card('Done', 'done', 'bi-check-circle-fill', 'Done', counts['Done']) +
     '</div>' + filters +
-    '<div class="card"><div class="card-body p-0"><div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0" style="font-size:.78rem;white-space:nowrap;"><thead style="background:var(--bg-color);"><tr>' + tableHead + '</tr></thead><tbody>' + tbody + '</tbody></table></div></div>' +
-    '<div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2 small text-muted"><span>Showing ' + shown.length + ' of ' + rows.length + ' case(s)</span><span>' + (mtnCanAct() ? (mtnIsRequester() ? 'Admin: create requests' : 'Repair Service: update status') : 'Read-only view') + '</span></div></div>' +
+    '<div class="card">' +
+      '<div class="mtn-table-head"><span class="fw-semibold"><i class="bi bi-list-check me-1"></i>Cases</span>' +
+        '<span class="text-muted">Showing ' + shown.length + ' of ' + rows.length + '</span></div>' +
+      '<div class="table-responsive"><table class="table mtn-table align-middle mb-0" style="white-space:nowrap;"><thead><tr>' + tableHead + '</tr></thead><tbody>' + tbody + '</tbody></table></div>' +
+      '<div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2 small text-muted"><span><i class="bi bi-info-circle me-1"></i>Click a row to open the checklist</span><span>' + (mtnCanAct() ? (mtnIsRequester() ? 'Admin: create requests' : 'Repair Service: update status') : 'Read-only view') + '</span></div>' +
+    '</div>' +
     loadMore + '<div style="padding-bottom:100px;"></div></div>');
 
   if (window._mtnStatusFocusSearch) {
