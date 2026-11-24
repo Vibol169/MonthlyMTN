@@ -208,6 +208,17 @@ window.isGeneratingPdfMode = false;
     setInterval(() => { if (authToken && typeof syncAllData === 'function') syncAllData(true); }, 60000);
   }
 })();
+
+/* Mobile browsers freeze timers in the background, so the 60s worker tick can
+   be missed. Refresh as soon as the app becomes visible / online again. */
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden) return;
+  if (!authToken) return;
+  if (typeof syncAllData === 'function') syncAllData(true);
+});
+window.addEventListener('online', function(){
+  if (authToken && typeof syncAllData === 'function') syncAllData(true);
+});
 let currentUser = null;
 let authToken = LS.get('authToken', null);
 let currentApp = 'monthly'; // 'monthly' or 'daily'
@@ -731,7 +742,7 @@ function bootLoad(){
 }
 
 window.fetchNotifications = function() {
-  if (!authToken) return;
+  if (!authToken || !currentUser) return;
   console.log('🔔 [fetchNotifications] Fetching from server...');
   
   google.script.run
@@ -743,7 +754,8 @@ window.fetchNotifications = function() {
     .withFailureHandler(err => {
       console.error('🔔 [fetchNotifications] Error:', err);
     })
-    .getNotifications(authToken);
+    // the server filters by USERNAME (a token would return an empty list)
+    .getNotifications(currentUser.username || '');
 };
 
 function updateNotifBadge() {
@@ -754,14 +766,21 @@ function updateNotifBadge() {
   if (unread > 0) { $badge.text(unread).show(); } else { $badge.hide(); }
 }
 
+/* How many of the newest daily submission rows the client asks for. Keeps the
+   minute-by-minute sync fast even when the Daily sheet has years of history. */
+const DAILY_BOOTSTRAP_MAX_ROWS = 3000;
+
 function fetchBothDatasets(silent){
   if (!authToken) return Promise.resolve();
   
   if (!silent) localStorage.removeItem('_gVersion'); 
 
   const tokenAtStart = authToken;
-  const getMonthly = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getBootstrapData(tokenAtStart));
-  const getDaily   = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getDailyBootstrapData(tokenAtStart));
+  // "_ts" is a cache-buster: it changes the serialized request body, so a
+  // caching proxy in front of the API (e.g. a Cloudflare Worker) can never
+  // answer with a stale bootstrap.
+  const getMonthly = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getBootstrapData(tokenAtStart, { _ts: Date.now() }));
+  const getDaily   = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getDailyBootstrapData(tokenAtStart, { _ts: Date.now(), maxRows: DAILY_BOOTSTRAP_MAX_ROWS }));
 
   return new Promise((resolve) => {
     // Serial on purpose: two google.script.run calls in flight at the same time
@@ -785,7 +804,7 @@ function fetchBothDatasets(silent){
       if (!isMonthlyPayload(resM)) {
         // A "no change" stub is not an error — keep everything we already have
         if (mUnchanged) {
-          if (isDailyPayload(resD)) applyDailyBootstrap(resD);
+          if (isDailyPayload(resD)) { applyDailyBootstrap(resD); refreshDailyView(); }
           done(); return;
         }
         if (!silent) {
@@ -806,7 +825,7 @@ function fetchBothDatasets(silent){
         }
         showApp();
       } else {
-        if (safeToRefresh()) showPage($('#bottomNav a.active').data('page') || 'home');
+        refreshDailyView();   // daily-aware: keeps filters/search intact
       }
       done();
     };
@@ -839,7 +858,7 @@ function fetchExtendedData(silent) {
     return;
   }
   
-  const opts = { daysBack: 365, maxSubs: 3000 };
+  const opts = { daysBack: 365, maxSubs: 3000, _ts: Date.now() };
   
   google.script.run
     .withSuccessHandler(res => {
@@ -876,11 +895,105 @@ function fetchExtendedData(silent) {
 }
 
 /* =========================================================
-   SILENT BACKGROUND SYNC (Web Worker Timer)
+   60-SECOND BACKGROUND SYNC (Web Worker Timer)
+
+   The worker timer calls syncAllData(true) every minute.
+
+   • Daily app   → ONE light getDailyBootstrapData call per tick, so the
+                   daily cards/list really do update every minute. The heavy
+                   monthly bootstrap (equipment/trailers/users) runs on every
+                   5th tick only.
+   • Monthly app → full serial bootstrap (monthly, then daily).
+   • Never two syncs at once, every payload is validated, and the page is
+     only repainted when the data actually changed.
+   • Every request carries a "_ts" nonce, so a caching proxy in front of the
+     API (Cloudflare Worker) can never serve a stale bootstrap.
    ========================================================= */
-/* =========================================================
-   SILENT BACKGROUND SYNC (Web Worker Timer)
-   ========================================================= */
+let _syncInFlight = false;
+let _syncStartedAt = 0;
+let _syncTick = 0;
+
+/* Cheap change-detector for the daily half (newest rows + template shape) */
+function dailyFingerprint(){
+  const subs = APP.dailySubmissions || [];
+  const tpl  = APP.dailyTemplates || {};
+  let h = subs.length + ':' + Object.keys(tpl).length + ':' +
+          Object.keys(tpl).reduce((n, k) => n + ((tpl[k] || []).length), 0);
+  const tail = subs.slice(-40);
+  for (let i = 0; i < tail.length; i++) {
+    const s = tail[i] || {};
+    h += '|' + s.checkId + ',' + s.overall + ',' + s.opStatus + ',' + s.confirmStatus + ',' +
+         s.agreementAt + ',' + s.endOdo + ',' + s.endHour + ',' + s.finishedAt + ',' + s.handoverAt;
+  }
+  return h;
+}
+
+/* Repaint only the tab that is on screen, and only its data-driven part
+   (the daily list keeps its search box and filters untouched). */
+function refreshDailyView(){
+  if (!safeToRefresh()) return;
+  const page = $('#bottomNav a.active').data('page') || 'home';
+  if (page === 'home') {
+    if (currentApp === 'daily') renderDailyHome(); else renderHome();
+  } else if (page === 'list') {
+    if (currentApp === 'daily') updateDailyListResults(); else updateListResults();
+  } else if (page === 'dashboard') {
+    if (currentApp === 'daily') renderDailyDashboard(); else renderDashboard();
+  }
+  updateLastSyncDisplay();
+}
+
+/* Daily half only — one light request, retried once when the call fails. */
+function syncDailyOnly(cb){
+  if (!authToken) { if (cb) cb(false); return; }
+  const attempt = (tries) => {
+    google.script.run
+      .withSuccessHandler(res => {
+        let ok = false;
+        try { ok = applyDailyBootstrap(res); }
+        catch (e) { console.error('[Sync] could not apply the daily payload', e); }
+        if (ok) {
+          lastSyncTime = Date.now();
+          LS.set('lastSyncTime', lastSyncTime);
+          if (cb) cb(true);
+          return;
+        }
+        if (tries > 0) { attempt(tries - 1); return; }
+        console.warn('[Sync] Daily payload rejected:', res);
+        if (cb) cb(false);
+      })
+      .withFailureHandler(err => {
+        if (tries > 0) { attempt(tries - 1); return; }
+        console.error('[Sync] Daily fetch failed:', err);
+        if (cb) cb(false);
+      })
+      .getDailyBootstrapData(authToken, { _ts: Date.now(), maxRows: DAILY_BOOTSTRAP_MAX_ROWS });
+  };
+  attempt(1);
+}
+
+/* Monthly half only — keeps equipment / trailers / users fresh for daily
+   users; the daily arrays are left exactly as they are. */
+function syncMonthlyOnly(cb){
+  if (!authToken) { if (cb) cb(); return; }
+  google.script.run
+    .withSuccessHandler(resM => {
+      try {
+        if (isMonthlyPayload(resM)) {
+          applyBootstrap(resM, null);      // daily half untouched
+          lastSyncTime = Date.now();
+          LS.set('lastSyncTime', lastSyncTime);
+        }
+      } catch (e) {
+        console.error('[Sync] could not apply the monthly payload', e);
+      } finally {
+        if (cb) cb();
+      }
+    })
+    .withFailureHandler(() => { if (cb) cb(); })
+    .getBootstrapData(authToken, { _ts: Date.now() });
+}
+
 window.syncAllData = function(silent) {
   if (!authToken) return;
 
@@ -889,74 +1002,46 @@ window.syncAllData = function(silent) {
     console.log('Sync postponed: User is busy (modal open or filling form)');
     return;
   }
+  if (_syncInFlight) {
+    // A request that never answered must not block every later tick
+    if (Date.now() - _syncStartedAt < 90000) {
+      console.log('[Sync] previous sync still running — tick skipped');
+      return;
+    }
+    console.warn('[Sync] previous sync looks stuck — resetting');
+  }
+  _syncInFlight = true;
+  _syncStartedAt = Date.now();
+  const finish = () => { _syncInFlight = false; updateLastSyncDisplay(); };
 
-  google.script.run
-    .withSuccessHandler(resM => {
-      if (!resM || !resM.success) return;
-      
-      // 1. If the data is unchanged, update the time, check bundled notifications, and exit
-      if (resM.unchanged) {
-        lastSyncTime = Date.now();
-        LS.set('lastSyncTime', lastSyncTime);
-        updateLastSyncDisplay(); 
+  /* ---- Daily app: light daily refresh every minute ---- */
+  if (silent && currentApp === 'daily') {
+    _syncTick++;
+    const withMonthly = (_syncTick % 5 === 1);   // tick 1, 6, 11 …
+    const before = dailyFingerprint();
 
-        // 👇 FETCH BUNDLED NOTIFICATIONS
-        if (resM.notifications) {
-          APP.notifications = resM.notifications;
-          updateNotifBadge();
-        }
-        
-        console.log('[Sync] No changes detected on server.');
-        return;
-      }
+    syncDailyOnly(() => {
+      const changed = dailyFingerprint() !== before;
+      const after = () => {
+        try {
+          if (changed || withMonthly) refreshDailyView();
+          console.log('[Sync] daily tick #' + _syncTick + (changed ? ' — updated' : ' — no change'));
+        } finally { finish(); }
+      };
+      if (withMonthly) syncMonthlyOnly(after);
+      else after();
+    });
+    return;
+  }
 
-      // Never apply a payload that is missing the session/user part
-      if (!isMonthlyPayload(resM)) { console.warn('[Sync] Unexpected monthly payload ignored'); return; }
-
-      // 2. If we get here, Monthly data changed. Fetch Daily data too.
-      google.script.run
-        .withSuccessHandler(resD => {
-          
-          // (applyBootstrap automatically applies resM.notifications now)
-          applyBootstrap(resM, resD);
-          
-          lastSyncTime = Date.now();
-          LS.set('lastSyncTime', lastSyncTime);
-          
-          if (silent) {
-            // Soft update: Only re-render if safe
-            if (safeToRefresh()) {
-              const page = $('#bottomNav a.active').data('page') || 'home';
-              if (page === 'home') renderHome();
-              else if (page === 'list') updateListResults();
-              else if (page === 'dashboard') { 
-                if (currentApp === 'daily') renderDailyDashboard(); else renderDashboard(); 
-              }
-              updateLastSyncDisplay(); // Updates time for silent sync
-            }
-          } else {
-            // Hard update (manual refresh or initial load) — only cache usable data
-            if (isDailyPayload(resD)) {
-              try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: authToken, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
-            }
-            showApp(); // (showApp calls showPage, which handles the UI update)
-            fetchExtendedData(true);
-          }
-          
-        })
-        .withFailureHandler(console.error)
-        .getDailyBootstrapData(authToken);
-        
-    })
-    .withFailureHandler(e => {
-      console.error("Sync failed:", e);
-    })
-    .getBootstrapData(authToken);
+  /* ---- Monthly app / manual refresh: full serial bootstrap ---- */
+  fetchBothDatasets(!!silent).then(() => { finish(); }).catch(() => { finish(); });
 };
 
-// Keep reloadAll as an alias so existing UI buttons don't break, but route them to silent sync
+// Keep reloadAll as an alias so existing UI buttons don't break, but route them to sync
 window.reloadAll = function() {
-  syncAllData(true); 
+  _syncTick = 0;                 // force the monthly half on the next tick
+  return syncAllData(true);
 };
 
 /* ---------- Payload guards ----------
@@ -1020,13 +1105,15 @@ function applyBootstrap(resM, resD){
 }
 
 function refreshCurrentPage(){
-  if (!authToken) return; 
+  if (!authToken) return;
   const page = $('#bottomNav a.active').data('page') || 'home';
-  if (page === 'home') renderHome();
-  else if (page === 'list') updateListResults();
-  else if (page === 'dashboard') {
-    if (currentApp === 'daily') renderDailyDashboard();
-    else renderDashboard();
+  // Always dispatch to the renderer of the app that is open (daily vs monthly)
+  if (page === 'home') {
+    if (currentApp === 'daily') renderDailyHome(); else renderHome();
+  } else if (page === 'list') {
+    if (currentApp === 'daily') updateDailyListResults(); else updateListResults();
+  } else if (page === 'dashboard') {
+    if (currentApp === 'daily') renderDailyDashboard(); else renderDashboard();
   }
   updateLastSyncDisplay();
 }
@@ -1048,8 +1135,8 @@ function dailySyncNow(){
   const seq = ++_dailySyncSeq;
   const tokenAtStart = authToken;
 
-  const getMonthly = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r(null)).getBootstrapData(tokenAtStart));
-  const getDaily   = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r(null)).getDailyBootstrapData(tokenAtStart));
+  const getMonthly = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r(null)).getBootstrapData(tokenAtStart, { _ts: Date.now() }));
+  const getDaily   = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r(null)).getDailyBootstrapData(tokenAtStart, { _ts: Date.now(), maxRows: DAILY_BOOTSTRAP_MAX_ROWS }));
 
   return new Promise(resolve => {
     const stale = () => !authToken || seq !== _dailySyncSeq;
@@ -1096,7 +1183,7 @@ function reloadDailyData(cb){
   google.script.run
     .withSuccessHandler(res => { const ok = applyDailyBootstrap(res); if (cb) cb(ok); })
     .withFailureHandler(() => { if (cb) cb(false); })
-    .getDailyBootstrapData(authToken);
+    .getDailyBootstrapData(authToken, { _ts: Date.now(), maxRows: DAILY_BOOTSTRAP_MAX_ROWS });
 }
 
 function safeToRefresh(){
@@ -1148,6 +1235,13 @@ $(document).ready(function(){
   });
   $('#remarkModal').on('hidden.bs.modal', function(){
     if (typeof _remarkModalCallback === 'function') { _remarkModalCallback(null); _remarkModalCallback = null; }
+  });
+  // Closing a modal unblocks the silent sync — catch up right away if the last
+  // successful sync is already older than one minute.
+  $('#detailModal, #remarkModal, #accountModal').on('hidden.bs.modal', function(){
+    if (authToken && Date.now() - (lastSyncTime || 0) > 60000 && typeof syncAllData === 'function') {
+      syncAllData(true);
+    }
   });
   $('#remarkModalInput').on('keydown', function(e){
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); $('#remarkModalOk').click(); }
