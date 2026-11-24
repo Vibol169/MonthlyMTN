@@ -2110,45 +2110,65 @@ function renderDailyDriverHome() {
   const myEqIds = currentUser.equipment || [];
   const mySubs = APP.dailySubmissions || [];
   const todaySubs = mySubs.filter(s => isToday(s.date));
+  const openShifts = dailyMyOpenShift();
+  const sessionCards = openShifts.map(s => dailySessionCard(s)).join('');
 
   const cards = myEqIds.map(eqId => {
     const eq = APP.equipmentMap[eqId] || { equipmentId: eqId, shortName: eqId, group: '', model: '' };
     const eqSubsToday = todaySubs.filter(s => s.equipmentId === eqId);
-    const mineSub     = eqSubsToday.find(s => s.username === currentUser.username);
-    const others      = eqSubsToday.filter(s => s.username !== currentUser.username);
-    const latest      = eqSubsToday[eqSubsToday.length - 1];
+    const latestToday = eqSubsToday[eqSubsToday.length - 1];
+    const latest      = dailyLatestSub(eqId);            // newest shift on this equipment (any day)
+    const op          = latest ? dailyNormOp(latest.opStatus) : '';
+    const mine        = !!latest && latest.username === currentUser.username;
+    const myOpen      = mine && dailyIsOpenOp(op);
+    const otherOpen   = !!latest && !mine && dailyIsOpenOp(op);
+    const waiting     = !!latest && !mine && op === DAILY_OP_WAITING;
+    const myFinished  = mine && op === DAILY_OP_WAITING && latest.date === dmyToday();
 
-    const done        = !!latest;
-    const doneByMe    = !!mineSub;
-    const doneByOther = !mineSub && others.length > 0;
+    const resultSub = latestToday || latest;
+    const statusCls = resultSub ? (resultSub.overall === 'Issues' ? 'nok' : 'ok') : 'pending';
+    const statusLbl = resultSub ? (resultSub.overall === 'Issues' ? 'Issues' : 'OK') : 'Pending';
+    const headBadge = op ? dailyOpBadge(op) : '<span class="status-badge status-'+statusCls+'">'+statusLbl+'</span>';
 
-    const statusCls = done ? (latest.overall === 'Issues' ? 'nok' : 'ok') : 'pending';
-    const statusLbl = done ? (latest.overall === 'Issues' ? 'Issues' : 'OK') : 'Pending';
-
-    let infoLine = !done
-      ? '<div class="small text-warning"><i class="bi bi-exclamation-circle me-1"></i>Not checked today</div>'
-      : (doneByMe
-          ? '<div class="small text-success"><i class="bi bi-person-check me-1"></i>You checked at <strong>'+esc(latest.time)+'</strong></div>'
-          : '<div class="small text-info"><i class="bi bi-people me-1"></i><strong>'+esc(latest.driverName)+'</strong> checked at '+esc(latest.time)+'</div>');
+    let infoLine = '';
+    if (myOpen) {
+      infoLine = '<div class="small text-success"><i class="bi bi-person-check me-1"></i>You are on shift since <strong>'+esc(latest.date)+' '+esc(latest.time)+'</strong></div>';
+    } else if (otherOpen) {
+      infoLine = '<div class="small text-warning"><i class="bi bi-person-fill-gear me-1"></i><strong>'+esc(latest.driverName)+'</strong> is using it ('+esc(dailyOpInfo(op).label)+')</div>';
+    } else if (waiting) {
+      infoLine = '<div class="small text-primary"><i class="bi bi-arrow-left-right me-1"></i><strong>'+esc(latest.driverName)+'</strong> finished — handover review required</div>';
+    } else if (myFinished) {
+      infoLine = '<div class="small text-primary"><i class="bi bi-hourglass-split me-1"></i>Your shift is finished — waiting for the next driver to verify the handover</div>';
+    } else if (latest && op === DAILY_OP_HANDED) {
+      infoLine = '<div class="small text-muted"><i class="bi bi-check2-circle me-1"></i>Last shift handed over by '+esc(latest.driverName)+'</div>';
+    } else if (latest) {
+      infoLine = '<div class="small text-muted"><i class="bi bi-clock-history me-1"></i>Last: '+esc(latest.driverName)+' · '+esc(latest.date)+' '+esc(latest.time)+'</div>';
+    } else {
+      infoLine = '<div class="small text-warning"><i class="bi bi-exclamation-circle me-1"></i>Not checked yet</div>';
+    }
 
     const countChip = (eqSubsToday.length > 1) ? ' <span class="badge bg-secondary">'+eqSubsToday.length+' today</span>' : '';
 
     let actions = '';
-    if (!done) {
-      actions = '<div class="text-end mt-2"><button class="btn btn-sm btn-primary" onclick="event.stopPropagation();startDailyChecklist(\''+escAttr(eqId)+'\',\''+escAttr(eq.group)+'\',\''+escAttr(eq.shortName)+'\')"><i class="bi bi-play-fill"></i> Start Checklist</button></div>';
-    } else if (doneByMe) {
-      actions = '<div class="text-end mt-2"><button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation();viewDailyCheck(\''+escAttr(mineSub.checkId)+'\')"><i class="bi bi-eye"></i> View mine</button></div>';
-    } else {
+    if (myOpen) {
+      actions = '<div class="text-end mt-2"><button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation();viewDailyCheck(\''+escAttr(latest.checkId)+'\')"><i class="bi bi-eye"></i> View mine</button></div>';
+    } else if (otherOpen) {
+      actions = '<div class="text-end mt-2"><button class="btn btn-sm btn-outline-secondary" disabled><i class="bi bi-lock"></i> In use</button></div>';
+    } else if (waiting) {
       actions = '<div class="text-end mt-2 d-flex gap-2 justify-content-end flex-wrap">' +
         '<button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation();viewDailyCheck(\''+escAttr(latest.checkId)+'\')"><i class="bi bi-eye"></i> View</button>' +
-        '<button class="btn btn-sm btn-warning" onclick="event.stopPropagation();startDailyChecklist(\''+escAttr(eqId)+'\',\''+escAttr(eq.group)+'\',\''+escAttr(eq.shortName)+'\')"><i class="bi bi-arrow-left-right"></i> Handover &amp; Start</button>' +
-      '</div>';
+        '<button class="btn btn-sm btn-warning" onclick="event.stopPropagation();startDailyChecklist(\''+escAttr(eqId)+'\',\''+escAttr(eq.group)+'\',\''+escAttr(eq.shortName)+'\')"><i class="bi bi-arrow-left-right"></i> Review &amp; Handover</button>' +
+        '</div>';
+    } else if (myFinished) {
+      actions = '<div class="text-end mt-2"><button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation();viewDailyCheck(\''+escAttr(latest.checkId)+'\')"><i class="bi bi-eye"></i> View my Finished Form</button></div>';
+    } else {
+      actions = '<div class="text-end mt-2"><button class="btn btn-sm btn-primary" onclick="event.stopPropagation();startDailyChecklist(\''+escAttr(eqId)+'\',\''+escAttr(eq.group)+'\',\''+escAttr(eq.shortName)+'\')"><i class="bi bi-play-fill"></i> Start Checklist</button></div>';
     }
 
     return '<div class="card mb-2 clickable-card" onclick="drillToDaily({equipmentId:\''+escAttr(eqId)+'\'})">' +
       '<div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-truck text-primary me-2"></i><strong>'+esc(eq.shortName)+'</strong>'+countChip+'</span>' +
-        '<span class="status-badge status-'+statusCls+'">'+statusLbl+'</span>' +
+        headBadge +
       '</div>' +
       '<div class="card-body py-2">' +
         '<div class="small text-muted mb-1">'+esc(eq.equipmentId)+' · '+esc(eq.group)+' · '+esc(eq.model || '')+'</div>' +
@@ -2174,7 +2194,8 @@ function renderDailyDriverHome() {
       '<div class="col-6 col-md-3"><div class="stat-card clickable-card" onclick="drillToDaily({equipmentId:\'all\',status:\'all\',dateFrom:\'\',dateTo:\'\'})">' +
         '<div class="num text-success">'+myEqIds.length+'</div><div class="lbl">ឧបករណ៍</div></div></div>' +
     '</div>' +
-    '<h6 class="mb-2"><i class="bi bi-clipboard-check text-primary me-2"></i>ឧបករណ៍របស់ខ្ញុំ ('+myEqIds.length+')</h6>' +
+    (sessionCards ? '<h6 class="mb-2"><i class="bi bi-activity text-success me-2"></i>My Shift ('+openShifts.length+')</h6>' + sessionCards : '') +
+    '<h6 class="mb-2 mt-3"><i class="bi bi-clipboard-check text-primary me-2"></i>ឧបករណ៍របស់ខ្ញុំ ('+myEqIds.length+')</h6>' +
     (cards || '<p class="text-muted text-center py-4">មិនមានឧបករណ៍</p>')
   );
 }
@@ -6410,32 +6431,226 @@ window.drillToDailyIssue = function(itemIdsCsv, label) {
 };
 
 /* =========================================================
+   DAILY OPERATIONAL FLOW
+   Operating (default on submit) ⇄ Stand By → Finished (form)
+   → Waiting Handover → Handed Over (verified by next driver)
+   ========================================================= */
+const DAILY_OP_OPERATING = 'Operating';
+const DAILY_OP_STANDBY   = 'Stand By';
+const DAILY_OP_WAITING   = 'Waiting Handover';
+const DAILY_OP_HANDED    = 'Handed Over';
+
+function dailyNormOp(v){
+  const s = String(v == null ? '' : v).trim();
+  const k = s.toLowerCase().replace(/[\s_-]+/g, ' ');
+  if (!k) return '';
+  if (k === 'operating' || k === 'operate' || k === 'active' || k === 'running') return DAILY_OP_OPERATING;
+  if (k === 'stand by' || k === 'standby' || k === 'pause' || k === 'paused' || k === 'break') return DAILY_OP_STANDBY;
+  if (k === 'finished' || k === 'finish') return DAILY_OP_WAITING;
+  if (k === 'waiting handover' || k === 'waiting for handover' || k === 'awaiting handover') return DAILY_OP_WAITING;
+  if (k === 'handed over' || k === 'handedover' || k === 'handover done' || k === 'completed') return DAILY_OP_HANDED;
+  return s;
+}
+
+function dailyIsOpenOp(op){ return op === DAILY_OP_OPERATING || op === DAILY_OP_STANDBY; }
+
+function dailyOpInfo(status){
+  const st = dailyNormOp(status);
+  if (st === DAILY_OP_OPERATING) return { status: st, label: 'Operating', icon: 'bi-play-circle-fill', cls: 'op-operating', hint: 'Active work — the equipment is running.' };
+  if (st === DAILY_OP_STANDBY)   return { status: st, label: 'Stand By', icon: 'bi-pause-circle-fill', cls: 'op-standby', hint: 'Taking a break — switch back to Operating anytime.' };
+  if (st === DAILY_OP_WAITING)   return { status: st, label: 'Waiting Handover', icon: 'bi-hourglass-split', cls: 'op-waiting', hint: 'Finished form sent — the next driver must verify the handover.' };
+  if (st === DAILY_OP_HANDED)    return { status: st, label: 'Handed Over', icon: 'bi-check2-circle', cls: 'op-handover', hint: 'Verified by the next driver — this shift is locked.' };
+  return { status: '', label: 'Not started', icon: 'bi-dash-circle', cls: 'op-none', hint: '' };
+}
+
+function dailyOpBadge(status){
+  const info = dailyOpInfo(status);
+  if (!info.status) return '';
+  return '<span class="op-badge ' + info.cls + '"><i class="bi ' + info.icon + ' me-1"></i>' + esc(info.label) + '</span>';
+}
+
+function dailyNumText(v){
+  if (v === '' || v == null) return '';
+  const n = parseFloat(String(v).replace(/,/g, ''));
+  return isNaN(n) ? String(v) : String(n);
+}
+
+// Show a person's full name when we know it, otherwise the username
+function dailyUserLabel(username){
+  const u = String(username || '');
+  if (!u) return '';
+  const found = (APP.users || []).find(x => x.username === u);
+  return (found && found.fullName) ? found.fullName : u;
+}
+
+// Newest submission for one equipment (any driver, any date)
+function dailyLatestSub(equipmentId){
+  let best = null, bestMs = -1;
+  (APP.dailySubmissions || []).forEach(s => {
+    if (String(s.equipmentId) !== String(equipmentId)) return;
+    const ms = subMs(s);
+    if (ms >= bestMs) { bestMs = ms; best = s; }
+  });
+  return best;
+}
+
+// My own newest shift per equipment, only while it is Operating or Stand By
+function dailyMyOpenShift(){
+  const me = currentUser && currentUser.username;
+  if (!me) return [];
+  const seen = {}, out = [];
+  (APP.dailySubmissions || [])
+    .slice()
+    .sort((a, b) => subMs(b) - subMs(a))
+    .forEach(s => {
+      if (s.username !== me) return;
+      if (seen[s.equipmentId]) return;
+      seen[s.equipmentId] = 1;
+      if (dailyIsOpenOp(dailyNormOp(s.opStatus))) out.push(s);
+    });
+  return out;
+}
+
+function dailyShiftStartValues(prev){
+  if (!prev) return { odo: '', hour: '' };
+  const num = (v) => {
+    if (v === '' || v == null) return '';
+    const n = parseFloat(String(v).replace(/,/g, ''));
+    return isNaN(n) ? '' : n;
+  };
+  return {
+    odo: num(prev.endOdo),
+    hour: num(prev.endHour)
+  };
+}
+
+function dailyKvRow(label, value){
+  if (value === '' || value == null) return '';
+  return '<div class="op-kv"><span class="text-muted">' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>';
+}
+
+/* The live shift card shown on the driver home while Operating / Stand By */
+function dailySessionCard(s){
+  const info = dailyOpInfo(s.opStatus);
+  const eq = APP.equipmentMap[s.equipmentId] || {};
+  const starts = dailyShiftStartValues(s);
+  const startLine = (starts.odo !== '' || starts.hour !== '')
+    ? '<div class="small text-muted mt-1"><i class="bi bi-speedometer2 me-1"></i>Start Odometer ' + esc(starts.odo || '—') + ' · OPHour ' + esc(starts.hour || '—') + '</div>'
+    : '';
+  return '<div class="card session-card mb-2 ' + info.cls + '">' +
+    '<div class="card-body py-2">' +
+      '<div class="d-flex justify-content-between align-items-start mb-1">' +
+        '<div><div class="fw-bold"><i class="bi bi-truck me-1"></i>' + esc(eq.shortName || s.equipmentId) + '</div>' +
+          '<div class="small text-muted">' + esc(s.checkId) + ' · since ' + esc(s.date) + ' ' + esc(s.time) + '</div></div>' +
+        dailyOpBadge(s.opStatus) +
+      '</div>' +
+      '<div class="small text-muted">' + esc(info.hint) + '</div>' +
+      startLine +
+      '<div class="d-flex gap-2 flex-wrap mt-2">' +
+        (info.status === DAILY_OP_OPERATING
+          ? '<button class="btn btn-sm btn-outline-warning" onclick="event.stopPropagation();setDailyOpStatus(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_STANDBY + '\')"><i class="bi bi-pause-circle me-1"></i>Stand By</button>'
+          : '<button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation();setDailyOpStatus(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>') +
+        '<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();openDailyFinishForm(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>' +
+        '<button class="btn btn-sm btn-outline-primary ms-auto" onclick="event.stopPropagation();viewDailyCheck(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-eye"></i></button>' +
+      '</div>' +
+    '</div></div>';
+}
+
+/* Operational panel used inside the daily detail modal */
+function dailyOpSectionHtml(s){
+  const info = dailyOpInfo(s.opStatus);
+  if (!info.status) return '';
+  const isOwner = s.username === (currentUser && currentUser.username);
+  const active = dailyIsOpenOp(info.status);
+
+  let html = '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center"><span><i class="bi bi-activity me-2"></i>Operational Status</span>' + dailyOpBadge(s.opStatus) + '</div><div class="card-body py-2">';
+  if (s.opAt) html += '<div class="small text-muted mb-1"><i class="bi bi-clock-history me-1"></i>Updated ' + esc(s.opAt) + (s.opBy ? ' · ' + esc(dailyUserLabel(s.opBy)) : '') + '</div>';
+  html += dailyKvRow('Start Odometer', (s.startOdo === '' || s.startOdo == null) ? '' : dailyNumText(s.startOdo));
+  html += dailyKvRow('Start OPHour', (s.startHour === '' || s.startHour == null) ? '' : dailyNumText(s.startHour));
+  html += dailyKvRow('End Odometer', (s.endOdo === '' || s.endOdo == null) ? '' : dailyNumText(s.endOdo));
+  html += dailyKvRow('End OPHour', (s.endHour === '' || s.endHour == null) ? '' : dailyNumText(s.endHour));
+  if (s.endRemark) html += '<div class="small mt-2"><span class="text-muted">Final Remark</span><div>' + esc(s.endRemark) + '</div></div>';
+  if (s.finishedAt) html += '<div class="small text-muted mt-2"><i class="bi bi-flag me-1"></i>Finished ' + esc(s.finishedAt) + (s.finishedBy ? ' · ' + esc(dailyUserLabel(s.finishedBy)) : '') + '</div>';
+  if (s.handoverBy) {
+    html += '<div class="small text-success mt-1"><i class="bi bi-shield-check me-1"></i>Handover verified by ' + esc(dailyUserLabel(s.handoverBy)) + (s.handoverAt ? ' · ' + esc(s.handoverAt) : '') + '</div>';
+    if (s.handoverRemark) html += '<div class="small text-muted mt-1">' + esc(s.handoverRemark) + '</div>';
+  }
+  if (isOwner && active) {
+    html += '<div class="d-flex gap-2 flex-wrap mt-2">' +
+      (info.status === DAILY_OP_OPERATING
+        ? '<button class="btn btn-sm btn-outline-warning" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_STANDBY + '\')"><i class="bi bi-pause-circle me-1"></i>Stand By</button>'
+        : '<button class="btn btn-sm btn-outline-success" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>') +
+      '<button class="btn btn-sm btn-danger" onclick="dailyDetailFinish(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>' +
+    '</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+window.dailyDetailOp = function(checkId, status){
+  const el = document.getElementById('detailModal');
+  const m = el ? bootstrap.Modal.getInstance(el) : null;
+  if (m) m.hide();
+  setDailyOpStatus(checkId, status);
+};
+
+window.dailyDetailFinish = function(checkId){
+  const el = document.getElementById('detailModal');
+  const m = el ? bootstrap.Modal.getInstance(el) : null;
+  if (m) m.hide();
+  openDailyFinishForm(checkId);
+};
+
+/* =========================================================
    START & HANDOVER
    ========================================================= */
 window.startDailyChecklist = function(equipmentId, group, shortName){
-  const others = (APP.dailySubmissions || [])
-    .filter(s => s.equipmentId === equipmentId && s.username !== currentUser.username)
-    .sort((a, b) => {
-      const da = parseDmyToMs(a.date) + timeToMs(a.time);
-      const db = parseDmyToMs(b.date) + timeToMs(b.time);
-      return db - da;
-    });
+  const me = currentUser.username;
+  const latest = dailyLatestSub(equipmentId);
+  const op = latest ? dailyNormOp(latest.opStatus) : '';
+  const mine = !!latest && latest.username === me;
 
-  if (others.length > 0) {
-    renderDailyHandoverConfirmation(others[0], equipmentId, group, shortName);
-  } else {
-    loadAndRenderDailyForm(equipmentId, group, shortName, '', '');
+  // Equipment is still being used by another driver — no blank checklist allowed
+  if (latest && !mine && dailyIsOpenOp(op)) {
+    showAlert(latest.driverName + ' is still using this equipment (' + op + '). The shift must be finished first.', 'warning');
+    return;
   }
+
+  // Previous driver finished → handover review is mandatory
+  if (latest && !mine && op === DAILY_OP_WAITING) {
+    renderDailyHandoverConfirmation(latest, equipmentId, group, shortName);
+    return;
+  }
+
+  // My own shift is still open
+  if (latest && mine && dailyIsOpenOp(op)) {
+    showAlert('Your shift on this equipment is still open (' + op + '). Use Stand By or Finished on your shift card.', 'warning');
+    return;
+  }
+
+  // Already finished today → the next driver must verify before this equipment starts again
+  if (latest && mine && op === DAILY_OP_WAITING && latest.date === dmyToday()) {
+    showAlert('Your shift today is finished. The next driver must verify the handover before a new checklist can start.', 'info');
+    return;
+  }
+
+  // Finished / handed over shifts pass their odometer + hour meter to the new checklist
+  const inherited = (latest && (op === DAILY_OP_WAITING || op === DAILY_OP_HANDED)) ? latest : null;
+  loadAndRenderDailyForm(equipmentId, group, shortName, inherited ? inherited.checkId : '', '', inherited);
 };
 
-function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, handoverRemark){
+function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, handoverRemark, prevSub){
   const items = (APP.dailyTemplates || {})[group] || [];
   if (items.length === 0) { showAlert('No template for group: ' + group, 'danger'); return; }
+  const starts = dailyShiftStartValues(prevSub);
   
   pendingDailyChecklist = {
     equipmentId: equipmentId, group: group, shortName: shortName,
     handoverCheckId: prevCheckId || '',
     handoverRemark: handoverRemark || '',
+    prevDriverName: prevSub ? (prevSub.driverName || '') : '',
+    startOdo: starts.odo,
+    startHour: starts.hour,
     items: items.slice(), 
     checks: {}
   };
@@ -6445,6 +6660,18 @@ function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, hand
   });
   
   renderDailyChecklistForm();
+}
+
+function dailyFinishSummaryHtml(prev){
+  const hasEnd = (prev.endOdo !== '' && prev.endOdo != null) || (prev.endHour !== '' && prev.endHour != null) || !!prev.endRemark;
+  if (!hasEnd) return '';
+  return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center"><span><i class="bi bi-clipboard2-check me-2"></i>Finished Form — previous shift</span>' + dailyOpBadge(prev.opStatus) + '</div>' +
+    '<div class="card-body py-2">' +
+      dailyKvRow('End Odometer', (prev.endOdo === '' || prev.endOdo == null) ? '' : dailyNumText(prev.endOdo)) +
+      dailyKvRow('End OPHour', (prev.endHour === '' || prev.endHour == null) ? '' : dailyNumText(prev.endHour)) +
+      (prev.endRemark ? '<div class="small mt-2"><span class="text-muted">Final Remark</span><div>' + esc(prev.endRemark) + '</div></div>' : '') +
+      (prev.finishedAt ? '<div class="small text-muted mt-2"><i class="bi bi-clock-history me-1"></i>' + esc(prev.driverName || dailyUserLabel(prev.finishedBy)) + ' · ' + esc(prev.finishedAt) + '</div>' : '') +
+    '</div></div>';
 }
 
 function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
@@ -6480,17 +6707,24 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
       '</div>';
   }
 
+  const starts = dailyShiftStartValues(prev);
+  const startsLine = (starts.odo !== '' || starts.hour !== '')
+    ? '<div class="op-inherit mt-2"><i class="bi bi-arrow-repeat me-1"></i>Your checklist will start from <strong>Odometer ' + esc(starts.odo || '—') + '</strong> · <strong>OPHour ' + esc(starts.hour || '—') + '</strong></div>'
+    : '';
+
   $('#app').html(
     '<div class="container-fluid px-0">' +
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyChecklist()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
+      dailyFinishSummaryHtml(prev) +
       '<div class="card mb-3 handover-banner"><div class="card-body">' +
         '<div class="d-flex align-items-start mb-3">' +
           '<i class="bi bi-arrow-left-right hi"></i>' +
           '<div><strong>Handover Review Required</strong>' +
-            '<div class="small mt-1">Equipment <strong>'+esc(shortName)+'</strong> was last checked by another driver. Please review before starting your own checklist.</div></div>' +
+            '<div class="small mt-1">Equipment <strong>'+esc(shortName)+'</strong> was finished by <strong>'+esc(prev.driverName)+'</strong>. Review the checklist and the Finished Form, then verify the handover to start your own.</div></div>' +
         '</div>' +
+        startsLine +
         '<div class="mb-3">' +
-          '<label class="form-label small fw-bold mb-1"><i class="bi bi-chat-left-text me-1"></i>Note for previous submission (optional)</label>' +
+          '<label class="form-label small fw-bold mb-1"><i class="bi bi-chat-left-text me-1"></i>Handover remark for the previous shift (optional)</label>' +
           '<textarea class="form-control form-control-sm" id="handoverRemark" rows="2" placeholder="បញ្ចូលកំណត់សម្គាល់...">'+esc(prev.reviewedRemark || '')+'</textarea>' +
           (prev.reviewedBy
             ? (prev.reviewedRemark
@@ -6499,7 +6733,7 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
             : '') +
         '</div>' +
         '<div class="d-grid gap-2">' +
-          '<button class="btn btn-primary" onclick="confirmDailyHandover(\''+escAttr(equipmentId)+'\',\''+escAttr(group)+'\',\''+escAttr(shortName)+'\',\''+escAttr(prev.checkId)+'\')"><i class="bi bi-check-circle me-1"></i>I have reviewed — Start Checklist</button>' +
+          '<button class="btn btn-primary" onclick="confirmDailyHandover(\''+escAttr(equipmentId)+'\',\''+escAttr(group)+'\',\''+escAttr(shortName)+'\',\''+escAttr(prev.checkId)+'\')"><i class="bi bi-shield-check me-1"></i>Verify &amp; Accept Handover</button>' +
           '<button class="btn btn-outline-primary" onclick="viewDailyCheck(\''+escAttr(prev.checkId)+'\')"><i class="bi bi-eye me-1"></i>View Full Details</button>' +
         '</div>' +
       '</div></div>' +
@@ -6524,7 +6758,36 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
 
 window.confirmDailyHandover = function(equipmentId, group, shortName, prevCheckId){
   const remark = $('#handoverRemark').val() || '';
-  loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, remark);
+  const prev = (APP.dailySubmissions || []).find(x => x.checkId === prevCheckId) || null;
+
+  showLoading('កំពុងផ្ទៀងផ្ទាត់...');
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoading();
+      if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); return; }
+
+      const p = prev;
+      if (p) {
+        p.opStatus = DAILY_OP_HANDED;
+        p.opAt = res.handoverAt || (dmyToday() + ' ' + nowTimeStr());
+        p.handoverBy = res.handoverBy || currentUser.username;
+        p.handoverAt = res.handoverAt || p.opAt;
+        if (res.handoverRemark != null) p.handoverRemark = res.handoverRemark;
+        p.reviewedBy = p.handoverBy;
+        p.reviewedRemark = p.handoverRemark || remark;
+        p.reviewedAt = p.handoverAt;
+        if (res.endOdo !== undefined) p.endOdo = res.endOdo;
+        if (res.endHour !== undefined) p.endHour = res.endHour;
+        if (res.endRemark !== undefined) p.endRemark = res.endRemark;
+        if (res.finishedAt) p.finishedAt = res.finishedAt;
+        if (res.finishedBy) p.finishedBy = res.finishedBy;
+      }
+
+      showAlert('Handover verified — your checklist can start now', 'success');
+      loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, remark, p);
+    })
+    .withFailureHandler(handleError)
+    .verifyDailyHandover({ prevCheckId: prevCheckId, remark: remark });
 };
 
 /* =========================================================
@@ -6546,8 +6809,14 @@ function renderDailyChecklistForm(){
   }).join('');
 
   const handoverChip = c.handoverCheckId
-    ? '<div class="small text-primary mt-2"><i class="bi bi-arrow-left-right me-1"></i>Reviewed: <strong>'+esc(c.handoverCheckId)+'</strong>' +
+    ? '<div class="small text-primary mt-2"><i class="bi bi-shield-check me-1"></i>Handover verified: <strong>'+esc(c.handoverCheckId)+'</strong>' +
+      (c.prevDriverName ? ' · previous driver <strong>'+esc(c.prevDriverName)+'</strong>' : '') +
       (c.handoverRemark ? '<div class="text-muted mt-1">Remark left: <em>'+esc(c.handoverRemark)+'</em></div>' : '') + '</div>'
+    : '';
+
+  const startLine = (c.startOdo !== '' || c.startHour !== '')
+    ? '<div class="op-inherit mt-2"><i class="bi bi-arrow-repeat me-1"></i>Shift start — <strong>Odometer '+esc(c.startOdo === '' ? '—' : c.startOdo)+'</strong> · <strong>OPHour '+esc(c.startHour === '' ? '—' : c.startHour)+'</strong>' +
+      (c.prevDriverName ? ' <span class="text-muted">(from '+esc(c.prevDriverName)+')</span>' : '') + '</div>'
     : '';
 
   $('#app').html(
@@ -6556,6 +6825,7 @@ function renderDailyChecklistForm(){
       '<div class="card mb-3"><div class="card-body">' +
         '<h5 class="mb-1">'+esc(c.shortName)+'</h5>' +
         '<div class="small text-muted mb-0">'+esc(c.equipmentId)+' · '+esc(c.group)+'</div>' +
+        startLine +
         handoverChip +
       '</div></div>' +
       itemsHtml +
@@ -6633,7 +6903,9 @@ window.submitDailyChecklistForm = function(){
     username: currentUser.username, fullName: currentUser.fullName,
     equipmentId: c.equipmentId, group: c.group, overallStatus: overall,
     checks: checks, remark: $('#checkRemark').val() || '', photoIds: [],
-    handoverCheckId: c.handoverCheckId || '', handoverRemark: c.handoverRemark || ''
+    handoverCheckId: c.handoverCheckId || '', handoverRemark: c.handoverRemark || '',
+    startOdo: c.startOdo === '' || c.startOdo == null ? '' : c.startOdo,
+    startHour: c.startHour === '' || c.startHour == null ? '' : c.startHour
   };
 
   showLoading('កំពុងដាក់ស្នើ...');
@@ -6641,13 +6913,142 @@ window.submitDailyChecklistForm = function(){
     .withSuccessHandler(res => {
       hideLoading();
       if (res && res.success) {
-        showAlert('ដាក់ស្នើរួចរាល់ — '+res.checkId, 'success');
+        showAlert('ដាក់ស្នើរួចរាល់ — '+res.checkId+' · Status: Operating', 'success');
         pendingDailyChecklist = null;
         reloadAll('home');
       } else showAlert((res && res.message) || 'Error', 'danger');
     })
     .withFailureHandler(handleError)
     .submitDailyChecklist(payload);
+};
+
+/* =========================================================
+   SHIFT STATUS ACTIONS (Operating ⇄ Stand By → Finished)
+   ========================================================= */
+let dailyFlowModal = null;
+
+function hideDailyFlowModal(){
+  if (dailyFlowModal) { try { dailyFlowModal.hide(); } catch (e) {} dailyFlowModal = null; }
+  $('#dailyFlowModal').remove();
+}
+
+function showDailyFlowModal(titleHtml, bodyHtml, footerHtml){
+  hideDailyFlowModal();
+  const html = '<div class="modal fade" id="dailyFlowModal" tabindex="-1" aria-hidden="true">' +
+    '<div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">' +
+      '<div class="modal-content" style="background:var(--card-bg);color:var(--text-color);">' +
+        '<div class="modal-header" style="border-bottom:1px solid var(--border-color);">' +
+          '<h6 class="modal-title">' + titleHtml + '</h6>' +
+          '<button type="button" class="btn-close" data-bs-dismiss="modal"></button>' +
+        '</div>' +
+        '<div class="modal-body">' + bodyHtml + '</div>' +
+        (footerHtml ? '<div class="modal-footer" style="border-top:1px solid var(--border-color);">' + footerHtml + '</div>' : '') +
+      '</div></div></div>';
+  $('body').append(html);
+  const el = document.getElementById('dailyFlowModal');
+  dailyFlowModal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
+  el.addEventListener('hidden.bs.modal', function(){ $(el).remove(); dailyFlowModal = null; });
+  dailyFlowModal.show();
+}
+
+window.setDailyOpStatus = function(checkId, status){
+  const s = (APP.dailySubmissions || []).find(x => x.checkId === checkId);
+  if (!s) return;
+  const next = dailyNormOp(status);
+  if (!dailyIsOpenOp(next)) return;
+  if (next === dailyNormOp(s.opStatus)) return;
+
+  showLoading('កំពុងរក្សាទុក...');
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoading();
+      if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); return; }
+      s.opStatus = res.opStatus || next;
+      s.opAt = res.opAt || (dmyToday() + ' ' + nowTimeStr());
+      s.opBy = res.opBy || currentUser.username;
+      showAlert('Status: ' + dailyOpInfo(s.opStatus).label, 'success');
+      refreshCurrentPage();
+    })
+    .withFailureHandler(handleError)
+    .setDailyOpStatus({ checkId: checkId, status: next });
+};
+
+window.openDailyFinishForm = function(checkId){
+  const s = (APP.dailySubmissions || []).find(x => x.checkId === checkId);
+  if (!s) return;
+  const eq = APP.equipmentMap[s.equipmentId] || {};
+  const startOdo  = (s.startOdo === '' || s.startOdo == null) ? '' : dailyNumText(s.startOdo);
+  const startHour = (s.startHour === '' || s.startHour == null) ? '' : dailyNumText(s.startHour);
+  const startTxt  = (startOdo !== '' || startHour !== '')
+    ? ' · Start Odometer ' + (startOdo || '—') + ' · Start OPHour ' + (startHour || '—')
+    : '';
+
+  const body =
+    '<div class="op-inherit mb-3"><i class="bi bi-truck me-1"></i><strong>' + esc(eq.shortName || s.equipmentId) + '</strong>' +
+      '<div class="small text-muted mt-1">Shift started ' + esc(s.date) + ' ' + esc(s.time) + esc(startTxt) + '</div>' +
+    '</div>' +
+    '<div class="row g-2 mb-3">' +
+      '<div class="col-6"><label class="form-label small fw-bold mb-1">End Odometer</label>' +
+        '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndOdo" placeholder="0.0" value="' + escAttr((s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo) + '">' +
+      '</div>' +
+      '<div class="col-6"><label class="form-label small fw-bold mb-1">End OPHour</label>' +
+        '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndHour" placeholder="0.0" value="' + escAttr((s.endHour === '' || s.endHour == null) ? '' : s.endHour) + '">' +
+      '</div>' +
+    '</div>' +
+    '<label class="form-label small fw-bold mb-1">Final Remark</label>' +
+    '<textarea class="form-control form-control-sm" id="dailyEndRemark" rows="3" placeholder="សូមបញ្ជាក់ស្ថានភាពចុងក្រោយ...">' + esc(s.endRemark || '') + '</textarea>' +
+    '<div class="op-finish-tip text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Fill at least one meter. After submitting, the equipment becomes <strong>Waiting Handover</strong> and your shift ends.</div>';
+
+  showDailyFlowModal('<i class="bi bi-flag-fill me-2 text-danger"></i>Finished Form', body,
+    '<button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>' +
+    '<button type="button" class="btn btn-sm btn-danger" onclick="submitDailyFinishForm(\'' + escAttr(checkId) + '\')"><i class="bi bi-check2-circle me-1"></i>Submit Finished Form</button>');
+};
+
+window.submitDailyFinishForm = function(checkId){
+  const s = (APP.dailySubmissions || []).find(x => x.checkId === checkId);
+  if (!s) return;
+
+  const odoRaw  = String($('#dailyEndOdo').val() || '').trim();
+  const hourRaw = String($('#dailyEndHour').val() || '').trim();
+  const remark  = $('#dailyEndRemark').val() || '';
+
+  if (!odoRaw && !hourRaw) { showAlert('Please fill the End Odometer or the End OPHour', 'warning'); return; }
+
+  const odo  = odoRaw  === '' ? null : parseFloat(odoRaw);
+  const hour = hourRaw === '' ? null : parseFloat(hourRaw);
+  if (odo !== null && (isNaN(odo) || odo < 0))    { showAlert('End Odometer must be a positive number', 'warning'); return; }
+  if (hour !== null && (isNaN(hour) || hour < 0)) { showAlert('End OPHour must be a positive number', 'warning'); return; }
+
+  const startOdo  = (s.startOdo === '' || s.startOdo == null) ? null : parseFloat(s.startOdo);
+  const startHour = (s.startHour === '' || s.startHour == null) ? null : parseFloat(s.startHour);
+  if (odo !== null && startOdo !== null && !isNaN(startOdo) && odo < startOdo) {
+    showAlert('End Odometer cannot be lower than the start (' + startOdo + ')', 'warning'); return;
+  }
+  if (hour !== null && startHour !== null && !isNaN(startHour) && hour < startHour) {
+    showAlert('End OPHour cannot be lower than the start (' + startHour + ')', 'warning'); return;
+  }
+
+  showLoading('កំពុងបញ្ជូន...');
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoading();
+      if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); return; }
+
+      s.opStatus   = DAILY_OP_WAITING;
+      s.opAt       = res.opAt || (dmyToday() + ' ' + nowTimeStr());
+      s.opBy       = res.opBy || currentUser.username;
+      s.endOdo     = (res.endOdo === '' || res.endOdo == null) ? '' : res.endOdo;
+      s.endHour    = (res.endHour === '' || res.endHour == null) ? '' : res.endHour;
+      s.endRemark  = res.endRemark || '';
+      s.finishedAt = res.finishedAt || s.opAt;
+      s.finishedBy = res.finishedBy || currentUser.username;
+
+      hideDailyFlowModal();
+      showAlert('Finished — equipment is waiting for handover', 'success');
+      refreshCurrentPage();
+    })
+    .withFailureHandler(handleError)
+    .finishDailyShift({ checkId: checkId, endOdo: odo, endHour: hour, remark: remark });
 };
 
 /* =========================================================
@@ -6736,7 +7137,7 @@ function updateDailyListResults() {
     return '<div class="card mb-2 clickable-card" onclick="viewDailyCheck(\''+escAttr(s.checkId)+'\')">' +
       '<div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><span class="text-muted me-2">'+(i+1)+'.</span><strong>'+esc(s.equipmentId)+'</strong></span>' +
-        '<span class="status-badge status-'+cls+'">'+esc(s.overall)+'</span>' +
+        '<span class="d-flex align-items-center gap-1">' + (s.opStatus ? dailyOpBadge(s.opStatus) : '') + '<span class="status-badge status-'+cls+'">'+esc(s.overall)+'</span></span>' +
       '</div>' +
       '<div class="card-body py-2">' +
         '<div class="row small g-1">' +
@@ -6873,6 +7274,8 @@ function renderDailyDetailModal(s) {
         infoCell('bi-tag', 'Group', s.group, 'info') +
         infoCell('bi-calendar', 'Date', (s.date || '') + ' ' + (s.time || ''), 'warning') +
       '</div></div></div>' +
+
+      dailyOpSectionHtml(s) +
 
       '<div class="row g-2 mb-3">' +
         '<div class="col-4"><div class="stat-card" data-filter="ok" onclick="filterDailyDetailItems(\'ok\')"><div class="num text-success">'+okCount+'</div><div class="lbl">OK</div></div></div>' +
