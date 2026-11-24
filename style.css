@@ -203,6 +203,34 @@ body.dark-mode .tab:not(.active) { border-color: #4caf50; color: #8bc34a; }
 .date-preset { padding: 4px 12px; font-size: 12px; border-radius: 20px; }
 .date-preset.active { background: var(--tab-active) !important; color: #fff !important; border-color: var(--tab-active) !important; }
 
+/* Count pill inside a .tab (e.g. All / Checked / Pending filters) */
+.tab-count { display:inline-block; margin-left:6px; padding:0 6px; border-radius:10px; font-size:.68rem; font-weight:700; line-height:1.6; background:rgba(0,0,0,.07); color:inherit; }
+.tab-count.is-ok { background:rgba(25,135,84,.14); color:#157347; }
+.tab-count.is-warn { background:rgba(255,193,7,.25); color:#7a5200; }
+.tab.active .tab-count { background:rgba(255,255,255,.26); color:#fff; }
+body.dark-mode .tab-count { background:rgba(255,255,255,.1); }
+body.dark-mode .tab-count.is-ok { background:rgba(139,195,74,.18); color:#a5d76e; }
+body.dark-mode .tab-count.is-warn { background:rgba(255,193,7,.18); color:#ffc107; }
+body.dark-mode .tab.active .tab-count { background:rgba(255,255,255,.26); color:#fff; }
+
+/* =========================================================
+   METRIC PILLS (checked / pending counters)
+   ========================================================= */
+.metric-pill { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:20px; font-size:.72rem; font-weight:700; line-height:1.5; white-space:nowrap; border:1px solid transparent; }
+.metric-pill i { font-size:.78rem; line-height:1; }
+.metric-pill.is-ok { background:rgba(25,135,84,.12); color:#157347; border-color:rgba(25,135,84,.22); }
+.metric-pill.is-warn { background:rgba(255,193,7,.16); color:#8a6100; border-color:rgba(255,193,7,.38); }
+.metric-pill.is-danger { background:rgba(220,53,69,.12); color:#b02a37; border-color:rgba(220,53,69,.22); }
+body.dark-mode .metric-pill.is-ok { background:rgba(139,195,74,.16); color:#a5d76e; border-color:rgba(139,195,74,.28); }
+body.dark-mode .metric-pill.is-warn { background:rgba(255,193,7,.14); color:#ffc107; border-color:rgba(255,193,7,.3); }
+body.dark-mode .metric-pill.is-danger { background:rgba(255,107,107,.16); color:#ff8a8a; border-color:rgba(255,107,107,.3); }
+
+/* =========================================================
+   REPORT TOOLBAR
+   ========================================================= */
+.rpt-toolbar { background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px; margin-bottom: 12px; }
+.rpt-lbl { display:block; font-size:.66rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color: var(--tab-text); margin-bottom:4px; }
+
 /* =========================================================
    LOADING + LOGIN
    ========================================================= */
