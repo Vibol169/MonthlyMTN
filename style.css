@@ -810,3 +810,19 @@ body.dark-mode .tab-bar .issue-subtab:not(.active) .subtab-count { color: #8bc34
 body.dark-mode .agreement-box { background: rgba(13,110,253,0.16); }
 .unit-card .group-header { border-bottom: 1px solid var(--border-color); }
 
+/* ---- Monthly-style confirmation block (used by the daily forms) ---- */
+.confirm-box.confirm-pending { border-left-color: #ffc107; background: rgba(255,193,7,0.08); }
+body.dark-mode .confirm-box.confirm-pending { background: rgba(255,193,7,0.16); }
+.confirm-box .group-header { background: transparent; border-bottom: 1px solid var(--border-color); }
+
+/* ---- Daily checklist / Finished Form page (monthly checklist layout) ---- */
+.daily-form-page .card { border-radius: 12px; }
+.daily-form-page .check-item { margin-bottom: 8px; }
+.daily-form-page .legend-card .legend-title { text-decoration: none; font-size: .85rem; }
+.check-item[data-status="ok"]  { border-left: 4px solid #28a745; }
+.check-item[data-status="nok"] { border-left: 4px solid #dc3545; background: rgba(220,53,69,0.05); }
+.check-item[data-status="na"]  { border-left: 4px solid #6c757d; }
+body.dark-mode .check-item[data-status="nok"] { background: rgba(220,53,69,0.16); }
+.daily-form-page .check-btn { border-radius: 8px; }
+
+
