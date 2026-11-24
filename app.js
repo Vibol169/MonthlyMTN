@@ -219,7 +219,7 @@ let dashboardSubTab = 'overview';
 let mtnFilter       = 'all';
 // MTN Management Status tab (new repair-request flow)
 let mtnStatusFilter  = 'all';   // case: 'all' | '' (not requested) | 'Requested' | 'Pending' | 'Done'
-let mtnStatusItem    = '';      // item: '' (any) | 'Requested' | 'Not Request' | 'Waiting Repairing' | 'Waiting Spare Part' | 'Repaired'
+let mtnStatusItem    = '';      // item: '' (any) | 'Requested' | 'Waiting Repairing' | 'Waiting Spare Part' | 'Repaired'
 let mtnStatusGroup   = 'all';
 let mtnStatusCompany = 'all';
 let mtnStatusMonth   = '';      // 'YYYY-MM' or '' = all months
@@ -4905,10 +4905,14 @@ window.addCommentPrompt = function(checkId){
    Case status : '' (not requested) | Requested | Pending | Done
    Item status : '' (nothing yet)   | Requested | Not Request |
                  Waiting Repairing  | Waiting Spare Part | Repaired
+   'Not Request' is display-only: it is shown in badges/chips/tables but
+   is never offered as a choice in any dropdown.
    The checklist (case) status is always the rollup of its items.
    ========================================================= */
 const MTN_CASE_STATUS_LIST = ['Requested', 'Pending', 'Done'];
 const MTN_ITEM_STATUS_LIST = ['Requested', 'Not Request', 'Waiting Repairing', 'Waiting Spare Part', 'Repaired'];
+// Statuses the Repair Service can actually pick (display-only ones excluded)
+const MTN_ITEM_SELECT_LIST = MTN_ITEM_STATUS_LIST.filter(s => s !== 'Not Request');
 const MTN_STATUS_INFO = {
   ''                    : { label: 'Not Requested',      badge: 'secondary', icon: 'bi-dash-circle' },
   'Requested'           : { label: 'Requested',          badge: 'warning',   icon: 'bi-send-check' },
@@ -5363,7 +5367,6 @@ function renderMtnManagement(subTabBar){
 
     return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center gap-2 flex-wrap"><span><i class="bi bi-truck text-primary me-2"></i><strong>' + esc(eq.shortName || sub.equipmentId) + '</strong> <span class="text-muted small ms-2">(' + esc(sub.date) + ')</span></span>' + mtnStatusBadge(sub) + '</div>' +
       '<div class="card-body py-2">' +
-        '<div class="small mb-1"><i class="bi bi-tag me-1 text-muted"></i>' + esc(sub.group) + ' · <i class="bi bi-calendar me-1 text-muted ms-2"></i>' + esc(sub.date) + ' ' + esc(sub.time) + '</div>' +
         '<div class="small mb-2"><i class="bi bi-person me-1 text-muted"></i>Inspector: ' + esc(sub.driverName || sub.username) + ' · <span class="text-muted">' + esc(sub.checkId) + '</span></div>' +
         '<div class="small text-danger fw-semibold mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Issues (' + items.length + ')' + (function(){ const p = mtnItemProgress(sub); return p.done ? '<span class="text-muted fw-normal ms-1">· ' + p.done + ' done</span>' : ''; })() + '</div>' +
         displayItems.map(i => issueRow(sub, i)).join('') + reqLine + updLine +
@@ -5415,8 +5418,9 @@ function renderMtnManagement(subTabBar){
 /* =========================================================
    REPAIR REQUEST ACTIONS
    Admin  -> Make a Request (creates the case request)
-   Repair -> per item: Requested | Not Request | Waiting Repairing |
+   Repair -> per item: Requested | Waiting Repairing |
                         Waiting Spare Part | Repaired
+   ('Not Request' stays display-only — it is never offered as a choice)
    The checklist status is the rollup: Requested | Pending | Done
    ========================================================= */
 function _applyMtnLocal(checkId, status, remark){
@@ -5539,7 +5543,9 @@ function _mtnItemEditorRow(sub, item){
   const meta = mtnRequestMeta(sub);
   // Do not repeat the request itself as a per-item "updated" line
   const upd = (rec.by && !(rec.by === meta.requestedBy && rec.at === meta.requestedAt)) ? rec : { by: '', at: '' };
-  const opts = MTN_ITEM_STATUS_LIST.map(s => '<option value="' + escAttr(s) + '"' + (s === st ? ' selected' : '') + '>' + esc(mtnStatusInfo(s).label) + '</option>').join('');
+  // 'Not Request' is display-only: keep it only for an item that already carries it
+  const statusOpts = (MTN_ITEM_SELECT_LIST.indexOf(st) === -1 ? [st] : []).concat(MTN_ITEM_SELECT_LIST);
+  const opts = statusOpts.map(s => '<option value="' + escAttr(s) + '"' + (s === st ? ' selected' : '') + '>' + esc(mtnStatusInfo(s).label) + '</option>').join('');
   return '<div class="mtn-item-row p-2 mb-2" data-item-id="' + escAttr(item.itemId) + '" style="background:var(--bg-color);border-radius:8px;border-left:3px solid ' + _mtnItemColor(st) + ';">' +
     '<div class="d-flex align-items-start gap-2">' +
       '<span class="badge bg-danger flex-shrink-0" style="font-size:.6rem;">' + esc(item.code) + '</span>' +
@@ -5567,7 +5573,7 @@ window.openMtnStatusEditor = function(checkId){
   const eq = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
   const company = String(eq.companyName || '').trim();
 
-  const setAllBtns = MTN_ITEM_STATUS_LIST.map(s => {
+  const setAllBtns = MTN_ITEM_SELECT_LIST.map(s => {
     const info = mtnStatusInfo(s);
     return '<button type="button" class="btn btn-sm py-0 px-2 btn-outline-' + info.badge + '" style="font-size:.66rem;" onclick="setAllMtnItems(\'' + escAttr(s) + '\')"><i class="bi ' + info.icon + ' me-1"></i>' + esc(info.label) + '</button>';
   }).join('');
@@ -5774,7 +5780,7 @@ function renderMtnStatusTab(subTabBar){
   // Per issue-item status filter (keeps the cases that contain at least one item in that state)
   const itemSelect = '<select class="form-select form-select-sm" onchange="setMtnStatusFilter(\'item\', this.value)">' +
     opt('', 'All item statuses', mtnStatusItem) +
-    MTN_ITEM_STATUS_LIST.map(s => opt(s, mtnStatusInfo(s).label, mtnStatusItem)).join('') + '</select>';
+    MTN_ITEM_SELECT_LIST.map(s => opt(s, mtnStatusInfo(s).label, mtnStatusItem)).join('') + '</select>';
 
   const groupSelect = '<select class="form-select form-select-sm" onchange="setMtnStatusFilter(\'group\', this.value)">' +
     opt('all', 'All groups', mtnStatusGroup) + groups.map(g => opt(g, g, mtnStatusGroup)).join('') + '</select>';
@@ -5786,8 +5792,7 @@ function renderMtnStatusTab(subTabBar){
     opt('newest', 'Newest first', mtnStatusSort) + opt('oldest', 'Oldest first', mtnStatusSort) +
     opt('status', 'By status', mtnStatusSort) + opt('equipment', 'By equipment', mtnStatusSort) + '</select>';
 
-  const tableHead = '<th class="text-center" style="width:34px;">#</th><th style="min-width:88px;">Date</th><th style="min-width:150px;">Equipment</th><th class="d-none d-md-table-cell">Group</th>' +
-    (companyList.length ? '<th class="d-none d-lg-table-cell">Company</th>' : '') +
+  const tableHead = '<th class="text-center" style="width:34px;">#</th><th style="min-width:88px;">Date</th><th style="min-width:150px;">Equipment</th>' +
     '<th style="min-width:130px;">Issues (per item)</th><th class="d-none d-md-table-cell">Requested</th><th style="min-width:130px;">Checklist status</th>' +
     '<th class="d-none d-lg-table-cell">Last update</th><th class="d-none d-xl-table-cell">Remark</th><th class="text-end" style="width:160px;">Action</th>';
 
@@ -5808,12 +5813,10 @@ function renderMtnStatusTab(subTabBar){
         '<i class="bi ' + iInfo.icon + ' flex-shrink-0" style="font-size:.66rem;color:' + _mtnItemTextColor(ist) + ';" title="' + escAttr(iInfo.label) + '"></i>' +
       '</div>';
     }).join('');
-    tbody += '<tr>' +
+    tbody += '<tr class="history-row-clickable" style="cursor:pointer;" title="Click to view checklist" onclick="viewCheck(\'' + escAttr(r.sub.checkId) + '\')">' +
       '<td class="text-center text-muted">' + (idx + 1) + '</td>' +
       '<td><div class="fw-semibold">' + esc(r.sub.date) + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.time || '') + '</div></td>' +
       '<td><div class="fw-semibold">' + esc(r.eq.shortName || r.sub.equipmentId) + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.checkId) + '</div></td>' +
-      '<td class="d-none d-md-table-cell">' + esc(r.sub.group) + '</td>' +
-      (companyList.length ? '<td class="d-none d-lg-table-cell">' + esc(r.company || '—') + '</td>' : '') +
       '<td><div class="text-muted mb-1" style="font-size:.64rem;">' + r.items.length + ' item(s) · ' + prog.done + '/' + prog.total + ' done</div>' + issueLines + '</td>' +
       '<td class="d-none d-md-table-cell"><div>' + esc(r.meta.requestedBy || '—') + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.meta.requestedAt || '') + '</div></td>' +
       '<td>' + mtnStatusBadge(r.sub) + '</td>' +
@@ -5821,12 +5824,12 @@ function renderMtnStatusTab(subTabBar){
         ? '<div>' + esc(last.by || '') + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(last.at || '') + '</div>'
         : '<span class="text-muted">—</span>') + '</td>' +
       '<td class="d-none d-xl-table-cell" style="max-width:220px;"><div class="text-truncate" title="' + escAttr(remarkTxt) + '">' + esc(remarkTxt || '—') + '</div></td>' +
-      '<td class="text-end">' + mtnActionHtml(r.sub) + '</td>' +
+      '<td class="text-end" onclick="event.stopPropagation()">' + mtnActionHtml(r.sub) + '</td>' +
     '</tr>';
   });
 
   if (!shown.length) {
-    tbody = '<tr><td colspan="' + (companyList.length ? 11 : 10) + '" class="text-center text-muted py-4">No checklist matches these filters.</td></tr>';
+    tbody = '<tr><td colspan="9" class="text-center text-muted py-4">No checklist matches these filters.</td></tr>';
   }
 
 
