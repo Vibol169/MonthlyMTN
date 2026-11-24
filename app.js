@@ -5279,6 +5279,26 @@ window.loadMoreMtn = function() {
 
 function isIssueCheck(c){ const n = normalizeStatus(c.status); return n && n !== 'N'; }
 
+/* Compact result-code pill: re-uses the checklist colours (.status-badge.status-XX) */
+function mtnCodeBadge(code, size){
+  const known = ['N', 'UF', 'NF', 'NA', 'Ad', 'T'];
+  const cls = known.indexOf(code) === -1 ? 'status-NF' : ('status-' + code);
+  return '<span class="status-badge ' + cls + ' flex-shrink-0" style="font-size:' + (size || '.58rem') + ';min-width:0;padding:1px 6px;line-height:1.35;">' + esc(code || '—') + '</span>';
+}
+
+/* Truck / trailer part of an item — same split as the checklist view banners */
+function mtnItemPartOf(itemId){
+  const sec = sectionOf(itemId);
+  if (!sec) return '';
+  if (sec === 'EXT-TRK') return 'truck';
+  if (sec === 'EXT-TRL') return 'trailer';
+  const num = parseInt(sec, 10);
+  if (isNaN(num)) return '';
+  if (num >= 1 && num <= 22) return 'truck';
+  if (num >= 23 && num <= 30) return 'trailer';
+  return '';
+}
+
 function getIssueItems(sub){
   const tplMap = {};
   const eqData = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
@@ -5293,11 +5313,27 @@ function getIssueItems(sub){
       code: normalizeStatus(c.status),
       location: c.location || '',
       note: c.note || '',
-      itemKhmer: t.itemKhmer || c.itemId,
+      // Extra items have no template row: the checklist view shows the name
+      // saved with the check, so use the same fallback chain here.
+      itemKhmer: t.itemKhmer || c.itemKhmer || c.itemId,
       itemEng: t.itemEng || '',
-      frequency: t.frequency || ''
+      frequency: t.frequency || '',
+      isExtra: String(c.itemId).startsWith('EXT-')
     };
-  }).sort((a, b) => String(a.itemId).localeCompare(String(b.itemId)));
+  }).sort((a, b) => {
+    // Checklist order: truck sections -> EXT-TRK -> trailer sections -> EXT-TRL
+    const partRank = { truck: 0, '': 1, trailer: 2 };
+    const secRank = (id) => {
+      const sec = sectionOf(id);
+      if (sec === 'EXT-TRK' || sec === 'EXT-TRL') return 999;
+      const n = parseInt(sec, 10);
+      return isNaN(n) ? 500 : n;
+    };
+    const pa = mtnItemPartOf(a.itemId), pb = mtnItemPartOf(b.itemId);
+    return (partRank[pa] - partRank[pb]) ||
+           (secRank(a.itemId) - secRank(b.itemId)) ||
+           String(a.itemId).localeCompare(String(b.itemId));
+  });
 }
 
 // Kept for backward compatibility: one repair status per checklist case
@@ -5340,7 +5376,7 @@ function renderMtnManagement(subTabBar){
     const istInfo = mtnStatusInfo(ist);
     const istChip = '<span class="badge bg-' + istInfo.badge + ' ms-auto flex-shrink-0" style="font-size:.56rem;" title="Repair status"><i class="bi ' + istInfo.icon + ' me-1"></i>' + esc(istInfo.label) + '</span>';
     return '<div class="p-2 mb-2" style="background:var(--bg-color);border-radius:8px;">' +
-      '<div class="fw-semibold small d-flex align-items-start gap-1" style="line-height:1.25;"><span class="badge bg-danger me-1 flex-shrink-0" style="font-size:.65rem;">' + esc(item.code) + '</span><span class="flex-grow-1" style="min-width:0;">' + esc(item.itemKhmer) + locChip + '</span>' + istChip + '</div>' +
+      '<div class="fw-semibold small d-flex align-items-start gap-1" style="line-height:1.25;">' + mtnCodeBadge(item.code, '.62rem') + '<span class="flex-grow-1" style="min-width:0;">' + esc(item.itemKhmer) + locChip + '</span>' + istChip + '</div>' +
       (item.itemEng ? '<div class="small text-muted" style="font-size:.7rem;">' + esc(item.itemEng) + '</div>' : '') +
       (item.note ? '<div class="small text-muted mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(item.note) + '</div>' : '') +
     '</div>';
@@ -5548,7 +5584,7 @@ function _mtnItemEditorRow(sub, item){
   const opts = statusOpts.map(s => '<option value="' + escAttr(s) + '"' + (s === st ? ' selected' : '') + '>' + esc(mtnStatusInfo(s).label) + '</option>').join('');
   return '<div class="mtn-item-row p-2 mb-2" data-item-id="' + escAttr(item.itemId) + '" style="background:var(--bg-color);border-radius:8px;border-left:3px solid ' + _mtnItemColor(st) + ';">' +
     '<div class="d-flex align-items-start gap-2">' +
-      '<span class="badge bg-danger flex-shrink-0" style="font-size:.6rem;">' + esc(item.code) + '</span>' +
+      mtnCodeBadge(item.code, '.6rem') +
       '<div class="flex-grow-1" style="min-width:0;">' +
         '<div class="fw-semibold" style="font-size:.76rem;line-height:1.25;">' + esc(item.itemKhmer) + '</div>' +
         (item.itemEng ? '<div class="text-muted" style="font-size:.68rem;">' + esc(item.itemEng) + '</div>' : '') +
@@ -5707,6 +5743,8 @@ function mtnStatusRowsAll(){
     const items = getIssueItems(sub);
     if (!items.length) return;
     const eq = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
+    const trlId = String(sub.trailerPlateNo || '').trim();
+    const trl = trlId ? ((APP.trailers || []).find(t => String(t.trailerId || '').trim() === trlId) || null) : null;
     rows.push({
       sub: sub,
       eq: eq,
@@ -5715,6 +5753,9 @@ function mtnStatusRowsAll(){
       meta: mtnRequestMeta(sub),
       last: mtnLastUpdate(sub),
       company: String(eq.companyName || '').trim(),
+      isTruckGroup: String(sub.group || '').trim() === 'រថយន្ត',
+      trailerId: trlId,
+      trailerName: trl ? (trl.shortName || trl.trailerId) : trlId,
       ms: subMs(sub)
     });
   });
@@ -5803,20 +5844,37 @@ function renderMtnStatusTab(subTabBar){
     const remarkTxt = hasUpd ? (last.remark || '') : '';
     const prog = mtnItemProgress(r.sub);
     // One line per issue item (no wrapping): code badge + item name + its repair status
-    const issueLines = r.items.map(i => {
+    const issueLine = (i) => {
       const ist = mtnItemStatusOf(r.sub, i.itemId);
       const iInfo = mtnStatusInfo(ist);
-      const tip = i.itemKhmer + (i.itemEng ? ' · ' + i.itemEng : '') + ' — ' + iInfo.label;
+      const tip = i.itemKhmer + (i.itemEng ? ' · ' + i.itemEng : '') + (i.isExtra ? ' · Extra item' : '') + ' — ' + iInfo.label;
       return '<div class="d-flex align-items-center gap-1" style="max-width:250px;">' +
-        '<span class="badge bg-danger flex-shrink-0" style="font-size:.56rem;">' + esc(i.code) + '</span>' +
+        mtnCodeBadge(i.code, '.56rem') +
         '<span class="text-truncate" style="font-size:.7rem;" title="' + escAttr(tip) + '">' + esc(i.itemKhmer) + '</span>' +
         '<i class="bi ' + iInfo.icon + ' flex-shrink-0" style="font-size:.66rem;color:' + _mtnItemTextColor(ist) + ';" title="' + escAttr(iInfo.label) + '"></i>' +
       '</div>';
-    }).join('');
+    };
+    // Tractor / Trailer mini-banners, same split as the checklist view
+    const partBanner = (label, icon) => '<div class="d-inline-flex align-items-center gap-1" style="font-size:.56rem;font-weight:700;color:var(--tab-active);background:var(--bg-color);border:1px solid var(--border-color);border-radius:4px;padding:0 5px;margin:2px 0 3px;"><i class="bi ' + icon + '"></i>' + label + '</div>';
+    let issueLines;
+    if (r.isTruckGroup) {
+      const truckItems = r.items.filter(i => mtnItemPartOf(i.itemId) === 'truck');
+      const trlItems = r.items.filter(i => mtnItemPartOf(i.itemId) === 'trailer');
+      const otherItems = r.items.filter(i => !mtnItemPartOf(i.itemId));
+      const showParts = trlItems.length > 0; // only a truck+trailer case needs the split
+      issueLines =
+        (truckItems.length ? (showParts ? partBanner('រថយន្ត', 'bi-truck') : '') + truckItems.map(issueLine).join('') : '') +
+        (trlItems.length ? (showParts ? partBanner('រ៉ឺម៉ក', 'bi-link-45deg') : '') + trlItems.map(issueLine).join('') : '') +
+        otherItems.map(issueLine).join('');
+    } else {
+      issueLines = r.items.map(issueLine).join('');
+    }
     tbody += '<tr class="history-row-clickable" style="cursor:pointer;" title="Click to view checklist" onclick="viewCheck(\'' + escAttr(r.sub.checkId) + '\')">' +
       '<td class="text-center text-muted">' + (idx + 1) + '</td>' +
       '<td><div class="fw-semibold">' + esc(r.sub.date) + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.time || '') + '</div></td>' +
-      '<td><div class="fw-semibold">' + esc(r.eq.shortName || r.sub.equipmentId) + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.checkId) + '</div></td>' +
+      '<td><div class="fw-semibold d-flex align-items-center gap-1 flex-wrap">' + esc(r.eq.shortName || r.sub.equipmentId) +
+        ((r.isTruckGroup && r.trailerName) ? ' <span class="badge bg-secondary" style="font-size:.56rem;font-weight:600;" title="រ៉ឺម៉ក · Trailer">' + esc(r.trailerName) + '</span>' : '') +
+      '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.checkId) + '</div></td>' +
       '<td><div class="text-muted mb-1" style="font-size:.64rem;">' + r.items.length + ' item(s) · ' + prog.done + '/' + prog.total + ' done</div>' + issueLines + '</td>' +
       '<td class="d-none d-md-table-cell"><div>' + esc(r.meta.requestedBy || '—') + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.meta.requestedAt || '') + '</div></td>' +
       '<td>' + mtnStatusBadge(r.sub) + '</td>' +
