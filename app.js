@@ -7034,16 +7034,33 @@ function dailySessionCard(s){
 }
 
 /* Read-only Finished Form answers (OK / NOT OK / N/A + note per item) */
-/* Read-only photo thumbnails for stored ids ({fileId} entries only) */
+/* Read-only photo thumbnails for stored ids ({fileId} entries only).
+   The gallery stays collapsed — the viewer taps the photo chip on that item
+   to reveal the thumbnails (nothing opens by itself). */
 function dailyPhotoIdsHtml(photos, size){
   const list = (Array.isArray(photos) ? photos : []).filter(p => p && p.fileId);
   if (!list.length) return '';
   const ids = list.map(p => p.fileId).join(',');
-  return '<div class="photo-gallery mt-1">' + list.map((p, i) =>
-    '<div class="photo-tile" onclick="openLightboxByIds(\'' + escAttr(ids) + '\',' + i + ')">' +
-      '<img src="' + driveThumbUrl(p.fileId, size || 200) + '" loading="lazy" decoding="async" alt="">' +
-    '</div>').join('') + '</div>';
+  return '<div class="view-photo-wrap">' +
+    '<button type="button" class="photo-chip" onclick="toggleItemPhotos(event, this)">' +
+      '<i class="bi bi-camera"></i>' + list.length + ' photo' + (list.length > 1 ? 's' : '') +
+      '<i class="bi bi-chevron-down chev"></i>' +
+    '</button>' +
+    '<div class="photo-gallery mt-1 is-collapsed">' + list.map((p, i) =>
+      '<div class="photo-tile" onclick="openLightboxByIds(\'' + escAttr(ids) + '\',' + i + ')">' +
+        '<img src="' + driveThumbUrl(p.fileId, size || 200) + '" loading="lazy" decoding="async" alt="">' +
+      '</div>').join('') + '</div></div>';
 }
+
+/* Tap-to-reveal photos on a read-only item card */
+window.toggleItemPhotos = function(ev, btn){
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  const $btn = $(btn);
+  const $gallery = $btn.closest('.view-photo-wrap').find('.photo-gallery');
+  const open = $gallery.hasClass('is-collapsed');
+  $gallery.toggleClass('is-collapsed', !open);
+  $btn.toggleClass('is-open', open);
+};
 
 function dailyFinishChecksHtml(s){
   const list = Array.isArray(s && s.finishChecks) ? s.finishChecks : [];
@@ -7064,30 +7081,38 @@ function dailyFinishChecksHtml(s){
     '</div>';
   }).join('');
   return '<div class="card mb-3"><div class="group-header"><i class="bi bi-flag me-2 text-danger"></i>Finished Form</div>' +
-    '<div class="card-body p-2">' + rows + '</div></div>';
+    '<div class="card-body p-2"><div class="check-grid">' + rows + '</div></div></div>';
 }
 
-/* Fuel fields saved with the Finished Form (numbers + their photos) */
+/* The four Finished Form inputs (End Odometer, End OPHour, Diesel level, Fuel
+   added) read back as ONE block — each tile carries its own photos, revealed
+   only when the viewer taps that tile's photo chip. */
 function dailyFinishExtraHtml(s){
   const fx = (s && s.finishExtra) || {};
+  const txt = v => (v === '' || v == null) ? '—' : dailyNumText(v);
   const defs = [
-    { key: 'fuelLevel', label: 'កម្រិតប្រេងម៉ាស៊ូត', en: 'Diesel level' },
+    { key: 'endOdo',    label: 'អូដូម៉ែត្រចុងក្រោយ',                    en: 'End Odometer', value: s ? s.endOdo  : '' },
+    { key: 'endHour',   label: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ',                en: 'End OPHour',   value: s ? s.endHour : '' },
+    { key: 'fuelLevel', label: 'កម្រិតប្រេងម៉ាស៊ូត',                    en: 'Diesel level' },
     { key: 'fuelAdded', label: 'បរិមាណបេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', en: 'Fuel added' }
   ];
-  const rows = defs.filter(d => {
+  const tiles = defs.map(d => {
     const v = fx[d.key] || {};
-    return (v.value !== '' && v.value != null) || (Array.isArray(v.photos) && v.photos.length);
-  });
-  if (!rows.length) return '';
-  return '<div class="card mb-3"><div class="group-header"><i class="bi bi-fuel-pump me-2"></i>Fuel — Finished Form</div>' +
-    '<div class="card-body py-2">' +
-      rows.map(d => {
-        const v = fx[d.key] || {};
-        return '<div class="mb-2"><div class="small text-muted">' + esc(d.label) + ' <span class="fw-normal">(' + esc(d.en) + ')</span></div>' +
-          '<div class="fw-bold">' + esc(v.value === '' || v.value == null ? '—' : dailyNumText(v.value)) + '</div>' +
-          dailyPhotoIdsHtml(v.photos) + '</div>';
-      }).join('') +
-    '</div></div>';
+    const value = (d.value !== undefined) ? d.value : v.value;
+    const photos = Array.isArray(v.photos) ? v.photos : [];
+    const has = (value !== '' && value != null) || photos.length > 0;
+    if (!has) return '';
+    return '<div class="finish-tile">' +
+      '<div class="small text-muted">' + esc(d.label) + ' <span class="fw-normal">(' + esc(d.en) + ')</span></div>' +
+      '<div class="finish-val">' + esc(txt(value)) + '</div>' +
+      dailyPhotoIdsHtml(photos) +
+    '</div>';
+  }).join('');
+  if (!tiles) return '';
+  return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
+      '<span><i class="bi bi-clipboard2-data me-2"></i>Finished Form — inputs</span>' +
+      '<small class="text-muted">4 fields</small>' +
+    '</div><div class="card-body p-2"><div class="finish-grid">' + tiles + '</div></div></div>';
 }
 
 /* Operational panel used inside the daily detail modal */
@@ -7257,7 +7282,8 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
     itemId: c.itemId,
     itemKhmer: (tplMap[c.itemId] && tplMap[c.itemId].itemKhmer) || c.itemId,
     itemEng: (tplMap[c.itemId] && tplMap[c.itemId].itemEng) || '',
-    status: c.status, note: c.note || ''
+    status: c.status, note: c.note || '',
+    photos: Array.isArray(c.photos) ? c.photos : []
   }));
   
   const okCount  = enriched.filter(c => c.status === 'ok').length;
@@ -7272,13 +7298,14 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
     issuesHtml =
       '<div class="card mb-3"><div class="group-header" style="background:#f8d7da;color:#721c24;">' +
         '<i class="bi bi-exclamation-triangle-fill me-2"></i>Issues Reported ('+nokItems.length+')</div>' +
-        '<div class="card-body p-2">' +
+        '<div class="card-body p-2"><div class="check-grid">' +
           nokItems.map(c =>
-            '<div class="check-item nok mb-2"><div><strong>'+esc(c.itemKhmer)+'</strong><div class="item-name-en">'+esc(c.itemEng)+'</div></div>' +
+            '<div class="check-item nok"><div><strong>'+esc(c.itemKhmer)+'</strong><div class="item-name-en">'+esc(c.itemEng)+'</div></div>' +
             (c.note ? '<div class="small text-danger mt-1"><i class="bi bi-chat-left-text me-1"></i>'+esc(c.note)+'</div>' : '') +
+            dailyPhotoIdsHtml(c.photos) +
             '</div>'
           ).join('') +
-        '</div>' +
+        '</div></div>' +
       '</div>';
   }
 
@@ -7422,6 +7449,9 @@ function updateDailyFinishCounts(){
   $('#dailyFinishNaCount').text(n.na + ' N/A');
 }
 
+/* "1 item" / "3 items" — keeps the count labels grammatical */
+function dailyItemWord(n){ return (n === 1) ? '1 item' : (n + ' items'); }
+
 function renderDailyChecklistForm(){
   const c = pendingDailyChecklist;
   if (!c) return;
@@ -7446,8 +7476,8 @@ function renderDailyChecklistForm(){
         '<button type="button" class="check-btn '+(st==='nok'?'selected-nok':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'nok\')"><i class="bi bi-x-circle me-1"></i>NOT OK</button>' +
         '<button type="button" class="check-btn '+(st==='na'?'selected-na':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
       '</div>' +
-      '<div class="nok-note '+(st==='ok'?'':'visible')+'"><input type="text" class="form-control form-control-sm js-nok-note" placeholder="សូមបញ្ជាក់បញ្ហា / ចំណាំ..." value="'+esc(sel.note)+'" oninput="setDailyNokNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
-      dailyPhotoGalleryHtml(it.itemId, sel.photos || []) +
+      '<div class="nok-note '+(st==='nok'?'visible':'')+'"><input type="text" class="form-control form-control-sm js-nok-note" placeholder="សូមបញ្ជាក់បញ្ហា / ចំណាំ..." value="'+esc(sel.note)+'" oninput="setDailyNokNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
+      dailyPhotoGalleryHtml(it.itemId, sel.photos || [], st === 'nok') +
     '</div>';
   }).join('');
 
@@ -7526,7 +7556,7 @@ function renderDailyChecklistForm(){
       (c.prevDriverName ? dailyInfoCard('person-badge', 'អ្នកបើកបរ (រង្វង់មុន)', esc(c.prevDriverName), 'info') : '') +
       dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(dmyToday()) + ' ' + esc(nowTimeStr()), 'warning') +
       dailyInfoCard('list-check', 'ចំនួនចំណុច',
-        '<div>' + c.items.length + ' items</div>' +
+        '<div>' + dailyItemWord(c.items.length) + '</div>' +
         '<div class="small text-muted fw-normal mt-1">' + (isWeekly ? 'Weekly Check' : 'Daily Checklist') + '</div>', 'secondary') +
     '</div>' +
     ((startLine || handoverChip) ? '<div class="mb-3">' + startLine + handoverChip + '</div>' : '');
@@ -7540,8 +7570,8 @@ function renderDailyChecklistForm(){
       legendHtml +
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-clipboard-check me-2"></i>' + title + '</span>' +
-        '<small class="text-muted">' + c.items.length + ' items · <span id="dailyNaCount">' + counts.na + ' N/A</span></small>' +
-      '</div><div class="card-body p-2">' + itemsHtml + '</div></div>' +
+        '<small class="text-muted">' + dailyItemWord(c.items.length) + ' · <span id="dailyNaCount">' + counts.na + ' N/A</span></small>' +
+      '</div><div class="card-body p-2"><div class="check-grid">' + itemsHtml + '</div></div></div>' +
       '<div class="card mb-3"><div class="card-body">' +
         '<label class="form-label fw-bold">Remark</label>' +
         '<textarea class="form-control form-control-sm" id="checkRemark" rows="2" placeholder="កំណត់សម្គាល់បន្ថែម..."></textarea>' +
@@ -7624,8 +7654,13 @@ function dailyPhotoTilesHtml(key, photos){
   return tiles + addTile;
 }
 
-function dailyPhotoGalleryHtml(key, photos){
-  return '<div class="item-photo-row mt-2"><div class="photo-gallery" data-daily-item="' + escAttr(key) + '">' +
+/* Photo block of one item. `visible` false keeps it collapsed — the daily /
+   weekly / Finished Form items only reveal camera + gallery once the driver
+   answers NOT OK. */
+function dailyPhotoGalleryHtml(key, photos, visible){
+  const show = (visible === undefined) ? true : !!visible;
+  return '<div class="item-photo-row js-photo-row mt-2"' + (show ? '' : ' style="display:none;"') +
+    '><div class="photo-gallery" data-daily-item="' + escAttr(key) + '">' +
     dailyPhotoTilesHtml(key, photos || []) + '</div></div>';
 }
 
@@ -7730,7 +7765,10 @@ window.setDailyCheck = function(itemId, status){
   $item.removeClass('ok nok na').addClass(status).attr('data-status', status);
   $item.find('.check-btn').removeClass('selected-ok selected-nok selected-na');
   $item.find('.check-btn').eq(status==='ok'?0:status==='nok'?1:2).addClass('selected-'+status);
-  $item.find('.nok-note').toggleClass('visible', status !== 'ok');
+  // Note + photos belong to NOT OK only — they stay hidden for OK / N/A
+  const isNok = (status === 'nok');
+  $item.find('.nok-note').toggleClass('visible', isNok);
+  $item.find('.js-photo-row').css('display', isNok ? 'flex' : 'none');
   updateDailyFormCounts();
 };
 
@@ -7909,7 +7947,10 @@ window.setDailyFinishCheck = function(itemId, status){
   $item.removeClass('ok nok na').addClass(status).attr('data-status', status);
   $item.find('.check-btn').removeClass('selected-ok selected-nok selected-na');
   $item.find('.check-btn').eq(status==='ok'?0:status==='nok'?1:2).addClass('selected-'+status);
-  $item.find('.nok-note').toggleClass('visible', status !== 'ok');
+  // Note + photos belong to NOT OK only — they stay hidden for OK / N/A
+  const isNok = (status === 'nok');
+  $item.find('.nok-note').toggleClass('visible', isNok);
+  $item.find('.js-photo-row').css('display', isNok ? 'flex' : 'none');
   updateDailyFinishCounts();
 };
 
@@ -7970,8 +8011,8 @@ window.openDailyFinishForm = function(checkId){
             '<button type="button" class="check-btn '+(st==='nok'?'selected-nok':'')+'" onclick="setDailyFinishCheck(\''+escAttr(it.itemId)+'\',\'nok\')"><i class="bi bi-x-circle me-1"></i>NOT OK</button>' +
             '<button type="button" class="check-btn '+(st==='na'?'selected-na':'')+'" onclick="setDailyFinishCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
           '</div>' +
-          '<div class="nok-note '+(st==='ok'?'':'visible')+'"><input type="text" class="form-control form-control-sm" placeholder="ចំណាំ / បញ្ហា..." value="'+esc(a.note)+'" oninput="setDailyFinishNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
-          dailyPhotoGalleryHtml(it.itemId, a.photos || []) +
+          '<div class="nok-note '+(st==='nok'?'visible':'')+'"><input type="text" class="form-control form-control-sm" placeholder="ចំណាំ / បញ្ហា..." value="'+esc(a.note)+'" oninput="setDailyFinishNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
+          dailyPhotoGalleryHtml(it.itemId, a.photos || [], st === 'nok') +
         '</div>';
       }).join('')
     : '<div class="text-muted small text-center py-3">No Finished Form items configured for this group.</div>';
@@ -7986,43 +8027,43 @@ window.openDailyFinishForm = function(checkId){
           (eq.model ? ' · ' + esc(eq.model) : '') + '</div>', 'primary') +
       dailyInfoCard('person', 'អ្នកបើកបរ', dailyInfoCardName(s.driverName, ''), 'success') +
       dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(s.date) + ' ' + esc(s.time), 'warning') +
-      '<div class="col-12"><div class="p-3 border rounded-3 bg-white h-100 shadow-sm daily-info-card">' +
-        '<div class="d-flex align-items-center mb-2">' +
-          '<i class="bi bi-speedometer2 text-info me-2" style="font-size:1.1rem;"></i>' +
-          '<span class="text-muted small" style="letter-spacing:.5px;font-family:\'Battambang\',\'Kantumruy Pro\',sans-serif;font-weight:400;">ម៉ែត្រចុងក្រោយ · End Meters</span>' +
-        '</div>' +
-        '<div class="row g-2">' +
-          '<div class="col-6"><label class="form-label small fw-bold mb-1">End Odometer</label>' +
-            '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndOdo" placeholder="0.0" value="' + escAttr((s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo) + '">' +
-            '<div class="small text-muted mt-1">Start: ' + esc(startOdo || '—') + '</div>' +
-          '</div>' +
-          '<div class="col-6"><label class="form-label small fw-bold mb-1">End OPHour</label>' +
-            '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndHour" placeholder="0.0" value="' + escAttr((s.endHour === '' || s.endHour == null) ? '' : s.endHour) + '">' +
-            '<div class="small text-muted mt-1">Start: ' + esc(startHour || '—') + '</div>' +
-          '</div>' +
-        '</div>' +
-      '</div></div>' +
     '</div>' +
     '<div class="op-finish-tip text-muted mb-3"><i class="bi bi-info-circle me-1"></i>Fill at least one end meter. After submitting, the equipment becomes <strong>Waiting Handover</strong> and your shift ends.</div>' +
     (weeklyItems.length ? '<div class="small text-muted mb-3"><i class="bi bi-calendar-week me-1"></i>' + weeklyItems.length + ' weekly items are part of this group (Weekly check stays separate).</div>' : '');
 
-  // Extra Finished Form fields — both photo-capable (camera / gallery)
-  const extraField = (key, labelKh, labelEn, placeholder) =>
-    '<div class="col-12">' +
-      '<label class="form-label small fw-bold mb-1">' + esc(labelKh) + ' <span class="text-muted fw-normal">(' + esc(labelEn) + ')</span></label>' +
-      '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="daily_' + key + '" placeholder="' + escAttr(placeholder) + '" value="' + escAttr(extras[key].value) + '" oninput="setDailyFinishExtraValue(\'' + key + '\', this.value)">' +
-      dailyPhotoGalleryHtml(key, extras[key].photos) +
+  /* The four Finished Form inputs stay in ONE block: End Odometer, End OPHour,
+     Diesel level and Fuel added. The two fuel fields also keep their photos. */
+  const numField = (opts) => {
+    const inputId = opts.inputId || (opts.extraKey ? 'daily_' + opts.extraKey : '');
+    return '<div class="finish-field">' +
+      '<label class="form-label small fw-bold mb-1"' + (inputId ? ' for="' + inputId + '"' : '') + '>' +
+        esc(opts.labelKh) + ' <span class="text-muted fw-normal">(' + esc(opts.labelEn) + ')</span></label>' +
+      '<input type="number" step="0.1" min="0" class="form-control form-control-sm"' +
+        (inputId ? ' id="' + inputId + '"' : '') +
+        ' placeholder="0.0" value="' + escAttr(opts.value == null ? '' : opts.value) + '"' +
+        (opts.extraKey ? ' oninput="setDailyFinishExtraValue(\'' + opts.extraKey + '\', this.value)"' : '') + '>' +
+      (opts.hint ? '<div class="small text-muted mt-1">' + opts.hint + '</div>' : '') +
+      (opts.extraKey ? dailyPhotoGalleryHtml(opts.extraKey, extras[opts.extraKey].photos) : '') +
     '</div>';
+  };
 
-  const fuelCard =
+  const inputsCard =
     '<div class="card mb-3">' +
       '<div class="group-header d-flex justify-content-between align-items-center">' +
-        '<span><i class="bi bi-fuel-pump me-2"></i>ប្រេងម៉ាស៊ូត · Fuel</span>' +
-        '<small class="text-muted">2 fields</small>' +
+        '<span><i class="bi bi-speedometer2 me-2"></i>Finished Form — inputs</span>' +
+        '<small class="text-muted">4 fields</small>' +
       '</div>' +
-      '<div class="card-body"><div class="row g-3">' +
-        extraField('fuelLevel', 'កម្រិតប្រេងម៉ាស៊ូត', 'Diesel level', '0.0') +
-        extraField('fuelAdded', 'បរិមាណបេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', 'Fuel added during operation', '0.0') +
+      '<div class="card-body p-2"><div class="finish-grid">' +
+        numField({ inputId: 'dailyEndOdo', labelKh: 'អូដូម៉ែត្រចុងក្រោយ', labelEn: 'End Odometer',
+          value: (s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo,
+          hint: 'Start: ' + esc(startOdo || '—') }) +
+        numField({ inputId: 'dailyEndHour', labelKh: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ', labelEn: 'End OPHour',
+          value: (s.endHour === '' || s.endHour == null) ? '' : s.endHour,
+          hint: 'Start: ' + esc(startHour || '—') }) +
+        numField({ extraKey: 'fuelLevel', labelKh: 'កម្រិតប្រេងម៉ាស៊ូត', labelEn: 'Diesel level',
+          value: extras.fuelLevel.value }) +
+        numField({ extraKey: 'fuelAdded', labelKh: 'បរិមាណបេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', labelEn: 'Fuel added',
+          value: extras.fuelAdded.value }) +
       '</div></div>' +
     '</div>';
 
@@ -8030,7 +8071,7 @@ window.openDailyFinishForm = function(checkId){
     '<div class="container-fluid px-0 daily-form-page">' +
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyFinish()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
       infoGrid +
-      fuelCard +
+      inputsCard +
       dailyCountCards(weekCounts.ok, weekCounts.nok, 'dailyFinish') +
       '<div class="card mb-3 legend-card">' +
         '<div class="legend-title">FINISHED FORM</div>' +
@@ -8041,8 +8082,8 @@ window.openDailyFinishForm = function(checkId){
       '</div>' +
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-clipboard2-check me-2"></i>Finished Form items</span>' +
-        '<small class="text-muted">' + items.length + ' items · <span id="dailyFinishNaCount">' + weekCounts.na + ' N/A</span></small>' +
-      '</div><div class="card-body p-2">' + itemsHtml + '</div></div>' +
+        '<small class="text-muted">' + dailyItemWord(items.length) + ' · <span id="dailyFinishNaCount">' + weekCounts.na + ' N/A</span></small>' +
+      '</div><div class="card-body p-2"><div class="check-grid">' + itemsHtml + '</div></div></div>' +
       '<div class="card mb-3"><div class="card-body">' +
         '<label class="form-label fw-bold">Final Remark</label>' +
         '<textarea class="form-control form-control-sm" id="dailyEndRemark" rows="3" placeholder="សូមបញ្ជាក់ស្ថានភាពចុងក្រោយ...">' + esc(s.endRemark || '') + '</textarea>' +
@@ -8496,7 +8537,7 @@ function renderDailyDetailModal(s) {
           '<span><i class="bi bi-list-check me-2"></i>Items</span>' +
           '<small class="text-muted"><span id="detailItemCount">'+enriched.length+' shown</span>' + (naCount ? ' · ' + naCount + ' N/A' : '') + '</small>' +
         '</div>' +
-        '<div class="card-body p-2" id="dailyDetailItemsList">' +
+        '<div class="card-body p-2" id="dailyDetailItemsList"><div class="check-grid">' +
           enriched.map((c, i) => {
             const cls   = c.status === 'ok' ? 'ok' : c.status === 'nok' ? 'nok' : 'na';
             const lbl   = c.status === 'ok' ? 'OK' : c.status === 'nok' ? 'NOT OK' : (c.status === 'na' ? 'N/A' : '—');
@@ -8513,7 +8554,7 @@ function renderDailyDetailModal(s) {
               dailyPhotoIdsHtml(c.photos) +
             '</div>';
           }).join('') +
-        '</div>' +
+        '</div></div>' +
       '</div>' +
 
       ((s.remark || remarkPhotos.length)
