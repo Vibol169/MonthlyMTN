@@ -646,6 +646,11 @@ window.handleSessionExpired = function() {
 };
 
 function showApp(){
+  // Any code path that reveals the app must also drop the loading overlay —
+  // otherwise the cached fast-load leaves the spinner on screen forever.
+  hideLoading();
+  clearBootWatchdog();
+
   // Drivers land on the Daily Check tab by default; an explicit switch is remembered
   const savedApp = String(LS.get('appChoice', '') || '');
   if (savedApp === 'monthly' || savedApp === 'daily') {
@@ -712,6 +717,27 @@ function showPage(page){
 const BOOTSTRAP_CACHE_KEY = 'bootstrapCache_v2';
 const BOOTSTRAP_CACHE_TTL = 5 * 60 * 1000;
 
+/* Safety net: the boot spinner must never hang forever. If the initial load
+   does not finish (slow network, dead request, worker timeout), drop the
+   spinner and show the login screen so the user can retry instead of staring
+   at a dead loading overlay. */
+let _bootWatchdog = null;
+function clearBootWatchdog(){
+  if (_bootWatchdog) { clearTimeout(_bootWatchdog); _bootWatchdog = null; }
+}
+function armBootWatchdog(ms){
+  clearBootWatchdog();
+  _bootWatchdog = setTimeout(function(){
+    _bootWatchdog = null;
+    if (APP.loaded) return;
+    if (!$('#loadingOverlay').is(':visible')) return;
+    console.warn('[Boot] loading did not finish in time — recovering');
+    hideLoading();
+    showAlert('ការផ្ទុកទិន្នន័យយឺតពេក សូមព្យាយាមម្តងទៀត', 'warning');
+    showLogin();
+  }, ms || 45000);
+}
+
 function bootLoad(){
   if (!authToken) { showLogin(); return; } // ★ ADD THIS LINE
   
@@ -730,15 +756,25 @@ function bootLoad(){
   } catch (e) { cached = null; }
 
   if (cached) {
-    delete cached.savedAt;
-    applyBootstrap(cached.monthly, cached.daily);
-    showApp();
-    fetchBothDatasets(true).then(() => { fetchExtendedData(true); });
-    return;
+    try {
+      delete cached.savedAt;
+      applyBootstrap(cached.monthly, cached.daily);
+      hideLoading();          // cached data is on screen — never keep the spinner
+      showApp();              // (showApp clears the overlay + the watchdog too)
+      fetchBothDatasets(true).then(() => { fetchExtendedData(true); });
+      return;
+    } catch (e) {
+      // A cache that cannot be applied must not block the load
+      console.warn('[Boot] cached bootstrap could not be applied — refetching', e);
+      try { LS.del(BOOTSTRAP_CACHE_KEY); } catch (_) {}
+    }
   }
 
   showLoading('កំពុងផ្ទុកទិន្នន័យ...');
-  fetchBothDatasets(false).then(() => { fetchExtendedData(true); });
+  armBootWatchdog();        // never leave the user on a dead spinner
+  fetchBothDatasets(false)
+    .then(() => { hideLoading(); fetchExtendedData(true); })
+    .catch(() => { hideLoading(); });
 }
 
 window.fetchNotifications = function() {
@@ -779,15 +815,33 @@ function fetchBothDatasets(silent){
   // "_ts" is a cache-buster: it changes the serialized request body, so a
   // caching proxy in front of the API (e.g. a Cloudflare Worker) can never
   // answer with a stale bootstrap.
-  const getMonthly = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getBootstrapData(tokenAtStart, { _ts: Date.now() }));
-  const getDaily   = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getDailyBootstrapData(tokenAtStart, { _ts: Date.now(), maxRows: DAILY_BOOTSTRAP_MAX_ROWS }));
+  // try/catch inside: if google.script.run is unavailable the promise must still
+  // settle, otherwise the loading overlay would stay on screen forever.
+  const getMonthly = () => new Promise(r => {
+    try {
+      google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false }))
+        .getBootstrapData(tokenAtStart, { _ts: Date.now() });
+    } catch (e) { console.error('[Boot] getBootstrapData call failed', e); r({ success: false }); }
+  });
+  const getDaily = () => new Promise(r => {
+    try {
+      google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false }))
+        .getDailyBootstrapData(tokenAtStart, { _ts: Date.now(), maxRows: DAILY_BOOTSTRAP_MAX_ROWS });
+    } catch (e) { console.error('[Boot] getDailyBootstrapData call failed', e); r({ success: false }); }
+  });
 
   return new Promise((resolve) => {
     // Serial on purpose: two google.script.run calls in flight at the same time
     // can deliver their responses to the wrong handler, and the daily payload
     // used to overwrite / wipe the monthly (or daily) cache.
     let settled = false;
-    const done = () => { if (!settled) { settled = true; resolve(); } };
+    // Every exit path ends here, so the overlay can never be left behind.
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      if (!silent) hideLoading();
+      resolve();
+    };
 
     const finish = (resM, resD) => {
       if (!authToken || tokenAtStart !== authToken) { done(); return; }
@@ -996,6 +1050,14 @@ function syncMonthlyOnly(cb){
 
 window.syncAllData = function(silent) {
   if (!authToken) return;
+
+  // Never start a background sync while the first load is still running:
+  // two google.script.run calls at the same time can cross their responses and
+  // would break the bootstrap that is currently filling the screen.
+  if (!APP.loaded) {
+    console.log('[Sync] skipped — initial load still in progress');
+    return;
+  }
 
   // If it's a silent sync, make sure we don't interrupt the user
   if (silent && !safeToRefresh()) {
@@ -1255,6 +1317,7 @@ $(document).ready(function(){
 
       if (authToken) {
     showLoading('កំពុងផ្ទៀងផ្ទាត់...'); 
+    armBootWatchdog();          // token check must never hang forever either
     google.script.run.withSuccessHandler(user => {
       if (user) {
         currentUser = user;
@@ -1292,8 +1355,14 @@ $(document).ready(function(){
         
         // ★ NEW: Wait 1.5 seconds for Google Sheets to finish saving the token
         showLoading('កំពុងចូល...');
+        armBootWatchdog();       // a stuck login load must not trap the user either
         setTimeout(() => {
-          bootLoad(); 
+          try { bootLoad(); }
+          catch (e) {
+            console.error('[Boot] load after login failed', e);
+            hideLoading();
+            showAlert('ការផ្ទុកទិន្នន័យបរាជ័យ សូមព្យាយាមម្តងទៀត', 'danger');
+          }
         }, 1500);
         
       } else {
