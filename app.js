@@ -685,6 +685,9 @@ function showPage(page){
   $('#bottomNav a').removeClass('active');
   $('#bottomNav a[data-page="'+page+'"]').addClass('active');
   pendingChecklist = null; editingCheckId = null;
+  // Leaving the page always drops a half-filled daily form (submitting / cancelling clears it first)
+  if (typeof pendingDailyChecklist !== 'undefined') pendingDailyChecklist = null;
+  if (typeof dailyFinishState !== 'undefined') dailyFinishState = { checkId: '', items: [], answers: {} };
   
   if (page === 'home')           renderHome();
   else if (page === 'list')      renderList();
@@ -971,8 +974,42 @@ function refreshCurrentPage(){
   updateLastSyncDisplay();
 }
 
+/* Repaint the tab that is on screen from the data already in APP.
+   Never wait for the network — that is what made the daily cards look stale.
+   Skipped while a checklist / finished form is being filled in. */
+function repaintCurrentPage(){
+  if (!safeToRefresh()) return;
+  showPage($('#bottomNav a.active').data('page') || 'home');
+}
+
+/* Pull monthly + daily bootstrap after a daily action, then repaint.
+   Unlike fetchBothDatasets(silent) this always refreshes APP and always
+   repaints, so a submitted / finished / handed-over shift shows up at once. */
+let _dailySyncSeq = 0;
+function dailySyncNow(){
+  if (!authToken) return Promise.resolve();
+  const seq = ++_dailySyncSeq;
+  return new Promise(resolve => {
+    const reqM = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getBootstrapData(authToken));
+    const reqD = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getDailyBootstrapData(authToken));
+    Promise.all([reqM, reqD]).then(([resM, resD]) => {
+      if (!authToken || seq !== _dailySyncSeq) { resolve(); return; }
+      if (!resM || !resM.success || !resD || !resD.success) { resolve(); return; }
+      applyBootstrap(resM, resD);
+      lastSyncTime = Date.now();
+      LS.set('lastSyncTime', lastSyncTime);
+      try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: authToken, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+      repaintCurrentPage();
+      updateLastSyncDisplay();
+      resolve();
+    });
+  });
+}
+
 function safeToRefresh(){
   if (pendingChecklist) return false;
+  if (typeof pendingDailyChecklist !== 'undefined' && pendingDailyChecklist) return false;
+  if (typeof dailyFinishState !== 'undefined' && dailyFinishState && dailyFinishState.checkId) return false;
   if ($('#detailModal').hasClass('show'))  return false;
   if ($('#remarkModal').hasClass('show'))  return false;
   if ($('#accountModal').hasClass('show')) return false;
@@ -6442,6 +6479,8 @@ window.cancelAssignBatch = function(batchId, singleId){
    ========================================================= */
 let pendingDailyChecklist = null;
 let nokPhotos = [];
+// Finished Form draft (kept here so showPage() can always clear it safely)
+let dailyFinishState = { checkId: '', items: [], answers: {} };
 let dailyDetailFilter = 'all';
 
 let dailyDashboardSubTab = 'overview';
@@ -6863,7 +6902,8 @@ function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, hand
   };
   
   items.forEach(it => { 
-    pendingDailyChecklist.checks[it.itemId] = { itemId: it.itemId, status: '', note: '' }; 
+    // OK is the default answer — the driver only changes the items that are not OK
+    pendingDailyChecklist.checks[it.itemId] = { itemId: it.itemId, status: 'ok', note: '' }; 
   });
   
   renderDailyChecklistForm();
@@ -6924,12 +6964,11 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyChecklist()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
       dailyFinishSummaryHtml(prev) +
       dailyFinishChecksHtml(prev) +
-      '<div class="card mb-3 handover-banner"><div class="card-body">' +
-        '<div class="d-flex align-items-start mb-3">' +
-          '<i class="bi bi-arrow-left-right hi"></i>' +
-          '<div><strong>Handover Review Required</strong>' +
-            '<div class="small mt-1">Equipment <strong>'+esc(shortName)+'</strong> was finished by <strong>'+esc(prev.driverName)+'</strong>. Review the checklist and the Finished Form, then verify the handover to start your own.</div></div>' +
-        '</div>' +
+      '<div class="card mb-3 confirm-box confirm-pending"><div class="group-header d-flex justify-content-between align-items-center">' +
+        '<span><i class="bi bi-arrow-left-right me-2"></i>Handover Confirmation</span>' +
+        '<span class="status-badge status-pending">Required</span>' +
+      '</div><div class="card-body">' +
+        '<div class="small mb-3">Equipment <strong>'+esc(shortName)+'</strong> was finished by <strong>'+esc(prev.driverName)+'</strong>. Review the checklist and the Finished Form, then verify the handover to start your own.</div>' +
         startsLine +
         '<div class="mb-3">' +
           '<label class="form-label small fw-bold mb-1"><i class="bi bi-chat-left-text me-1"></i>Handover remark for the previous shift (optional)</label>' +
@@ -6946,7 +6985,7 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
         '</div>' +
       '</div></div>' +
 
-      '<div class="card mb-3"><div class="card-body py-3"><div class="row g-3">' +
+      '<div class="card mb-3"><div class="group-header"><i class="bi bi-truck me-2"></i>Shift details</div><div class="card-body py-3"><div class="row g-3">' +
         '<div class="col-6"><div class="small text-muted">Last Driver</div><strong><i class="bi bi-person me-1"></i>'+esc(prev.driverName)+'</strong></div>' +
         '<div class="col-6"><div class="small text-muted">When</div><strong><i class="bi bi-calendar me-1"></i>'+esc(prev.date)+' '+esc(prev.time)+'</strong></div>' +
         '<div class="col-6"><div class="small text-muted">Equipment</div><strong>'+esc(prev.equipmentId)+'</strong></div>' +
@@ -7006,18 +7045,26 @@ function renderDailyChecklistForm(){
   if (!c) return;
 
   const isWeekly = (c.checkType === DAILY_FREQ_WEEKLY);
-  const title = isWeekly ? 'Weekly Check' : (c.checkType === DAILY_FREQ_FINISH ? 'Finished Form' : 'Daily Checklist');
+  const title = isWeekly ? 'Weekly Check' : 'Daily Checklist';
+  const typeBadge = isWeekly
+    ? '<span class="badge bg-info text-dark ms-2">Weekly</span>'
+    : '<span class="badge bg-primary ms-2">Daily</span>';
+  const eq = APP.equipmentMap[c.equipmentId] || {};
 
   const itemsHtml = c.items.map((it, i) => {
-    const sel = c.checks[it.itemId] || { status: '', note: '' };
-    return '<div class="check-item '+(sel.status||'')+'" data-item="'+escAttr(it.itemId)+'">' +
-      '<div><span class="item-num">'+(i+1)+'.</span><span class="item-name-kh">'+esc(it.itemKhmer)+'</span><div class="item-name-en">'+esc(it.itemEng)+'</div></div>' +
+    const sel = c.checks[it.itemId] || { status: 'ok', note: '' };
+    const st  = sel.status || 'ok';
+    return '<div class="check-item '+st+'" data-item="'+escAttr(it.itemId)+'" data-status="'+escAttr(st)+'">' +
+      '<div class="row-line"><div class="label-part"><span class="item-num">'+(i+1)+'.</span><div class="item-text">' +
+        '<span class="item-name-kh">'+esc(it.itemKhmer)+'</span>' +
+        (it.itemEng ? '<span class="item-name-en">'+esc(it.itemEng)+'</span>' : '') +
+      '</div></div></div>' +
       '<div class="check-actions">' +
-        '<button type="button" class="check-btn '+(sel.status==='ok'?'selected-ok':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'ok\')"><i class="bi bi-check-circle me-1"></i>OK</button>' +
-        '<button type="button" class="check-btn '+(sel.status==='nok'?'selected-nok':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'nok\')"><i class="bi bi-x-circle me-1"></i>NOT OK</button>' +
-        '<button type="button" class="check-btn '+(sel.status==='na'?'selected-na':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
+        '<button type="button" class="check-btn '+(st==='ok'?'selected-ok':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'ok\')"><i class="bi bi-check-circle me-1"></i>OK</button>' +
+        '<button type="button" class="check-btn '+(st==='nok'?'selected-nok':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'nok\')"><i class="bi bi-x-circle me-1"></i>NOT OK</button>' +
+        '<button type="button" class="check-btn '+(st==='na'?'selected-na':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
       '</div>' +
-      '<div class="nok-note visible"><input type="text" class="form-control form-control-sm js-nok-note" placeholder="សូមបញ្ជាក់បញ្ហា / ចំណាំ..." value="'+esc(sel.note)+'" oninput="setDailyNokNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
+      '<div class="nok-note '+(st==='ok'?'':'visible')+'"><input type="text" class="form-control form-control-sm js-nok-note" placeholder="សូមបញ្ជាក់បញ្ហា / ចំណាំ..." value="'+esc(sel.note)+'" oninput="setDailyNokNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
     '</div>';
   }).join('');
 
@@ -7032,38 +7079,71 @@ function renderDailyChecklistForm(){
       (c.prevDriverName ? ' <span class="text-muted">(from '+esc(c.prevDriverName)+')</span>' : '') + '</div>'
     : '';
 
-  // Agreement gate — the wording comes from the Settings sheet (Key = DriverAgreement)
+  // Agreement gate — monthly-style confirmation block (wording from Settings: DriverAgreement)
   const agreementHtml =
-    '<div class="card mb-2 agreement-box"><div class="card-body py-2">' +
-      '<div class="form-check">' +
-        '<input class="form-check-input" type="checkbox" id="dailyAgree" '+(c.agreed ? 'checked' : '')+' onchange="toggleDailyAgreement(this.checked)">' +
-        '<label class="form-check-label small" for="dailyAgree">'+esc(dailyAgreementText())+'</label>' +
+    '<div class="card mb-3 confirm-box ' + (c.agreed ? '' : 'confirm-pending') + '" id="dailyAgreementBox">' +
+      '<div class="group-header d-flex justify-content-between align-items-center">' +
+        '<span><i class="bi bi-shield-check me-2"></i>Driver Confirmation</span>' +
+        '<span class="status-badge ' + (c.agreed ? 'status-ok' : 'status-pending') + '" id="dailyAgreementBadge">' + (c.agreed ? 'Confirmed' : 'Required') + '</span>' +
       '</div>' +
-    '</div></div>';
-
-  const body =
-    '<div class="op-inherit mb-2"><i class="bi bi-truck me-1"></i><strong>'+esc(c.shortName)+'</strong>' +
-      '<div class="small text-muted mt-1">'+esc(c.equipmentId)+' · '+esc(c.group)+' · '+esc(dmyToday())+'</div>' +
-      startLine + handoverChip +
-    '</div>' +
-    agreementHtml +
-    itemsHtml +
-    '<label class="form-label small fw-bold mt-3">Remark</label>' +
-    '<textarea class="form-control form-control-sm" id="checkRemark" rows="2" placeholder="កំណត់សម្គាល់បន្ថែម..."></textarea>' +
-    '<div class="photo-upload-box mt-2">' +
-      '<div class="d-flex align-items-center flex-wrap gap-2">' +
-        '<input type="file" id="checkPhotos" accept="image/*" multiple style="display:none;">' +
-        '<button type="button" class="btn btn-outline-primary btn-sm" onclick="$(\'#checkPhotos\').click()"><i class="bi bi-image me-1"></i>ភ្ជាប់រូបថត</button>' +
-        '<span id="checkPhotoCount" class="text-muted small">0 រូប</span>' +
+      '<div class="card-body">' +
+        '<div class="form-check">' +
+          '<input class="form-check-input" type="checkbox" id="dailyAgree" ' + (c.agreed ? 'checked' : '') + ' onchange="toggleDailyAgreement(this.checked)">' +
+          '<label class="form-check-label small" for="dailyAgree">' + esc(dailyAgreementText()) + '</label>' +
+        '</div>' +
+        '<div class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Saved with this checklist (time stamped).</div>' +
       '</div>' +
-      '<div id="checkPhotosPreview" class="photo-thumb-grid"></div>' +
     '</div>';
 
-  const footer =
-    '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="cancelDailyChecklist()">បោះបង់</button>' +
-    '<button type="button" class="btn btn-sm btn-primary" onclick="submitDailyChecklistForm()"><i class="bi bi-check-circle me-1"></i>ដាក់ស្នើ</button>';
+  const legendHtml =
+    '<div class="card mb-3 legend-card">' +
+      '<div class="legend-title">' + (isWeekly ? 'WEEKLY CHECK' : 'DAILY CHECK') + '</div>' +
+      '<div class="legend-body text-center">' +
+        '<div class="lbl-en"><span class="acronym">OK</span>=Normal &nbsp; ' +
+          '<span class="acronym">NOT OK</span>=Problem found (add a note) &nbsp; ' +
+          '<span class="acronym">N/A</span>=Not applicable</div>' +
+        '<div class="lbl-kh"><span class="acronym">OK</span>=ធម្មតា &nbsp; <span class="acronym">NOT OK</span>=មានបញ្ហា (សូមចំណាំ) &nbsp; <span class="acronym">N/A</span>=មិនពាក់ព័ន្ធ</div>' +
+      '</div>' +
+    '</div>';
 
-  showDailyFlowModal('<i class="bi bi-clipboard-check me-2 text-primary"></i>' + title, body, footer, 'modal-lg');
+  const headerCard =
+    '<div class="card mb-3"><div class="card-body">' +
+      '<h5 class="mb-1">' + esc(c.shortName || c.equipmentId) + typeBadge + '</h5>' +
+      '<div class="small text-muted mb-0">' + esc(c.equipmentId) + ' · ' + esc(c.group) +
+        (eq.model ? ' · ' + esc(eq.model) : '') +
+        (eq.specificGroup ? ' - ' + esc(eq.specificGroup) : '') + '</div>' +
+      '<div class="small text-primary mt-2"><i class="bi bi-person me-1"></i>' + esc(currentUser.fullName) + '</div>' +
+      '<div class="small text-muted mt-1"><i class="bi bi-list-check me-1"></i>' + c.items.length + ' items · ' + esc(dmyToday()) + '</div>' +
+      startLine + handoverChip +
+    '</div></div>';
+
+  $('#app').html(
+    '<div class="container-fluid px-0 daily-form-page">' +
+      '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyChecklist()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
+      headerCard +
+      legendHtml +
+      agreementHtml +
+      '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
+        '<span><i class="bi bi-clipboard-check me-2"></i>' + title + '</span>' +
+        '<small class="text-muted">' + c.items.length + ' items</small>' +
+      '</div><div class="card-body p-2">' + itemsHtml + '</div></div>' +
+      '<div class="card mb-3"><div class="card-body">' +
+        '<label class="form-label fw-bold">Remark</label>' +
+        '<textarea class="form-control form-control-sm" id="checkRemark" rows="2" placeholder="កំណត់សម្គាល់បន្ថែម..."></textarea>' +
+        '<div class="photo-upload-box mt-2">' +
+          '<div class="d-flex align-items-center flex-wrap gap-2">' +
+            '<input type="file" id="checkPhotos" accept="image/*" multiple style="display:none;">' +
+            '<button type="button" class="btn btn-outline-primary btn-sm" onclick="$(\'#checkPhotos\').click()"><i class="bi bi-image me-1"></i>ភ្ជាប់រូបថត</button>' +
+            '<span id="checkPhotoCount" class="text-muted small">0 រូប</span>' +
+          '</div>' +
+          '<div id="checkPhotosPreview" class="photo-thumb-grid"></div>' +
+        '</div>' +
+      '</div></div>' +
+      '<button class="btn btn-primary w-100" style="margin-bottom: 100px !important;" onclick="submitDailyChecklistForm()"><i class="bi bi-check-circle me-1"></i>' +
+        (isWeekly ? 'រក្សាទុក Weekly Check' : 'បានពិនិត្យរួចរាល់') + '</button>' +
+    '</div>'
+  );
+  window.scrollTo(0, 0);
 
   nokPhotos = [];
   $('#checkPhotos').on('change', function(){
@@ -7079,6 +7159,11 @@ function renderDailyChecklistForm(){
 window.toggleDailyAgreement = function(checked){
   if (!pendingDailyChecklist) return;
   pendingDailyChecklist.agreed = !!checked;
+  const $box = $('#dailyAgreementBox');
+  $box.toggleClass('confirm-pending', !checked);
+  $('#dailyAgreementBadge').removeClass('status-ok status-pending')
+    .addClass(checked ? 'status-ok' : 'status-pending')
+    .text(checked ? 'Confirmed' : 'Required');
 };
 
 function renderCheckPhotos(){
@@ -7097,24 +7182,27 @@ function renderCheckPhotos(){
 
 window.setDailyCheck = function(itemId, status){
   if (!pendingDailyChecklist) return;
+  if (!pendingDailyChecklist.checks[itemId]) return;
   pendingDailyChecklist.checks[itemId].status = status;
   const $item = $('.check-item[data-item="'+itemId+'"]');
-  $item.removeClass('ok nok na').addClass(status);
+  $item.removeClass('ok nok na').addClass(status).attr('data-status', status);
   $item.find('.check-btn').removeClass('selected-ok selected-nok selected-na');
   $item.find('.check-btn').eq(status==='ok'?0:status==='nok'?1:2).addClass('selected-'+status);
-  $item.find('.nok-note').addClass('visible'); // every item keeps its input available
+  $item.find('.nok-note').toggleClass('visible', status !== 'ok');
 };
 
 window.setDailyNokNote = function(itemId, val){
   if (!pendingDailyChecklist) return;
+  if (!pendingDailyChecklist.checks[itemId]) return;
   pendingDailyChecklist.checks[itemId].note = val;
 };
 
 window.cancelDailyChecklist = function(){
-  if (!pendingDailyChecklist) { hideDailyFlowModal(); return; }
+  if (!pendingDailyChecklist) { showPage('home'); return; }
   if (confirm('បោះបង់ការត្រួតពិនិត្យ?')) {
     pendingDailyChecklist = null;
     hideDailyFlowModal();
+    showPage('home');
   }
 };
 
@@ -7145,17 +7233,50 @@ window.submitDailyChecklistForm = function(){
   google.script.run
     .withSuccessHandler(res => {
       hideLoading();
-      if (res && res.success) {
-        // Close first, then navigate: leaving the modal open used to freeze the page
-        hideDailyFlowModal();
-        pendingDailyChecklist = null;
-        showAlert((isWeekly ? 'Weekly check saved — ' : 'ដាក់ស្នើរួចរាល់ — ') + res.checkId +
-          (isWeekly ? '' : ' · Status: Operating'), 'success');
-        showPage('home');
-        fetchBothDatasets(true).then(() => { showPage('home'); });
-      } else {
+      if (!res || !res.success) {
+        // Shift conflicts: leave the form, go back to the cards and reload the sheet state
+        if (res && (res.code === 'IN_USE' || res.code === 'HANDOVER' || res.code === 'SHIFT_OPEN')) {
+          pendingDailyChecklist = null;
+          showAlert(res.message || 'Shift conflict', 'warning');
+          showPage('home');
+          dailySyncNow();
+          return;
+        }
         showAlert((res && res.message) || 'Error', 'danger');
+        return;
       }
+
+      // 1. Update the local copy first — the card must change even if the network is slow
+      const stamp = dmyToday() + ' ' + nowTimeStr();
+      const newSub = {
+        checkId: res.checkId,
+        date: dmyToday(), time: nowTimeStr(),
+        username: currentUser.username, driverName: currentUser.fullName,
+        equipmentId: c.equipmentId, group: c.group, overall: overall,
+        checks: checks, remark: payload.remark, photoIds: [],
+        handoverCheckId: c.handoverCheckId || '',
+        reviewedBy: '', reviewedRemark: '', reviewedAt: '',
+        confirmStatus: 'Pending', confirmedBy: '', confirmedAt: '', confirmRemark: '',
+        directorStatus: '', directorBy: '', directorAt: '', directorRemark: '',
+        mtnStatus: '', mtnBy: '', mtnAt: '', mtnRemark: '', mtnItems: {},
+        opStatus: isWeekly ? '' : (res.opStatus || DAILY_OP_OPERATING),
+        opAt: isWeekly ? '' : stamp, opBy: isWeekly ? '' : currentUser.username,
+        startOdo: (res.startOdo === undefined ? payload.startOdo : res.startOdo),
+        startHour: (res.startHour === undefined ? payload.startHour : res.startHour),
+        endOdo: '', endHour: '', endRemark: '', finishedAt: '', finishedBy: '',
+        handoverBy: '', handoverAt: '', handoverRemark: '',
+        checkType: isWeekly ? DAILY_FREQ_WEEKLY : DAILY_FREQ_DAILY,
+        finishChecks: [], agreementAt: stamp
+      };
+      APP.dailySubmissions = [newSub].concat(APP.dailySubmissions || []);
+      APP.dailySubmissions.sort((a, b) => subMs(b) - subMs(a));
+
+      hideDailyFlowModal();
+      pendingDailyChecklist = null;
+      showAlert((isWeekly ? 'Weekly check saved — ' : 'ដាក់ស្នើរួចរាល់ — ') + res.checkId +
+        (isWeekly ? '' : ' · Status: Operating'), 'success');
+      showPage('home');      // instant repaint from the local copy
+      dailySyncNow();        // then reconcile with the sheet and repaint again
     })
     .withFailureHandler(err => { hideLoading(); handleError(err); })
     .submitDailyChecklist(payload);
@@ -7217,21 +7338,22 @@ window.setDailyOpStatus = function(checkId, status){
       s.opBy = res.opBy || currentUser.username;
       showAlert('Status: ' + dailyOpInfo(s.opStatus).label, 'success');
       refreshCurrentPage();
+      dailySyncNow();
     })
     .withFailureHandler(handleError)
     .setDailyOpStatus({ checkId: checkId, status: next });
 };
 
 /* Finished Form — the items come from the Checklist_Template sheet (Frequency = Finish) */
-let dailyFinishState = { checkId: '', items: [], answers: {} };
 
 window.setDailyFinishCheck = function(itemId, status){
   if (!dailyFinishState || !dailyFinishState.answers[itemId]) return;
   dailyFinishState.answers[itemId].status = status;
   const $item = $('.check-item[data-finish="' + itemId + '"]');
-  $item.removeClass('ok nok na').addClass(status);
+  $item.removeClass('ok nok na').addClass(status).attr('data-status', status);
   $item.find('.check-btn').removeClass('selected-ok selected-nok selected-na');
   $item.find('.check-btn').eq(status==='ok'?0:status==='nok'?1:2).addClass('selected-'+status);
+  $item.find('.nok-note').toggleClass('visible', status !== 'ok');
 };
 
 window.setDailyFinishNote = function(itemId, val){
@@ -7251,51 +7373,82 @@ window.openDailyFinishForm = function(checkId){
 
   const items = dailyTplItems(s.group, DAILY_FREQ_FINISH);
   const answers = {};
-  items.forEach(it => { answers[it.itemId] = { status: '', note: '' }; });
+  // OK is the default for every item (same as the daily checklist)
+  items.forEach(it => { answers[it.itemId] = { status: 'ok', note: '' }; });
   (s.finishChecks || []).forEach(f => {
     if (!answers[f.itemId]) return;
-    answers[f.itemId].status = f.status || '';
-    answers[f.itemId].note   = f.note   || '';
+    if (f.status) answers[f.itemId].status = f.status;
+    answers[f.itemId].note = f.note || '';
   });
   dailyFinishState = { checkId: checkId, items: items, answers: answers };
 
   const itemsHtml = items.length
-    ? '<div class="small fw-bold mt-3 mb-2"><i class="bi bi-clipboard2-check text-danger me-1"></i>Finished Form — ' + items.length + ' items</div>' +
-      items.map((it, i) => {
-        const a = answers[it.itemId] || { status: '', note: '' };
-        return '<div class="check-item '+(a.status||'')+'" data-finish="'+escAttr(it.itemId)+'">' +
-          '<div><span class="item-num">'+(i+1)+'.</span><span class="item-name-kh">'+esc(it.itemKhmer)+'</span><div class="item-name-en">'+esc(it.itemEng)+'</div></div>' +
+    ? items.map((it, i) => {
+        const a = answers[it.itemId] || { status: 'ok', note: '' };
+        const st = a.status || 'ok';
+        return '<div class="check-item '+st+'" data-finish="'+escAttr(it.itemId)+'" data-status="'+escAttr(st)+'">' +
+          '<div class="row-line"><div class="label-part"><span class="item-num">'+(i+1)+'.</span><div class="item-text">' +
+            '<span class="item-name-kh">'+esc(it.itemKhmer)+'</span>' +
+            (it.itemEng ? '<span class="item-name-en">'+esc(it.itemEng)+'</span>' : '') +
+          '</div></div></div>' +
           '<div class="check-actions">' +
-            '<button type="button" class="check-btn '+(a.status==='ok'?'selected-ok':'')+'" onclick="setDailyFinishCheck(\''+escAttr(it.itemId)+'\',\'ok\')"><i class="bi bi-check-circle me-1"></i>OK</button>' +
-            '<button type="button" class="check-btn '+(a.status==='nok'?'selected-nok':'')+'" onclick="setDailyFinishCheck(\''+escAttr(it.itemId)+'\',\'nok\')"><i class="bi bi-x-circle me-1"></i>NOT OK</button>' +
-            '<button type="button" class="check-btn '+(a.status==='na'?'selected-na':'')+'" onclick="setDailyFinishCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
+            '<button type="button" class="check-btn '+(st==='ok'?'selected-ok':'')+'" onclick="setDailyFinishCheck(\''+escAttr(it.itemId)+'\',\'ok\')"><i class="bi bi-check-circle me-1"></i>OK</button>' +
+            '<button type="button" class="check-btn '+(st==='nok'?'selected-nok':'')+'" onclick="setDailyFinishCheck(\''+escAttr(it.itemId)+'\',\'nok\')"><i class="bi bi-x-circle me-1"></i>NOT OK</button>' +
+            '<button type="button" class="check-btn '+(st==='na'?'selected-na':'')+'" onclick="setDailyFinishCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
           '</div>' +
-          '<div class="nok-note visible"><input type="text" class="form-control form-control-sm" placeholder="ចំណាំ / បញ្ហា..." value="'+esc(a.note)+'" oninput="setDailyFinishNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
+          '<div class="nok-note '+(st==='ok'?'':'visible')+'"><input type="text" class="form-control form-control-sm" placeholder="ចំណាំ / បញ្ហា..." value="'+esc(a.note)+'" oninput="setDailyFinishNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
         '</div>';
       }).join('')
-    : '';
+    : '<div class="text-muted small text-center py-3">No Finished Form items configured for this group.</div>';
 
-  const body =
-    '<div class="op-inherit mb-3"><i class="bi bi-truck me-1"></i><strong>' + esc(eq.shortName || s.equipmentId) + '</strong>' +
-      '<div class="small text-muted mt-1">Shift started ' + esc(s.date) + ' ' + esc(s.time) + esc(startTxt) + '</div>' +
-    '</div>' +
-    '<div class="row g-2 mb-3">' +
-      '<div class="col-6"><label class="form-label small fw-bold mb-1">End Odometer</label>' +
-        '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndOdo" placeholder="0.0" value="' + escAttr((s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo) + '">' +
+  const meterHtml =
+    '<div class="card mb-3"><div class="group-header"><i class="bi bi-speedometer2 me-2"></i>End Meters</div><div class="card-body">' +
+      '<div class="row g-2">' +
+        '<div class="col-6"><label class="form-label small fw-bold mb-1">End Odometer</label>' +
+          '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndOdo" placeholder="0.0" value="' + escAttr((s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo) + '">' +
+        '</div>' +
+        '<div class="col-6"><label class="form-label small fw-bold mb-1">End OPHour</label>' +
+          '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndHour" placeholder="0.0" value="' + escAttr((s.endHour === '' || s.endHour == null) ? '' : s.endHour) + '">' +
+        '</div>' +
       '</div>' +
-      '<div class="col-6"><label class="form-label small fw-bold mb-1">End OPHour</label>' +
-        '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndHour" placeholder="0.0" value="' + escAttr((s.endHour === '' || s.endHour == null) ? '' : s.endHour) + '">' +
-      '</div>' +
-    '</div>' +
-    itemsHtml +
-    '<label class="form-label small fw-bold mb-1 mt-3">Final Remark</label>' +
-    '<textarea class="form-control form-control-sm" id="dailyEndRemark" rows="3" placeholder="សូមបញ្ជាក់ស្ថានភាពចុងក្រោយ...">' + esc(s.endRemark || '') + '</textarea>' +
-    '<div class="op-finish-tip text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Fill at least one meter and answer every item. After submitting, the equipment becomes <strong>Waiting Handover</strong> and your shift ends.</div>';
+      '<div class="op-finish-tip text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Fill at least one meter. After submitting, the equipment becomes <strong>Waiting Handover</strong> and your shift ends.</div>' +
+    '</div></div>';
 
-  showDailyFlowModal('<i class="bi bi-flag-fill me-2 text-danger"></i>Finished Form', body,
-    '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideDailyFlowModal()">Cancel</button>' +
-    '<button type="button" class="btn btn-sm btn-danger" onclick="submitDailyFinishForm(\'' + escAttr(checkId) + '\')"><i class="bi bi-check2-circle me-1"></i>Submit Finished Form</button>',
-    'modal-lg');
+  $('#app').html(
+    '<div class="container-fluid px-0 daily-form-page">' +
+      '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyFinish()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
+      '<div class="card mb-3"><div class="card-body">' +
+        '<h5 class="mb-1">' + esc(eq.shortName || s.equipmentId) + '<span class="badge bg-danger ms-2">Finished Form</span></h5>' +
+        '<div class="small text-muted mb-0">' + esc(s.equipmentId) + ' · ' + esc(s.group) + '</div>' +
+        '<div class="small text-primary mt-2"><i class="bi bi-person me-1"></i>' + esc(s.driverName) + '</div>' +
+        '<div class="small text-muted mt-1"><i class="bi bi-clock-history me-1"></i>Shift started ' + esc(s.date) + ' ' + esc(s.time) + esc(startTxt) + '</div>' +
+      '</div></div>' +
+      '<div class="card mb-3 legend-card">' +
+        '<div class="legend-title">FINISHED FORM</div>' +
+        '<div class="legend-body text-center">' +
+          '<div class="lbl-en"><span class="acronym">OK</span>=Normal &nbsp; <span class="acronym">NOT OK</span>=Problem found (add a note) &nbsp; <span class="acronym">N/A</span>=Not applicable</div>' +
+          '<div class="lbl-kh"><span class="acronym">OK</span>=ធម្មតា &nbsp; <span class="acronym">NOT OK</span>=មានបញ្ហា (សូមចំណាំ) &nbsp; <span class="acronym">N/A</span>=មិនពាក់ព័ន្ធ</div>' +
+        '</div>' +
+      '</div>' +
+      meterHtml +
+      '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
+        '<span><i class="bi bi-clipboard2-check me-2"></i>Finished Form items</span>' +
+        '<small class="text-muted">' + items.length + ' items</small>' +
+      '</div><div class="card-body p-2">' + itemsHtml + '</div></div>' +
+      '<div class="card mb-3"><div class="card-body">' +
+        '<label class="form-label fw-bold">Final Remark</label>' +
+        '<textarea class="form-control form-control-sm" id="dailyEndRemark" rows="3" placeholder="សូមបញ្ជាក់ស្ថានភាពចុងក្រោយ...">' + esc(s.endRemark || '') + '</textarea>' +
+      '</div></div>' +
+      '<button class="btn btn-danger w-100" style="margin-bottom:100px !important;" onclick="submitDailyFinishForm(\'' + escAttr(checkId) + '\')"><i class="bi bi-check2-circle me-1"></i>Submit Finished Form</button>' +
+    '</div>'
+  );
+  window.scrollTo(0, 0);
+};
+
+window.cancelDailyFinish = function(){
+  if (!confirm('បោះបង់ការបញ្ជូន Finished Form?')) return;
+  dailyFinishState = { checkId: '', items: [], answers: {} };
+  showPage('home');
 };
 
 window.submitDailyFinishForm = function(checkId){
@@ -7360,9 +7513,12 @@ window.submitDailyFinishForm = function(checkId){
       s.finishedBy = res.finishedBy || currentUser.username;
       s.finishChecks = Array.isArray(res.finishChecks) ? res.finishChecks : finishChecks;
 
+      // Leave the form page first, then repaint from the updated local copy
+      dailyFinishState = { checkId: '', items: [], answers: {} };
       hideDailyFlowModal();
       showAlert('Finished — equipment is waiting for handover', 'success');
-      refreshCurrentPage();
+      showPage('home');
+      dailySyncNow();
     })
     .withFailureHandler(err => { hideLoading(); handleError(err); })
     .finishDailyShift({ checkId: checkId, endOdo: odo, endHour: hour, remark: remark, finishChecks: finishChecks });
@@ -7616,12 +7772,16 @@ function renderDailyDetailModal(s) {
         '</div>' +
         '<div class="card-body p-2" id="dailyDetailItemsList">' +
           enriched.map((c, i) => {
-            const cls  = c.status === 'ok' ? 'ok' : c.status === 'nok' ? 'nok' : 'na';
-            const icon = c.status === 'ok' ? 'check-circle' : c.status === 'nok' ? 'x-circle' : 'dash-circle';
-            return '<div class="check-item '+cls+'" data-status="'+c.status+'">' +
-              '<div class="d-flex justify-content-between align-items-center">' +
-                '<div><span class="item-num">'+(i+1)+'.</span><span class="item-name-kh">'+esc(c.itemKhmer)+'</span><div class="item-name-en">'+esc(c.itemEng)+'</div></div>' +
-                '<i class="bi bi-'+icon+'"></i>' +
+            const cls   = c.status === 'ok' ? 'ok' : c.status === 'nok' ? 'nok' : 'na';
+            const lbl   = c.status === 'ok' ? 'OK' : c.status === 'nok' ? 'NOT OK' : (c.status === 'na' ? 'N/A' : '—');
+            const badge = c.status === 'ok' ? 'status-ok' : c.status === 'nok' ? 'status-nok' : 'status-pending';
+            return '<div class="check-item '+cls+'" data-status="'+escAttr(c.status)+'">' +
+              '<div class="d-flex justify-content-between align-items-start gap-2">' +
+                '<div class="label-part"><span class="item-num">'+(i+1)+'.</span><div class="item-text">' +
+                  '<span class="item-name-kh">'+esc(c.itemKhmer)+'</span>' +
+                  (c.itemEng ? '<span class="item-name-en">'+esc(c.itemEng)+'</span>' : '') +
+                '</div></div>' +
+                '<span class="status-badge '+badge+'" style="min-width:auto;padding:2px 8px;font-size:.65rem;">'+lbl+'</span>' +
               '</div>' +
               (c.note ? '<div class="small text-danger mt-1"><i class="bi bi-chat-left-text me-1"></i>'+esc(c.note)+'</div>' : '') +
             '</div>';
@@ -7643,7 +7803,7 @@ function buildDailyConfirmSection(s) {
   const dirCls = dirStatus === 'Confirmed' ? 'ok' : dirStatus === 'Rejected' ? 'nok' : 'pending';
   let html = '';
 
-  html += '<div class="card mb-3 confirm-box"><div class="group-header d-flex justify-content-between align-items-center" style="background:transparent;border-bottom:1px solid var(--border-color);"><span><i class="bi bi-person-check me-2"></i>Admin Confirmation</span><span class="status-badge status-'+mgrCls+'">'+esc(mgrStatus)+'</span></div><div class="card-body">';
+  html += '<div class="card mb-3 confirm-box" style="border-left:4px solid #0dcaf0;"><div class="group-header d-flex justify-content-between align-items-center" style="background:transparent;border-bottom:1px solid var(--border-color);"><span><i class="bi bi-person-check me-2 text-info"></i>Admin Confirmation</span><span class="status-badge status-'+mgrCls+'">'+esc(mgrStatus)+'</span></div><div class="card-body">';
   if (s.confirmedBy) html += '<div class="small mb-1"><i class="bi bi-person-check me-1"></i>By <strong>' + esc(s.confirmedBy)+'</strong>' + (s.confirmedAt ? ' · '+esc(s.confirmedAt) : '') + '</div>';
   else html += '<div class="small text-muted mb-1"><i class="bi bi-hourglass-split me-1"></i>Waiting for Admin</div>';
   if (s.confirmRemark) html += '<div class="small mb-2"><i class="bi bi-chat-left-text me-1"></i>'+esc(s.confirmRemark)+'</div>';
@@ -7655,7 +7815,7 @@ function buildDailyConfirmSection(s) {
   }
   html += '</div></div>';
 
-  html += '<div class="card mb-3 confirm-box"><div class="group-header d-flex justify-content-between align-items-center" style="background:transparent;border-bottom:1px solid var(--border-color);"><span><i class="bi bi-patch-check me-2"></i>Manager Confirmation</span><span class="status-badge status-'+dirCls+'">'+esc(dirStatus || 'Pending')+'</span></div><div class="card-body">';
+  html += '<div class="card mb-3 confirm-box" style="border-left:4px solid #0d6efd;"><div class="group-header d-flex justify-content-between align-items-center" style="background:transparent;border-bottom:1px solid var(--border-color);"><span><i class="bi bi-patch-check me-2 text-primary"></i>Manager Confirmation</span><span class="status-badge status-'+dirCls+'">'+esc(dirStatus || 'Pending')+'</span></div><div class="card-body">';
   if (dirStatus) {
     html += '<div class="small mb-1"><i class="bi bi-person-check me-1"></i>By <strong>' + esc(s.directorBy)+'</strong>' + (s.directorAt ? ' · '+esc(s.directorAt) : '') + '</div>';
     if (s.directorRemark) html += '<div class="small mb-2"><i class="bi bi-chat-left-text me-1"></i>'+esc(s.directorRemark)+'</div>';
@@ -7882,7 +8042,68 @@ window.renderDailyDashboard = function() {
   // 6. Summary
   const summaryHtml = '<div class="row g-2 mb-3"><div class="col-6 col-md-3"><div class="stat-card clickable-card" onclick="drillToDaily({status:\'all\',confirmStatus:\'all\',dateFrom:\'\',dateTo:\'\',group:\'all\',driver:\'all\',equipmentId:\'all\'})"><div class="num text-primary">'+subs.length+'</div><div class="lbl">សរុប</div></div></div><div class="col-6 col-md-3"><div class="stat-card clickable-card" onclick="drillToDaily({dateFrom:\''+isoToday()+'\',dateTo:\''+isoToday()+'\',status:\'all\'})"><div class="num text-info">'+todaySubs.length+'</div><div class="lbl">ថ្ងៃនេះ</div></div></div><div class="col-6 col-md-3"><div class="stat-card clickable-card" onclick="drillToDaily({confirmStatus:\'Pending-Admin\',dateFrom:\'\',dateTo:\'\',status:\'all\'})"><div class="num text-warning">'+pending.length+'</div><div class="lbl">រង់ចាំ Admin</div></div></div><div class="col-6 col-md-3"><div class="stat-card clickable-card" onclick="drillToDaily({status:\'Issues\',dateFrom:\'\',dateTo:\'\'})"><div class="num text-danger">'+issues.length+'</div><div class="lbl">Issues</div></div></div></div>';
 
-  $('#app').html('<div class="container-fluid px-0"><div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Dashboard</h5><small class="text-muted">'+esc(currentUser.group === 'ALL' ? 'All groups' : currentUser.group)+'</small></div><button class="btn btn-sm btn-outline-secondary" onclick="reloadAll(\'dashboard\')"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px; margin-left: 4px;">--:--:--</span></button></div>' + subTabBar + summaryHtml + needAttentionHtml + topIssuesHtml + timelineHtml + groupHtml + recentHtml + '</div>');
+  // 7. Live shift board — Operating / Stand By / Waiting Handover / Handed Over
+  const shiftSubs = dailyShiftOnly(subs);
+  const latestByEq = {};
+  shiftSubs.forEach(s => {
+    const cur = latestByEq[s.equipmentId];
+    if (!cur || subMs(s) > subMs(cur)) latestByEq[s.equipmentId] = s;
+  });
+  const opCount = { operating: 0, standby: 0, waiting: 0, handed: 0, none: 0 };
+  (APP.equipment || []).forEach(e => {
+    const s = latestByEq[e.equipmentId];
+    if (!s) { opCount.none++; return; }
+    const op = dailyNormOp(s.opStatus);
+    if (op === DAILY_OP_OPERATING) opCount.operating++;
+    else if (op === DAILY_OP_STANDBY) opCount.standby++;
+    else if (op === DAILY_OP_WAITING) opCount.waiting++;
+    else if (op === DAILY_OP_HANDED) opCount.handed++;
+    else opCount.none++;
+  });
+  const totalUnits = Math.max(1, (APP.equipment || []).length);
+  const opsRows = [
+    { label: 'Operating',        icon: 'bi-play-circle-fill',  color: '#198754', count: opCount.operating },
+    { label: 'Stand By',         icon: 'bi-pause-circle-fill', color: '#ffc107', count: opCount.standby },
+    { label: 'Waiting Handover', icon: 'bi-hourglass-split',   color: '#0d6efd', count: opCount.waiting },
+    { label: 'Handed Over',      icon: 'bi-check2-circle',     color: '#6c757d', count: opCount.handed },
+    { label: 'Not started',      icon: 'bi-dash-circle',       color: '#adb5bd', count: opCount.none }
+  ].map(r => {
+    const pct = Math.round(r.count / totalUnits * 100);
+    return '<div class="dash-bar mb-2"><span class="lbl"><i class="bi ' + r.icon + ' me-1" style="color:' + r.color + ';"></i>' + r.label + '</span>' +
+      '<div class="track"><div class="fill" style="width:' + pct + '%;background:' + r.color + ';"></div></div>' +
+      '<span class="val">' + r.count + '</span></div>';
+  }).join('');
+  const opsHtml = '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
+      '<span><i class="bi bi-activity me-2"></i>Shift Status</span>' +
+      '<span class="badge bg-primary">' + (APP.equipment || []).length + ' units</span></div>' +
+      '<div class="card-body">' + opsRows + '</div></div>';
+
+
+  // 8. Weekly (7-day) check compliance
+  const weeklyList = (APP.equipment || []).map(e => ({ eq: e, info: dailyWeeklyInfo(e.equipmentId) }));
+  const weeklyDue  = weeklyList.filter(x => x.info.due);
+  const weeklyDone = weeklyList.filter(x => !x.info.due);
+  const weeklyPct  = weeklyList.length ? Math.round(weeklyDone.length / weeklyList.length * 100) : 0;
+  const weeklyRows = weeklyDue.slice(0, 8).map(x => {
+    const eq = x.eq;
+    return '<div class="driver-status-row clickable-card" onclick="drillToDaily({equipmentId:\'' + escAttr(eq.equipmentId) + '\',status:\'all\',dateFrom:\'\',dateTo:\'\'})">' +
+      '<div class="left"><i class="bi bi-exclamation-circle text-warning" style="font-size:1.1rem;"></i>' +
+        '<div><div class="name">' + esc(eq.shortName || eq.equipmentId) + '</div>' +
+        '<div class="eqs">' + (x.info.never ? 'never done' : 'last ' + esc(x.info.last.date)) + ' · ' + esc(eq.group || '—') + '</div></div></div>' +
+      '<div><span class="badge bg-warning text-dark">due</span></div></div>';
+  }).join('');
+  const weeklyHtml = '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
+      '<span><i class="bi bi-calendar-week me-2 text-info"></i>Weekly Check (every ' + dailyWeekDays() + ' days)</span>' +
+      '<span class="badge bg-' + (weeklyDue.length ? 'warning text-dark' : 'success') + '">' + weeklyDone.length + '/' + weeklyList.length + ' (' + weeklyPct + '%)</span></div>' +
+      '<div class="card-body py-2">' +
+        '<div class="dash-bar mb-2"><div class="track"><div class="fill" style="width:' + weeklyPct + '%;background:' + (weeklyDue.length ? '#ffc107' : '#198754') + ';"></div></div><span class="val">' + weeklyPct + '%</span></div>' +
+        (weeklyDue.length
+          ? '<div class="small text-warning mb-1"><i class="bi bi-exclamation-circle me-1"></i>Due (' + weeklyDue.length + ')</div>' + weeklyRows
+          : '<div class="small text-success"><i class="bi bi-check2-circle me-1"></i>All equipment checked this week</div>') +
+      '</div></div>';
+
+
+  $('#app').html('<div class="container-fluid px-0"><div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Daily Dashboard</h5><small class="text-muted">'+esc(currentUser.group === 'ALL' ? 'All groups' : currentUser.group)+'</small></div><button class="btn btn-sm btn-outline-secondary" onclick="reloadAll(\'dashboard\')"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px; margin-left: 4px;">--:--:--</span></button></div>' + subTabBar + summaryHtml + opsHtml + weeklyHtml + needAttentionHtml + topIssuesHtml + timelineHtml + groupHtml + recentHtml + '</div>');
 };
 
 window.setDailyDashboardSubTab = function(tab){ 
