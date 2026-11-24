@@ -218,7 +218,8 @@ let homeExpandedSections = {};
 let dashboardSubTab = 'overview';
 let mtnFilter       = 'all';
 // MTN Management Status tab (new repair-request flow)
-let mtnStatusFilter  = 'all';   // 'all' | '' (not requested) | 'Requested' | 'Waiting Repair' | 'Waiting Spare Part' | 'Repaired'
+let mtnStatusFilter  = 'all';   // case: 'all' | '' (not requested) | 'Requested' | 'Pending' | 'Done'
+let mtnStatusItem    = '';      // item: '' (any) | 'Requested' | 'Not Request' | 'Waiting Repairing' | 'Waiting Spare Part' | 'Repaired'
 let mtnStatusGroup   = 'all';
 let mtnStatusCompany = 'all';
 let mtnStatusMonth   = '';      // 'YYYY-MM' or '' = all months
@@ -1115,13 +1116,13 @@ function findDefaultDriver(equipmentId){
 function countIssueCodes(sub){
   const counts = { all: 0, UF: 0, NF: 0, NA: 0, Ad: 0, T: 0 };
   const fixed  = { all: 0, UF: 0, NF: 0, NA: 0, Ad: 0, T: 0 };
-  const caseRepaired = mtnCaseStatus(sub) === 'Repaired';
   (sub.checks || []).forEach(c => {
     const n = normalizeStatus(c.status);
     if (!n || n === 'N') return;
     counts.all++;
     if (counts[n] !== undefined) counts[n]++;
-    if (caseRepaired) {
+    // Repaired or "Not Request" both mean this issue item needs no more work
+    if (mtnItemDone(sub, c.itemId)) {
       fixed.all++;
       if (fixed[n] !== undefined) fixed[n]++;
     }
@@ -3893,7 +3894,6 @@ window.onerror = function(msg, url, line, col, error) {
 function countIssueCodes(sub){
   const counts = { all: 0, UF: 0, NF: 0, NA: 0, Ad: 0, T: 0 };
   const fixed  = { all: 0, UF: 0, NF: 0, NA: 0, Ad: 0, T: 0 };
-  const caseRepaired = mtnCaseStatus(sub) === 'Repaired';
 
   (sub.checks || []).forEach(c => {
     const n = normalizeStatus(c.status);
@@ -3902,7 +3902,8 @@ function countIssueCodes(sub){
     counts.all++;
     if (counts[n] !== undefined) counts[n]++;
 
-    if (caseRepaired) {
+    // Repaired or "Not Request" both mean this issue item needs no more work
+    if (mtnItemDone(sub, c.itemId)) {
       fixed.all++;
       if (fixed[n] !== undefined) fixed[n]++;
     }
@@ -4757,7 +4758,8 @@ function renderDetailItemsList(s){
     let photos = []; if (Array.isArray(c.photos)) photos = c.photos.map(p => ({ fileId: p.fileId || '', thumb: p.thumb || '' })); else if (Array.isArray(c.photoIds)) photos = c.photoIds.map(id => ({ fileId: id, thumb: '' })); else if (c.photoId) photos = [{ fileId: c.photoId, thumb: '' }];
     const tpl = tplMap[c.itemId] || {};
     const mtnLast = mtnLastUpdate(s);
-    currentBlock.items.push({ itemId: c.itemId, itemKhmer: tpl.itemKhmer || c.itemKhmer || c.itemId, itemEng: tpl.itemEng || '', frequency: tpl.frequency || '', status: n, location: c.location || '', note: c.note || '', photos: photos, label: numberMap[c.itemId], mtnStatus: mtnCaseStatus(s), mtnBy: (mtnLast && mtnLast.by) || s.mtnBy || '', mtnAt: (mtnLast && mtnLast.at) || s.mtnAt || '', mtnRemark: (mtnLast && mtnLast.remark) || s.mtnRemark || '' });
+    const iMeta = mtnItemMeta(s, c.itemId);
+    currentBlock.items.push({ itemId: c.itemId, itemKhmer: tpl.itemKhmer || c.itemKhmer || c.itemId, itemEng: tpl.itemEng || '', frequency: tpl.frequency || '', status: n, location: c.location || '', note: c.note || '', photos: photos, label: numberMap[c.itemId], mtnStatus: iMeta.status, mtnBy: iMeta.by || (iMeta.status ? ((mtnLast && mtnLast.by) || s.mtnBy || '') : ''), mtnAt: iMeta.at || (iMeta.status ? ((mtnLast && mtnLast.at) || s.mtnAt || '') : ''), mtnRemark: iMeta.remark || (iMeta.status ? ((mtnLast && mtnLast.remark) || s.mtnRemark || '') : '') });
   });
 
   let truckBannerShown = false;
@@ -4900,32 +4902,67 @@ window.addCommentPrompt = function(checkId){
 
 /* =========================================================
    MTN REPAIR-REQUEST FLOW HELPERS (Monthly)
-   Case status: '' (not requested) | Requested | Waiting Repair |
-                Waiting Spare Part | Repaired
+   Case status : '' (not requested) | Requested | Pending | Done
+   Item status : '' (nothing yet)   | Requested | Not Request |
+                 Waiting Repairing  | Waiting Spare Part | Repaired
+   The checklist (case) status is always the rollup of its items.
    ========================================================= */
-const MTN_STATUS_LIST = ['Requested', 'Waiting Repair', 'Waiting Spare Part', 'Repaired'];
+const MTN_CASE_STATUS_LIST = ['Requested', 'Pending', 'Done'];
+const MTN_ITEM_STATUS_LIST = ['Requested', 'Not Request', 'Waiting Repairing', 'Waiting Spare Part', 'Repaired'];
 const MTN_STATUS_INFO = {
   ''                    : { label: 'Not Requested',      badge: 'secondary', icon: 'bi-dash-circle' },
   'Requested'           : { label: 'Requested',          badge: 'warning',   icon: 'bi-send-check' },
-  'Waiting Repair'      : { label: 'Waiting Repairing',  badge: 'info',      icon: 'bi-hourglass-split' },
+  'Pending'             : { label: 'Pending',            badge: 'info',      icon: 'bi-hourglass-split' },
+  'Done'                : { label: 'Done',               badge: 'success',   icon: 'bi-check-circle-fill' },
+  'Not Request'         : { label: 'Not Request',        badge: 'dark',      icon: 'bi-slash-circle' },
+  'Waiting Repairing'   : { label: 'Waiting Repairing',  badge: 'info',      icon: 'bi-tools' },
   'Waiting Spare Part'  : { label: 'Waiting Spare Part', badge: 'primary',   icon: 'bi-box-seam' },
   'Repaired'            : { label: 'Repaired',           badge: 'success',   icon: 'bi-check-circle-fill' }
 };
 function mtnStatusInfo(status){ return MTN_STATUS_INFO[status] || MTN_STATUS_INFO['']; }
-function mtnNormStatus(raw){
+
+/* Old rows only knew 'Waiting Repair' / 'Waiting Spare Part' / 'Repaired' */
+function mtnNormCaseStatus(raw){
   const s = String(raw == null ? '' : raw).trim();
   if (!s) return '';
-  if (MTN_STATUS_LIST.indexOf(s) !== -1) return s;
   const low = s.toLowerCase();
-  if (low === 'completed' || low === 'fixed' || low === 'repaired') return 'Repaired';
   if (low === 'requested') return 'Requested';
-  if (low === 'partial') return 'Waiting Repair';
-  if (low === 'pending' || low === 'none') return '';
-  if (low.indexOf('spare') !== -1) return 'Waiting Spare Part';
-  if (low.indexOf('repair') !== -1) return 'Waiting Repair';
+  if (low === 'done' || low === 'repaired' || low === 'completed' || low === 'fixed') return 'Done';
+  if (low === 'pending' || low === 'partial') return 'Pending';
+  if (low.indexOf('spare') !== -1 || low.indexOf('repair') !== -1) return 'Pending';
   return '';
 }
-function mtnCaseStatus(sub){ return mtnNormStatus(sub && sub.mtnStatus); }
+function mtnNormItemStatus(raw){
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return '';
+  const low = s.toLowerCase();
+  if (low === 'requested') return 'Requested';
+  if (low === 'not request' || low === 'not requested' || low === 'no request' || low === 'norequest') return 'Not Request';
+  if (low === 'repaired' || low === 'completed' || low === 'fixed' || low === 'done') return 'Repaired';
+  if (low === 'pending' || low === 'partial') return 'Waiting Repairing';
+  if (low.indexOf('spare') !== -1) return 'Waiting Spare Part';
+  if (low.indexOf('repair') !== -1) return 'Waiting Repairing';
+  return '';
+}
+/* Case -> item status (used by the legacy case-level setter) */
+function mtnCaseToItemStatus(caseStatus){
+  const st = mtnNormCaseStatus(caseStatus);
+  if (st === 'Done') return 'Repaired';
+  if (st === 'Pending') return 'Waiting Repairing';
+  if (st === 'Requested') return 'Requested';
+  return '';
+}
+function mtnHasRequest(sub){
+  if (!sub) return false;
+  if (sub.mtnItems && sub.mtnItems.__request) return true;
+  return !!String(sub.mtnBy || '').trim();
+}
+function mtnCaseStatus(sub){
+  const low = String((sub && sub.mtnStatus) || '').trim().toLowerCase();
+  // Legacy 'Pending' / 'None' meant "nothing was requested yet"
+  if ((low === 'pending' || low === 'none') && !mtnHasRequest(sub)) return '';
+  return mtnNormCaseStatus(sub && sub.mtnStatus);
+}
 function mtnRequestMeta(sub){
   const m = (sub && sub.mtnItems) || {};
   let meta = (m.__request && typeof m.__request === 'object') ? m.__request : null;
@@ -4959,36 +4996,60 @@ function mtnItemStatuses(sub){
   const meta = mtnRequestMeta(sub);
   return (meta && meta.itemStatus && typeof meta.itemStatus === 'object') ? meta.itemStatus : {};
 }
+/* Items created before item-level statuses inherit the old case status */
+function mtnItemFallbackStatus(sub){
+  const low = String((sub && sub.mtnStatus) || '').trim().toLowerCase();
+  if (!low) return '';
+  if (low === 'repaired' || low === 'completed' || low === 'fixed' || low === 'done') return 'Repaired';
+  if (low === 'requested') return 'Requested';
+  if (low.indexOf('spare') !== -1) return 'Waiting Spare Part';
+  if (low.indexOf('repair') !== -1) return 'Waiting Repairing';
+  const caseSt = mtnCaseStatus(sub);
+  if (caseSt === 'Requested') return 'Requested';
+  if (caseSt === 'Done') return 'Repaired';
+  if (caseSt === 'Pending') return 'Waiting Repairing';
+  return '';
+}
 function mtnItemStatusOf(sub, itemId){
   const rec = mtnItemStatuses(sub)[itemId];
-  const st = rec ? mtnNormStatus(rec.status) : '';
-  if (st) return st;
-  // Legacy rows only have one case-level status -> it applies to every item.
-  return mtnCaseStatus(sub);
+  const st = rec ? mtnNormItemStatus(rec.status) : '';
+  return st || mtnItemFallbackStatus(sub);
 }
-function mtnItemUpdatedAt(sub, itemId){
-  const rec = mtnItemStatuses(sub)[itemId];
-  return rec ? { by: String(rec.by || ''), at: String(rec.at || '') } : { by: '', at: '' };
+function mtnItemMeta(sub, itemId){
+  const rec = mtnItemStatuses(sub)[itemId] || {};
+  return {
+    status: mtnItemStatusOf(sub, itemId),
+    by: String(rec.by || ''),
+    at: String(rec.at || ''),
+    remark: String(rec.remark || '')
+  };
+}
+function mtnItemDone(sub, itemId){
+  const st = mtnItemStatusOf(sub, itemId);
+  return st === 'Repaired' || st === 'Not Request';
 }
 function mtnItemProgress(sub){
   const items = getIssueItems(sub);
   let done = 0;
-  items.forEach(i => { if (mtnItemStatusOf(sub, i.itemId) === 'Repaired') done++; });
+  items.forEach(i => { if (mtnItemDone(sub, i.itemId)) done++; });
   return { done: done, total: items.length };
 }
+/* Item -> case rollup:
+   - every item Repaired / Not Request -> Done
+   - anything started (or partially closed) -> Pending
+   - otherwise -> Requested */
 function mtnDeriveCaseStatus(sub, overrides){
   const items = getIssueItems(sub);
   if (!items.length) return mtnCaseStatus(sub);
-  let done = 0, spare = false, wait = false;
+  let resolved = 0, moving = false;
   items.forEach(i => {
-    const st = (overrides && overrides[i.itemId]) ? mtnNormStatus(overrides[i.itemId]) : mtnItemStatusOf(sub, i.itemId);
-    if (st === 'Repaired') done++;
-    else if (st === 'Waiting Spare Part') spare = true;
-    else if (st === 'Waiting Repair') wait = true;
+    const has = !!(overrides && Object.prototype.hasOwnProperty.call(overrides, i.itemId));
+    const st = has ? mtnNormItemStatus(overrides[i.itemId]) : mtnItemStatusOf(sub, i.itemId);
+    if (st === 'Repaired' || st === 'Not Request') resolved++;
+    else if (st && st !== 'Requested') moving = true;
   });
-  if (done === items.length) return 'Repaired';
-  if (spare) return 'Waiting Spare Part';
-  if (wait) return 'Waiting Repair';
+  if (resolved === items.length) return 'Done';
+  if (moving || resolved) return 'Pending';
   return 'Requested';
 }
 /* true only when the last update is not simply the request itself
@@ -5013,7 +5074,7 @@ function mtnMonthOf(dateStr){
 }
 function mtnStatusBadge(subOrStatus){
   const isSub = !!(subOrStatus && typeof subOrStatus === 'object');
-  const st = isSub ? mtnCaseStatus(subOrStatus) : mtnNormStatus(subOrStatus);
+  const st = isSub ? mtnCaseStatus(subOrStatus) : mtnNormCaseStatus(subOrStatus);
   const info = mtnStatusInfo(st);
   let text = info.label;
   let tip = info.label;
@@ -5021,7 +5082,7 @@ function mtnStatusBadge(subOrStatus){
     const p = mtnItemProgress(subOrStatus);
     if (p.total > 1) {
       text += ' · ' + p.done + '/' + p.total;
-      tip += ' — ' + p.done + ' of ' + p.total + ' issue item(s) repaired';
+      tip += ' — ' + p.done + ' of ' + p.total + ' issue item(s) done';
     }
   }
   return '<span class="badge bg-' + info.badge + '" title="' + escAttr(tip) + '" style="font-size:.68rem;font-weight:' + (st ? '600' : '500') + ';' + (st ? '' : 'opacity:.75;') + '"><i class="bi ' + info.icon + ' me-1"></i>' + esc(text) + '</span>';
@@ -5033,7 +5094,7 @@ function mtnActionHtml(sub){
     if (st === '') {
       return '<button class="btn btn-sm btn-warning" onclick="requestMtnRepair(\'' + cid + '\')"><i class="bi bi-send me-1"></i>Make a Request</button>';
     }
-    if (st === 'Repaired') {
+    if (st === 'Done') {
       return '<button class="btn btn-sm btn-outline-warning" onclick="requestMtnRepair(\'' + cid + '\')"><i class="bi bi-arrow-repeat me-1"></i>Request Again</button>';
     }
     return '<span class="small text-muted"><i class="bi bi-hourglass-split me-1"></i>Awaiting Repair Service</span>';
@@ -5068,7 +5129,7 @@ function renderDashboard(){
 
     (s.checks || []).forEach(c => {
       if (normalizeStatus(c.status) === 'UF') {
-        if (mtnCaseStatus(s) !== 'Repaired') {
+        if (mtnCaseStatus(s) !== 'Done') {
           const tpl = tplMap[c.itemId] || {};
           const kh = tpl.itemKhmer || c.itemId;
           const en = tpl.itemEng || '';
@@ -5180,7 +5241,7 @@ let topIssuesViewAll = false;
 
 window.goToMtnFiltered = function(itemIds, label, isUrgentOnly) {
   dashboardSubTab = 'mtn';
-  mtnFilter = isUrgentOnly ? 'pending' : 'all';
+  mtnFilter = 'all';
   mtnItemFilter = String(itemIds).split(',').map(s => s.trim()).filter(Boolean);
   mtnItemLabel = label;
   mtnIsUrgentOnly = isUrgentOnly;
@@ -5250,17 +5311,17 @@ function renderMtnManagement(subTabBar){
   if (mtnItemFilter && mtnItemFilter.length > 0) {
     issues = issues.filter(sub => (sub.checks || []).some(c => {
       if (!mtnItemFilter.includes(c.itemId)) return false;
-      if (mtnIsUrgentOnly) return normalizeStatus(c.status) === 'UF' && mtnCaseStatus(sub) !== 'Repaired';
+      if (mtnIsUrgentOnly) return normalizeStatus(c.status) === 'UF' && mtnCaseStatus(sub) !== 'Done';
       return normalizeStatus(c.status) !== 'N';
     }));
   }
 
+  // Checklist (case) statuses: Requested / Pending / Done (+ '' not requested)
   const lists = {
-    pending:   issues.filter(s => mtnCaseStatus(s) === ''),
+    none:      issues.filter(s => mtnCaseStatus(s) === ''),
     requested: issues.filter(s => mtnCaseStatus(s) === 'Requested'),
-    waiting:   issues.filter(s => mtnCaseStatus(s) === 'Waiting Repair'),
-    spare:     issues.filter(s => mtnCaseStatus(s) === 'Waiting Spare Part'),
-    repaired:  issues.filter(s => mtnCaseStatus(s) === 'Repaired')
+    pending:   issues.filter(s => mtnCaseStatus(s) === 'Pending'),
+    done:      issues.filter(s => mtnCaseStatus(s) === 'Done')
   };
   const cardCls = (f) => 'stat-card clickable-card' + (mtnFilter === f ? ' active' : '');
 
@@ -5304,22 +5365,21 @@ function renderMtnManagement(subTabBar){
       '<div class="card-body py-2">' +
         '<div class="small mb-1"><i class="bi bi-tag me-1 text-muted"></i>' + esc(sub.group) + ' · <i class="bi bi-calendar me-1 text-muted ms-2"></i>' + esc(sub.date) + ' ' + esc(sub.time) + '</div>' +
         '<div class="small mb-2"><i class="bi bi-person me-1 text-muted"></i>Inspector: ' + esc(sub.driverName || sub.username) + ' · <span class="text-muted">' + esc(sub.checkId) + '</span></div>' +
-        '<div class="small text-danger fw-semibold mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Issues (' + items.length + ')' + (function(){ const p = mtnItemProgress(sub); return p.done ? '<span class="text-muted fw-normal ms-1">· ' + p.done + ' repaired</span>' : ''; })() + '</div>' +
+        '<div class="small text-danger fw-semibold mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Issues (' + items.length + ')' + (function(){ const p = mtnItemProgress(sub); return p.done ? '<span class="text-muted fw-normal ms-1">· ' + p.done + ' done</span>' : ''; })() + '</div>' +
         displayItems.map(i => issueRow(sub, i)).join('') + reqLine + updLine +
         '<div class="d-flex gap-2 mt-3 flex-wrap"><button class="btn btn-sm btn-outline-primary flex-fill" onclick="viewCheck(\'' + escAttr(sub.checkId) + '\')"><i class="bi bi-eye me-1"></i>View Checklist</button>' + mtnActionHtml(sub) + '</div>' +
       '</div></div>';
   };
 
   let visible = issues;
-  if (mtnFilter === 'pending')   visible = lists.pending;
+  if (mtnFilter === 'none')      visible = lists.none;
   if (mtnFilter === 'requested') visible = lists.requested;
-  if (mtnFilter === 'waiting')   visible = lists.waiting;
-  if (mtnFilter === 'spare')     visible = lists.spare;
-  if (mtnFilter === 'repaired')  visible = lists.repaired;
+  if (mtnFilter === 'pending')   visible = lists.pending;
+  if (mtnFilter === 'done')      visible = lists.done;
 
   const visibleSlice = visible.slice(0, mtnDisplayLimit);
 
-  const emptyMsg = mtnFilter === 'pending' ? '✓ No case waiting for a repair request.' : 'No data';
+  const emptyMsg = mtnFilter === 'none' ? '✓ No case waiting for a repair request.' : 'No data';
   const listHtml = visibleSlice.length ? visibleSlice.map(cardRenderer).join('') : '<p class="text-muted small text-center py-4">' + emptyMsg + '</p>';
 
   let loadMoreHtml = '';
@@ -5336,9 +5396,9 @@ function renderMtnManagement(subTabBar){
     filterChip = '<div class="d-flex align-items-center gap-2 mb-3"><span class="badge bg-danger d-flex align-items-center gap-1" style="font-size:.8rem;padding:6px 10px;"><i class="bi bi-funnel-fill"></i> Filtering by: ' + esc(mtnItemLabel) + '<span onclick="clearMtnItemFilter()" style="cursor:pointer;margin-left:6px;font-weight:700;">✕</span></span></div>';
   }
 
-  const card = (f, color, label, count) => '<div class="col-4"><div class="' + cardCls(f) + '" onclick="setMtnFilter(\'' + f + '\')"><div class="num text-' + color + '">' + count + '</div><div class="lbl" style="font-size:.62rem;">' + esc(label) + '</div></div></div>';
+  const card = (f, color, label, count) => '<div class="col-6 col-md-2"><div class="' + cardCls(f) + '" onclick="setMtnFilter(\'' + f + '\')"><div class="num text-' + color + '">' + count + '</div><div class="lbl" style="font-size:.62rem;">' + esc(label) + '</div></div></div>';
 
-  const titleMap = { pending: 'Not Requested', requested: 'Requested', waiting: 'Waiting Repairing', spare: 'Waiting Spare Part', repaired: 'Repaired' };
+  const titleMap = { none: 'Not Requested', requested: 'Requested', pending: 'Pending', done: 'Done' };
   const heading = (mtnFilter === 'all') ? 'All Issue Checklists (' + issues.length + ')' : (titleMap[mtnFilter] || '') + ' (' + visible.length + ')';
 
   const roleHint = mtnIsRequester() ? 'Select a case and press "Make a Request" to send it to Repair Service.'
@@ -5347,7 +5407,7 @@ function renderMtnManagement(subTabBar){
 
   $('#app').html('<div class="container-fluid px-0"><div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0"><i class="bi bi-wrench-adjustable me-2"></i>MTN Management</h5><small class="text-muted">' + esc(currentUser.group === 'ALL' ? 'All groups' : currentUser.group) + '</small></div><button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onclick="syncAllData(true)"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px;">--:--:--</span></button></div>' + subTabBar + filterChip +
     '<div class="alert alert-light border small py-2 mb-3"><i class="bi bi-info-circle me-1 text-primary"></i>' + roleHint + '</div>' +
-    '<div class="row g-2 mb-3">' + card('pending', 'warning', 'Not Requested', lists.pending.length) + card('requested', 'dark', 'Requested', lists.requested.length) + card('waiting', 'info', 'Waiting Repairing', lists.waiting.length) + card('spare', 'primary', 'Waiting Spare Part', lists.spare.length) + card('repaired', 'success', 'Repaired', lists.repaired.length) + card('all', 'secondary', 'All Cases', issues.length) + '</div>' +
+    '<div class="row g-2 mb-3">' + card('none', 'warning', 'Not Requested', lists.none.length) + card('requested', 'dark', 'Requested', lists.requested.length) + card('pending', 'info', 'Pending', lists.pending.length) + card('done', 'success', 'Done', lists.done.length) + card('all', 'secondary', 'All Cases', issues.length) + '</div>' +
     '<h6 class="mb-2"><i class="bi bi-list-check text-primary me-2"></i>' + heading + '</h6>' + listHtml + loadMoreHtml + '</div>');
 }
 
@@ -5355,7 +5415,9 @@ function renderMtnManagement(subTabBar){
 /* =========================================================
    REPAIR REQUEST ACTIONS
    Admin  -> Make a Request (creates the case request)
-   Repair -> Waiting Repair / Waiting Spare Part / Repaired
+   Repair -> per item: Requested | Not Request | Waiting Repairing |
+                        Waiting Spare Part | Repaired
+   The checklist status is the rollup: Requested | Pending | Done
    ========================================================= */
 function _applyMtnLocal(checkId, status, remark){
   const sub = (APP.submissions || []).find(x => x.checkId === checkId);
@@ -5368,20 +5430,23 @@ function _applyMtnLocal(checkId, status, remark){
     meta.requestedBy = currentUser.username;
     meta.requestedAt = stamp;
     meta.requestedItems = getIssueItems(sub).map(i => ({ itemId: i.itemId, code: i.code }));
+    meta.repairedBy = '';
+    meta.repairedAt = '';
   } else if (!meta.requestedBy) {
     meta.requestedBy = currentUser.username;
     meta.requestedAt = stamp;
   }
   meta.history.push({ status: status, by: currentUser.username, at: stamp, remark: remark || '' });
   if (!meta.itemStatus || typeof meta.itemStatus !== 'object') meta.itemStatus = {};
+  const itemSt = mtnCaseToItemStatus(status) || 'Requested';
   getIssueItems(sub).forEach(i => {
-    meta.itemStatus[i.itemId] = { status: status, by: currentUser.username, at: stamp, remark: remark || '' };
+    meta.itemStatus[i.itemId] = { status: itemSt, by: currentUser.username, at: stamp, remark: remark || '' };
   });
   meta.updatedBy = currentUser.username;
   meta.updatedAt = stamp;
   meta.lastRemark = remark || '';
   sub.mtnItems.__request = meta;
-  sub.mtnStatus = status;
+  sub.mtnStatus = mtnNormCaseStatus(status);
   sub.mtnBy = currentUser.username;
   sub.mtnAt = stamp;
   sub.mtnRemark = remark || '';
@@ -5408,7 +5473,7 @@ function _applyMtnItemsLocal(checkId, updates, remark){
   meta.updatedBy = currentUser.username;
   meta.updatedAt = stamp;
   meta.lastRemark = remark || '';
-  if (derived === 'Repaired') { meta.repairedBy = currentUser.username; meta.repairedAt = stamp; }
+  if (derived === 'Done') { meta.repairedBy = currentUser.username; meta.repairedAt = stamp; }
   else { meta.repairedBy = ''; meta.repairedAt = ''; }
   sub.mtnStatus = derived;
   sub.mtnBy = currentUser.username;
@@ -5443,7 +5508,7 @@ window.requestMtnRepair = function(checkId){
 
 window.setMtnRepairStatus = function(checkId, status){
   if (!mtnIsRepairer()) { showAlert('Only Repair Service can update the repair status', 'warning'); renderDashboard(); return; }
-  if (MTN_STATUS_LIST.indexOf(status) === -1) { renderDashboard(); return; }
+  if (MTN_CASE_STATUS_LIST.indexOf(status) === -1) { renderDashboard(); return; }
   const label = mtnStatusInfo(status).label;
   askRemark({
     title: 'Update Repair Status',
@@ -5463,18 +5528,18 @@ function _mtnEditorRow(label, valueHtml){
     '<span class="text-end fw-semibold" style="font-size:.75rem;">' + valueHtml + '</span></div>';
 }
 
-const MTN_ITEM_COLORS = { 'Requested': '#ffc107', 'Waiting Repair': '#0dcaf0', 'Waiting Spare Part': '#0d6efd', 'Repaired': '#198754' };
-const MTN_ITEM_TEXT_COLORS = { '': '#6c757d', 'Requested': '#b8860b', 'Waiting Repair': '#0aa2c0', 'Waiting Spare Part': '#0a58ca', 'Repaired': '#146c43' };
+const MTN_ITEM_COLORS = { 'Requested': '#ffc107', 'Not Request': '#6c757d', 'Waiting Repairing': '#0dcaf0', 'Waiting Spare Part': '#0d6efd', 'Repaired': '#198754' };
+const MTN_ITEM_TEXT_COLORS = { '': '#6c757d', 'Requested': '#b8860b', 'Not Request': '#495057', 'Waiting Repairing': '#0aa2c0', 'Waiting Spare Part': '#0a58ca', 'Repaired': '#146c43' };
 function _mtnItemColor(status){ return MTN_ITEM_COLORS[status] || '#adb5bd'; }
 function _mtnItemTextColor(status){ return MTN_ITEM_TEXT_COLORS[status] || '#6c757d'; }
 
 function _mtnItemEditorRow(sub, item){
   const st = mtnItemStatusOf(sub, item.itemId) || 'Requested';
-  const rec = mtnItemUpdatedAt(sub, item.itemId);
+  const rec = mtnItemMeta(sub, item.itemId);
   const meta = mtnRequestMeta(sub);
   // Do not repeat the request itself as a per-item "updated" line
   const upd = (rec.by && !(rec.by === meta.requestedBy && rec.at === meta.requestedAt)) ? rec : { by: '', at: '' };
-  const opts = MTN_STATUS_LIST.map(s => '<option value="' + escAttr(s) + '"' + (s === st ? ' selected' : '') + '>' + esc(mtnStatusInfo(s).label) + '</option>').join('');
+  const opts = MTN_ITEM_STATUS_LIST.map(s => '<option value="' + escAttr(s) + '"' + (s === st ? ' selected' : '') + '>' + esc(mtnStatusInfo(s).label) + '</option>').join('');
   return '<div class="mtn-item-row p-2 mb-2" data-item-id="' + escAttr(item.itemId) + '" style="background:var(--bg-color);border-radius:8px;border-left:3px solid ' + _mtnItemColor(st) + ';">' +
     '<div class="d-flex align-items-start gap-2">' +
       '<span class="badge bg-danger flex-shrink-0" style="font-size:.6rem;">' + esc(item.code) + '</span>' +
@@ -5502,11 +5567,11 @@ window.openMtnStatusEditor = function(checkId){
   const eq = (APP.equipmentMap && APP.equipmentMap[sub.equipmentId]) ? APP.equipmentMap[sub.equipmentId] : {};
   const company = String(eq.companyName || '').trim();
 
-  const setAllBtns = MTN_STATUS_LIST.map(s => {
+  const setAllBtns = MTN_ITEM_STATUS_LIST.map(s => {
     const info = mtnStatusInfo(s);
     return '<button type="button" class="btn btn-sm py-0 px-2 btn-outline-' + info.badge + '" style="font-size:.66rem;" onclick="setAllMtnItems(\'' + escAttr(s) + '\')"><i class="bi ' + info.icon + ' me-1"></i>' + esc(info.label) + '</button>';
   }).join('');
-  const doneInit = items.filter(i => (mtnItemStatusOf(sub, i.itemId) || 'Requested') === 'Repaired').length;
+  const doneInit = items.filter(i => mtnItemDone(sub, i.itemId)).length;
   const initTone = (items.length && doneInit === items.length) ? 'success' : (doneInit ? 'info' : 'secondary');
 
   const html = '<div class="p-3">' +
@@ -5519,7 +5584,7 @@ window.openMtnStatusEditor = function(checkId){
     '</div></div>' +
     '<div class="d-flex justify-content-between align-items-center mb-1">' +
       '<label class="form-label small fw-bold mb-0"><i class="bi bi-list-check me-1 text-primary"></i>Issue items (' + items.length + ')</label>' +
-      '<span id="mtnEditorProgress" class="badge bg-' + initTone + '" style="font-size:.62rem;">' + doneInit + ' of ' + items.length + ' repaired</span>' +
+      '<span id="mtnEditorProgress" class="badge bg-' + initTone + '" style="font-size:.62rem;">' + doneInit + ' of ' + items.length + ' done</span>' +
     '</div>' +
     '<div class="d-flex flex-wrap gap-1 align-items-center mb-2">' +
       '<span class="text-muted" style="font-size:.68rem;">Set all:</span>' + setAllBtns +
@@ -5559,9 +5624,9 @@ function updateMtnEditorProgress(){
   const el = document.getElementById('mtnEditorProgress');
   if (!el) return;
   const sel = mtnEditorSelection();
-  const done = sel.filter(x => x.status === 'Repaired').length;
+  const done = sel.filter(x => x.status === 'Repaired' || x.status === 'Not Request').length;
   el.className = 'badge bg-' + ((sel.length && done === sel.length) ? 'success' : (done ? 'info' : 'secondary'));
-  el.textContent = done + ' of ' + sel.length + ' repaired';
+  el.textContent = done + ' of ' + sel.length + ' done';
 }
 
 window.onMtnItemStatusChange = function(sel){
@@ -5606,7 +5671,7 @@ function _submitMtnItems(checkId, changed, caseStatus, remark){
     _applyMtnItemsLocal(checkId, changed, remark);
     const sub = (APP.submissions || []).find(x => x.checkId === checkId);
     const p = sub ? mtnItemProgress(sub) : { done: 0, total: changed.length };
-    showAlert('បានរក្សាទុក ' + changed.length + ' ចំណុច · ' + p.done + '/' + p.total + ' repaired', 'success');
+    showAlert('បានរក្សាទុក ' + changed.length + ' ចំណុច · ' + p.done + '/' + p.total + ' done', 'success');
     renderDashboard();
   }).withFailureHandler(handleError).updateMtnRequest({
     checkId: checkId, status: caseStatus, items: changed, username: currentUser.username, remark: remark || ''
@@ -5654,6 +5719,7 @@ function mtnStatusFilterRows(rowsAll, ignoreStatus){
   const search = String(mtnStatusSearch || '').trim().toLowerCase();
   return rowsAll.filter(r => {
     if (!ignoreStatus && mtnStatusFilter !== 'all' && r.status !== mtnStatusFilter) return false;
+    if (mtnStatusItem && !r.items.some(i => mtnItemStatusOf(r.sub, i.itemId) === mtnStatusItem)) return false;
     if (mtnStatusGroup !== 'all' && r.sub.group !== mtnStatusGroup) return false;
     if (mtnStatusCompany !== 'all' && r.company !== mtnStatusCompany) return false;
     if (mtnStatusMonth && mtnMonthOf(r.sub.date) !== mtnStatusMonth) return false;
@@ -5662,7 +5728,7 @@ function mtnStatusFilterRows(rowsAll, ignoreStatus){
         r.sub.checkId, r.sub.equipmentId, r.eq.shortName || '', r.sub.group, r.company,
         r.sub.username, r.sub.driverName || '', r.status,
         r.meta.requestedBy || '', (r.last && r.last.by) || '', (r.last && r.last.remark) || '',
-        r.items.map(i => i.itemKhmer + ' ' + i.itemEng + ' ' + i.code).join(' ')
+        r.items.map(i => i.itemKhmer + ' ' + i.itemEng + ' ' + i.code + ' ' + mtnStatusInfo(mtnItemStatusOf(r.sub, i.itemId)).label).join(' ')
       ].join(' ').toLowerCase();
       if (hay.indexOf(search) === -1) return false;
     }
@@ -5671,7 +5737,7 @@ function mtnStatusFilterRows(rowsAll, ignoreStatus){
 }
 
 function mtnStatusSortRows(rows){
-  const order = { '': 0, 'Requested': 1, 'Waiting Repair': 2, 'Waiting Spare Part': 3, 'Repaired': 4 };
+  const order = { '': 0, 'Requested': 1, 'Pending': 2, 'Done': 3 };
   const list = rows.slice();
   if (mtnStatusSort === 'oldest') list.sort((a, b) => a.ms - b.ms);
   else if (mtnStatusSort === 'status') list.sort((a, b) => (order[a.status] - order[b.status]) || (b.ms - a.ms));
@@ -5692,7 +5758,7 @@ function renderMtnStatusTab(subTabBar){
   companyList.sort();
 
   const rowsForCounts = mtnStatusFilterRows(rowsAll, true);
-  const counts = { 'all': rowsForCounts.length, '': 0, 'Requested': 0, 'Waiting Repair': 0, 'Waiting Spare Part': 0, 'Repaired': 0 };
+  const counts = { 'all': rowsForCounts.length, '': 0, 'Requested': 0, 'Pending': 0, 'Done': 0 };
   rowsForCounts.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
 
   const rows = mtnStatusSortRows(mtnStatusFilterRows(rowsAll, false));
@@ -5700,9 +5766,15 @@ function renderMtnStatusTab(subTabBar){
 
   const opt = (val, label, selected) => '<option value="' + escAttr(val) + '"' + (String(selected) === String(val) ? ' selected' : '') + '>' + esc(label) + '</option>';
 
+  // Checklist (case) status filter
   const statusSelect = '<select class="form-select form-select-sm" onchange="setMtnStatusFilter(\'status\', this.value)">' +
-    opt('all', 'All statuses', mtnStatusFilter) + opt('', 'Not Requested', mtnStatusFilter) +
-    MTN_STATUS_LIST.map(s => opt(s, mtnStatusInfo(s).label, mtnStatusFilter)).join('') + '</select>';
+    opt('all', 'All checklist statuses', mtnStatusFilter) + opt('', 'Not Requested', mtnStatusFilter) +
+    MTN_CASE_STATUS_LIST.map(s => opt(s, mtnStatusInfo(s).label, mtnStatusFilter)).join('') + '</select>';
+
+  // Per issue-item status filter (keeps the cases that contain at least one item in that state)
+  const itemSelect = '<select class="form-select form-select-sm" onchange="setMtnStatusFilter(\'item\', this.value)">' +
+    opt('', 'All item statuses', mtnStatusItem) +
+    MTN_ITEM_STATUS_LIST.map(s => opt(s, mtnStatusInfo(s).label, mtnStatusItem)).join('') + '</select>';
 
   const groupSelect = '<select class="form-select form-select-sm" onchange="setMtnStatusFilter(\'group\', this.value)">' +
     opt('all', 'All groups', mtnStatusGroup) + groups.map(g => opt(g, g, mtnStatusGroup)).join('') + '</select>';
@@ -5716,7 +5788,7 @@ function renderMtnStatusTab(subTabBar){
 
   const tableHead = '<th class="text-center" style="width:34px;">#</th><th style="min-width:88px;">Date</th><th style="min-width:150px;">Equipment</th><th class="d-none d-md-table-cell">Group</th>' +
     (companyList.length ? '<th class="d-none d-lg-table-cell">Company</th>' : '') +
-    '<th style="min-width:130px;">Issues</th><th class="d-none d-md-table-cell">Requested</th><th style="min-width:130px;">Status</th>' +
+    '<th style="min-width:130px;">Issues (per item)</th><th class="d-none d-md-table-cell">Requested</th><th style="min-width:130px;">Checklist status</th>' +
     '<th class="d-none d-lg-table-cell">Last update</th><th class="d-none d-xl-table-cell">Remark</th><th class="text-end" style="width:160px;">Action</th>';
 
   let tbody = '';
@@ -5724,6 +5796,7 @@ function renderMtnStatusTab(subTabBar){
     const last = r.last || {};
     const hasUpd = mtnHasRealUpdate(r.sub);
     const remarkTxt = hasUpd ? (last.remark || '') : '';
+    const prog = mtnItemProgress(r.sub);
     // One line per issue item (no wrapping): code badge + item name + its repair status
     const issueLines = r.items.map(i => {
       const ist = mtnItemStatusOf(r.sub, i.itemId);
@@ -5741,7 +5814,7 @@ function renderMtnStatusTab(subTabBar){
       '<td><div class="fw-semibold">' + esc(r.eq.shortName || r.sub.equipmentId) + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.sub.checkId) + '</div></td>' +
       '<td class="d-none d-md-table-cell">' + esc(r.sub.group) + '</td>' +
       (companyList.length ? '<td class="d-none d-lg-table-cell">' + esc(r.company || '—') + '</td>' : '') +
-      '<td><div class="text-muted mb-1" style="font-size:.64rem;">' + r.items.length + ' item(s)</div>' + issueLines + '</td>' +
+      '<td><div class="text-muted mb-1" style="font-size:.64rem;">' + r.items.length + ' item(s) · ' + prog.done + '/' + prog.total + ' done</div>' + issueLines + '</td>' +
       '<td class="d-none d-md-table-cell"><div>' + esc(r.meta.requestedBy || '—') + '</div><div class="text-muted" style="font-size:.68rem;">' + esc(r.meta.requestedAt || '') + '</div></td>' +
       '<td>' + mtnStatusBadge(r.sub) + '</td>' +
       '<td class="d-none d-lg-table-cell">' + (hasUpd
@@ -5770,15 +5843,16 @@ function renderMtnStatusTab(subTabBar){
 
   const filters = '<div class="card mb-3"><div class="card-body py-2">' +
     '<div class="row g-2 align-items-end">' +
-      '<div class="col-12 col-md-3"><label class="small fw-bold text-muted mb-1">Status</label>' + statusSelect + '</div>' +
+      '<div class="col-6 col-md-3"><label class="small fw-bold text-muted mb-1">Checklist status</label>' + statusSelect + '</div>' +
+      '<div class="col-6 col-md-3"><label class="small fw-bold text-muted mb-1">Item status</label>' + itemSelect + '</div>' +
       '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Group</label>' + groupSelect + '</div>' +
       (companyList.length ? '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Company</label>' + companySelect + '</div>' : '') +
       '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Month</label><input type="month" class="form-control form-control-sm" value="' + escAttr(mtnStatusMonth) + '" onchange="setMtnStatusFilter(\'month\', this.value)"></div>' +
-      '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Sort</label>' + sortSelect + '</div>' +
     '</div>' +
     '<div class="row g-2 align-items-end mt-1">' +
-      '<div class="col-12 col-md-7"><label class="small fw-bold text-muted mb-1">Search</label><input type="text" id="mtnStatusSearch" class="form-control form-control-sm" placeholder="Equipment, item, check ID, technician, remark…" value="' + escAttr(mtnStatusSearch) + '" oninput="setMtnStatusFilter(\'search\', this.value)"></div>' +
-      '<div class="col-6 col-md-3"><button class="btn btn-sm btn-outline-secondary w-100" onclick="clearMtnStatusFilters()"><i class="bi bi-x-circle me-1"></i>Reset filters</button></div>' +
+      '<div class="col-6 col-md-2"><label class="small fw-bold text-muted mb-1">Sort</label>' + sortSelect + '</div>' +
+      '<div class="col-12 col-md-6"><label class="small fw-bold text-muted mb-1">Search</label><input type="text" id="mtnStatusSearch" class="form-control form-control-sm" placeholder="Equipment, item, status, check ID, technician, remark…" value="' + escAttr(mtnStatusSearch) + '" oninput="setMtnStatusFilter(\'search\', this.value)"></div>' +
+      '<div class="col-6 col-md-2"><button class="btn btn-sm btn-outline-secondary w-100" onclick="clearMtnStatusFilters()"><i class="bi bi-x-circle me-1"></i>Reset</button></div>' +
       '<div class="col-6 col-md-2"><button class="btn btn-sm btn-outline-success w-100" onclick="exportMtnStatusCsv()"><i class="bi bi-file-earmark-excel me-1"></i>Export</button></div>' +
     '</div>' +
   '</div></div>';
@@ -5788,9 +5862,8 @@ function renderMtnStatusTab(subTabBar){
       card('all', 'secondary', 'All cases', counts['all']) +
       card('', 'warning', 'Not Requested', counts['']) +
       card('Requested', 'dark', 'Requested', counts['Requested']) +
-      card('Waiting Repair', 'info', 'Waiting Repairing', counts['Waiting Repair']) +
-      card('Waiting Spare Part', 'primary', 'Waiting Spare Part', counts['Waiting Spare Part']) +
-      card('Repaired', 'success', 'Repaired', counts['Repaired']) +
+      card('Pending', 'info', 'Pending', counts['Pending']) +
+      card('Done', 'success', 'Done', counts['Done']) +
     '</div>' + filters +
     '<div class="card"><div class="card-body p-0"><div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0" style="font-size:.78rem;white-space:nowrap;"><thead style="background:var(--bg-color);"><tr>' + tableHead + '</tr></thead><tbody>' + tbody + '</tbody></table></div></div>' +
     '<div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2 small text-muted"><span>Showing ' + shown.length + ' of ' + rows.length + ' case(s)</span><span>' + (mtnCanAct() ? (mtnIsRequester() ? 'Admin: create requests' : 'Repair Service: update status') : 'Read-only view') + '</span></div></div>' +
@@ -5807,6 +5880,7 @@ function renderMtnStatusTab(subTabBar){
 /* ---------- MTN status tab: filters / export ---------- */
 window.setMtnStatusFilter = function(field, value){
   if (field === 'status') mtnStatusFilter = (value == null) ? 'all' : String(value);
+  else if (field === 'item') mtnStatusItem = value || '';
   else if (field === 'group') mtnStatusGroup = value || 'all';
   else if (field === 'company') mtnStatusCompany = value || 'all';
   else if (field === 'month') mtnStatusMonth = value || '';
@@ -5818,6 +5892,7 @@ window.setMtnStatusFilter = function(field, value){
 
 window.clearMtnStatusFilters = function(){
   mtnStatusFilter = 'all';
+  mtnStatusItem = '';
   mtnStatusGroup = 'all';
   mtnStatusCompany = 'all';
   mtnStatusMonth = '';
@@ -5836,7 +5911,7 @@ window.exportMtnStatusCsv = function(){
   const rows = mtnStatusSortRows(mtnStatusFilterRows(mtnStatusRowsAll(), false));
   if (!rows.length) { showAlert('No data to export', 'warning'); return; }
   const cell = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const header = ['Date', 'Check ID', 'Equipment', 'Group', 'Company', 'Issues', 'Requested By', 'Requested At', 'Status', 'Repaired / Total', 'Updated By', 'Updated At', 'Remark'];
+  const header = ['Date', 'Check ID', 'Equipment', 'Group', 'Company', 'Issues (item status)', 'Requested By', 'Requested At', 'Checklist Status', 'Done / Total', 'Updated By', 'Updated At', 'Remark'];
   const lines = [header.map(cell).join(',')];
   rows.forEach(r => {
     const last = r.last || {};
