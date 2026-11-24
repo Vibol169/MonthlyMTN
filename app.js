@@ -46,6 +46,25 @@ function isViewer() {
   return String(currentUser?.role || '').toLowerCase().includes('viewer');
 }
 
+/* Users-sheet roles are typed by hand: "Repair Manager" === "repair-manager" */
+function normRole(role){
+  return String(role == null ? '' : role).trim().toLowerCase().replace(/[\s_]+/g, '-');
+}
+const ROLE_LABELS = {
+  'admin'         : 'Admin',
+  'admin-viewer'  : 'Admin (viewer)',
+  'manager'       : 'Manager',
+  'manager-viewer': 'Manager (viewer)',
+  'technician'    : 'Technician',
+  'driver'        : 'Driver',
+  'repair'        : 'Repair Service',
+  'repair-manager': 'Repair Manager'
+};
+function roleLabel(role){
+  const k = normRole(role);
+  return ROLE_LABELS[k] || (k ? k : '—');
+}
+
 window.activeReportForm = 'standard'; // 'standard' or 'table'
 
 window.setReportForm = function(form) {
@@ -496,8 +515,9 @@ window.toggleSideNav = function() {
 };
 
 window.switchApp = function(app) {
-  if (currentUser && currentUser.role === 'repair' && app === 'daily') {
-    showAlert('Daily checklist is not available for Repair Service', 'warning');
+  const _role = normRole(currentUser && currentUser.role);
+  if ((_role === 'repair' || _role === 'repair-manager') && app === 'daily') {
+    showAlert('Daily checklist is not available for ' + roleLabel(_role), 'warning');
     return;
   }
   if (currentApp === app) {
@@ -522,7 +542,7 @@ window.switchApp = function(app) {
 window.openAccountModal = function() {
   $('#accFullName').text(currentUser.fullName);
   $('#accUsername').text('@' + currentUser.username);
-  $('#accRole').text(currentUser.role);
+  $('#accRole').text(roleLabel(currentUser.role));
   $('#accGroup').text(currentUser.group ? 'ក្រុម: ' + currentUser.group : '');
   if(!accountModalInstance) accountModalInstance = new bootstrap.Modal(document.getElementById('accountModal'));
   accountModalInstance.show();
@@ -625,8 +645,8 @@ function renderBottomNav(){
   const role = String((currentUser && currentUser.role) || '').trim().toLowerCase();
   let nav = '<a href="#" data-page="home"><i class="bi bi-house-door"></i>Home</a>';
   
-  if (role === 'repair') {
-    // Repair Service: List + Dashboard (Dashboard opens the MTN status workspace)
+  if (role === 'repair' || role === 'repair-manager') {
+    // Repair Service / Repair Manager: List + Dashboard (the MTN status workspace)
     nav = '<a href="#" data-page="list"><i class="bi bi-list-ul"></i>List</a>' +
           '<a href="#" data-page="dashboard"><i class="bi bi-bar-chart"></i>Dashboard</a>';
   } else if (role === 'driver' && currentApp === 'monthly') { 
@@ -920,7 +940,7 @@ function applyBootstrap(resM, resD){
   APP.loaded = true;
   
   currentUser = { 
-    username: APP.user.username, role: String(APP.user.role || '').trim().toLowerCase(), 
+    username: APP.user.username, role: normRole(APP.user.role), 
     group: APP.user.group, equipment: APP.user.equipment || [], 
     fullName: APP.user.fullName 
   };
@@ -1001,7 +1021,7 @@ $(document).ready(function(){
     google.script.run.withSuccessHandler(user => {
       if (user) {
         currentUser = user;
-        currentUser.role = String(currentUser.role || '').trim().toLowerCase();
+        currentUser.role = normRole(currentUser.role);
         currentUser.equipment = currentUser.equipment || [];
         
         // ★ ADD THIS LINE: Hide login form immediately
@@ -1060,8 +1080,8 @@ $(document).ready(function(){
 function renderHome(){
   if (!APP.loaded) { bootLoad(); return; }
 
-  // Repair Service lands directly on the MTN status workspace
-  if (currentUser.role === 'repair') {
+  // Repair Service / Repair Manager land directly on the MTN status workspace
+  if (normRole(currentUser.role) === 'repair' || normRole(currentUser.role) === 'repair-manager') {
     dashboardSubTab = 'status';
     showPage('dashboard');
     return;
@@ -4931,14 +4951,17 @@ window.addCommentPrompt = function(checkId){
 
 /* =========================================================
    MTN REPAIR-REQUEST FLOW HELPERS (Monthly)
-   Case status : '' (not requested) | Requested | Pending | Done
+   Case status : '' (not requested) | Requested | Pending |
+                 Done | Confirmed
    Item status : '' (nothing yet)   | Requested | Not Request |
                  Waiting Repairing  | Waiting Spare Part | Repaired
    'Not Request' is display-only: it is shown in badges/chips/tables but
    is never offered as a choice in any dropdown.
-   The checklist (case) status is always the rollup of its items.
+   The checklist (case) status is always the rollup of its items; the
+   Repair Manager then signs a Done case off as 'Confirmed' (sign-off
+   never rewrites the per-item statuses).
    ========================================================= */
-const MTN_CASE_STATUS_LIST = ['Requested', 'Pending', 'Done'];
+const MTN_CASE_STATUS_LIST = ['Requested', 'Pending', 'Done', 'Confirmed'];
 const MTN_ITEM_STATUS_LIST = ['Requested', 'Not Request', 'Waiting Repairing', 'Waiting Spare Part', 'Repaired'];
 // Statuses the Repair Service can actually pick (display-only ones excluded)
 const MTN_ITEM_SELECT_LIST = MTN_ITEM_STATUS_LIST.filter(s => s !== 'Not Request');
@@ -4947,6 +4970,7 @@ const MTN_STATUS_INFO = {
   'Requested'           : { label: 'Requested',          badge: 'warning',   icon: 'bi-send-check' },
   'Pending'             : { label: 'Pending',            badge: 'info',      icon: 'bi-hourglass-split' },
   'Done'                : { label: 'Done',               badge: 'success',   icon: 'bi-check-circle-fill' },
+  'Confirmed'           : { label: 'Confirmed',          badge: 'success',   icon: 'bi-patch-check-fill' },
   'Not Request'         : { label: 'Not Request',        badge: 'dark',      icon: 'bi-slash-circle' },
   'Waiting Repairing'   : { label: 'Waiting Repairing',  badge: 'info',      icon: 'bi-tools' },
   'Waiting Spare Part'  : { label: 'Waiting Spare Part', badge: 'primary',   icon: 'bi-box-seam' },
@@ -4960,6 +4984,7 @@ function mtnNormCaseStatus(raw){
   if (!s) return '';
   const low = s.toLowerCase();
   if (low === 'requested') return 'Requested';
+  if (low === 'confirmed' || low === 'confirm') return 'Confirmed';
   if (low === 'done' || low === 'repaired' || low === 'completed' || low === 'fixed') return 'Done';
   if (low === 'pending' || low === 'partial') return 'Pending';
   if (low.indexOf('spare') !== -1 || low.indexOf('repair') !== -1) return 'Pending';
@@ -4980,6 +5005,7 @@ function mtnNormItemStatus(raw){
 /* Case -> item status (used by the legacy case-level setter) */
 function mtnCaseToItemStatus(caseStatus){
   const st = mtnNormCaseStatus(caseStatus);
+  if (st === 'Confirmed') return 'Repaired';
   if (st === 'Done') return 'Repaired';
   if (st === 'Pending') return 'Waiting Repairing';
   if (st === 'Requested') return 'Requested';
@@ -5033,6 +5059,7 @@ function mtnItemStatuses(sub){
 function mtnItemFallbackStatus(sub){
   const low = String((sub && sub.mtnStatus) || '').trim().toLowerCase();
   if (!low) return '';
+  if (low === 'confirmed' || low === 'confirm') return 'Repaired';
   if (low === 'repaired' || low === 'completed' || low === 'fixed' || low === 'done') return 'Repaired';
   if (low === 'requested') return 'Requested';
   if (low.indexOf('spare') !== -1) return 'Waiting Spare Part';
@@ -5094,9 +5121,18 @@ function mtnHasRealUpdate(sub){
   if (meta.requestedBy && last.by === meta.requestedBy && String(last.at || '') === String(meta.requestedAt || '')) return false;
   return true;
 }
-function mtnIsRequester(){ return !!currentUser && currentUser.role === 'admin'; }
-function mtnIsRepairer(){ return !!currentUser && currentUser.role === 'repair'; }
-function mtnCanAct(){ return mtnIsRequester() || mtnIsRepairer(); }
+function mtnIsRequester(){ return !!currentUser && normRole(currentUser.role) === 'admin'; }
+function mtnIsRepairer(){ return !!currentUser && normRole(currentUser.role) === 'repair'; }
+function mtnIsRepairManager(){ return !!currentUser && normRole(currentUser.role) === 'repair-manager'; }
+function mtnCanAct(){ return mtnIsRequester() || mtnIsRepairer() || mtnIsRepairManager(); }
+/* Done + Confirmed are both "the repair work is finished" for the dashboards */
+function mtnIsClosedStatus(status){ return status === 'Done' || status === 'Confirmed'; }
+function mtnRoleNote(){
+  if (mtnIsRequester())     return 'Admin: make the repair request for a case, then follow it up here.';
+  if (mtnIsRepairer())      return 'Repair Service: update the repair status of every issue item.';
+  if (mtnIsRepairManager()) return 'Repair Manager: confirm (sign off) the cases the Repair Service has finished.';
+  return 'Read-only view — requests are created by Admin, repaired by Repair Service and confirmed by Repair Manager.';
+}
 function mtnCompanyOf(equipmentId){
   const eq = (APP.equipmentMap && APP.equipmentMap[equipmentId]) ? APP.equipmentMap[equipmentId] : {};
   return String(eq.companyName || '').trim();
@@ -5109,7 +5145,10 @@ function mtnStatusBadge(subOrStatus){
   const isSub = !!(subOrStatus && typeof subOrStatus === 'object');
   const st = isSub ? mtnCaseStatus(subOrStatus) : mtnNormCaseStatus(subOrStatus);
   const info = mtnStatusInfo(st);
-  const tone = st === 'Done' ? 'done' : (st === 'Pending' ? 'pend' : (st === 'Requested' ? 'req' : 'nr'));
+  const tone = st === 'Confirmed' ? 'conf'
+             : st === 'Done' ? 'done'
+             : st === 'Pending' ? 'pend'
+             : st === 'Requested' ? 'req' : 'nr';
   let tip = info.label;
   let countHtml = '';
   if (isSub && st) {
@@ -5124,14 +5163,30 @@ function mtnStatusBadge(subOrStatus){
 function mtnActionHtml(sub){
   const st = mtnCaseStatus(sub);
   const cid = escAttr(sub.checkId);
+
+  /* Repair Manager: sign off a case the Repair Service has finished */
+  if (mtnIsRepairManager()) {
+    if (st === 'Done') {
+      return '<button class="btn btn-sm btn-success" onclick="confirmMtnCase(\'' + cid + '\')"><i class="bi bi-patch-check me-1"></i>Confirm</button>';
+    }
+    if (st === 'Confirmed') {
+      return '<span class="mtn-pill is-conf" style="font-size:.62rem;" title="Signed off by Repair Manager"><i class="bi bi-patch-check-fill"></i>Confirmed</span>';
+    }
+    return '<span class="small text-muted"><i class="bi bi-hourglass-split me-1"></i>' + (st === '' ? 'No request yet' : 'Awaiting repair') + '</span>';
+  }
+
   if (mtnIsRequester()) {
     if (st === '') {
       return '<button class="btn btn-sm btn-warning" onclick="requestMtnRepair(\'' + cid + '\')"><i class="bi bi-send me-1"></i>Make a Request</button>';
     }
-    if (st === 'Done') {
+    if (st === 'Done' || st === 'Confirmed') {
       return '<button class="btn btn-sm btn-outline-warning" onclick="requestMtnRepair(\'' + cid + '\')"><i class="bi bi-arrow-repeat me-1"></i>Request Again</button>';
     }
     return '<span class="small text-muted"><i class="bi bi-hourglass-split me-1"></i>Awaiting Repair Service</span>';
+  }
+
+  if (mtnIsRepairer() && st === 'Confirmed') {
+    return '<span class="small text-muted"><i class="bi bi-patch-check-fill me-1"></i>Confirmed by Repair Manager</span>';
   }
   if (mtnIsRepairer() && st !== '') {
     return '<button class="btn btn-sm btn-outline-primary" onclick="openMtnStatusEditor(\'' + cid + '\')"><i class="bi bi-pencil-square me-1"></i>Update</button>';
@@ -5163,7 +5218,7 @@ function renderDashboard(){
 
     (s.checks || []).forEach(c => {
       if (normalizeStatus(c.status) === 'UF') {
-        if (mtnCaseStatus(s) !== 'Done') {
+        if (!mtnIsClosedStatus(mtnCaseStatus(s))) {
           const tpl = tplMap[c.itemId] || {};
           const kh = tpl.itemKhmer || c.itemId;
           const en = tpl.itemEng || '';
@@ -5381,34 +5436,35 @@ function renderMtnManagement(subTabBar){
   if (mtnItemFilter && mtnItemFilter.length > 0) {
     issues = issues.filter(sub => (sub.checks || []).some(c => {
       if (!mtnItemFilter.includes(c.itemId)) return false;
-      if (mtnIsUrgentOnly) return normalizeStatus(c.status) === 'UF' && mtnCaseStatus(sub) !== 'Done';
+      if (mtnIsUrgentOnly) return normalizeStatus(c.status) === 'UF' && !mtnIsClosedStatus(mtnCaseStatus(sub));
       return normalizeStatus(c.status) !== 'N';
     }));
   }
 
-  // Checklist (case) statuses: Requested / Pending / Done (+ '' not requested)
+  // Checklist (case) statuses: '' (not requested) / Requested / Pending / Done / Confirmed
   const lists = {
     none:      issues.filter(s => mtnCaseStatus(s) === ''),
     requested: issues.filter(s => mtnCaseStatus(s) === 'Requested'),
     pending:   issues.filter(s => mtnCaseStatus(s) === 'Pending'),
-    done:      issues.filter(s => mtnCaseStatus(s) === 'Done')
+    done:      issues.filter(s => mtnCaseStatus(s) === 'Done'),
+    confirmed: issues.filter(s => mtnCaseStatus(s) === 'Confirmed')
   };
-  const cardCls = (f) => 'stat-card clickable-card' + (mtnFilter === f ? ' active' : '');
+  const cardCls = (f) => 'stat-card mtn-stat' + (mtnFilter === f ? ' active' : '');
 
   const issueRow = (sub, item) => {
     let locChip = '';
-    if (item.frequency) locChip += '<span class="badge bg-info text-dark ms-1" style="font-size:.6rem;">' + esc(item.frequency) + '</span>';
+    if (item.frequency) locChip += '<span class="mtn-chip ms-1">' + esc(item.frequency) + '</span>';
     else {
-      if (item.location.indexOf('L') !== -1) locChip += '<span class="badge bg-secondary ms-1" style="font-size:.6rem;">L</span>';
-      if (item.location.indexOf('R') !== -1) locChip += '<span class="badge bg-secondary ms-1" style="font-size:.6rem;">R</span>';
+      if (item.location.indexOf('L') !== -1) locChip += '<span class="mtn-chip ms-1">L</span>';
+      if (item.location.indexOf('R') !== -1) locChip += '<span class="mtn-chip ms-1">R</span>';
     }
     const ist = mtnItemStatusOf(sub, item.itemId);
     const istInfo = mtnStatusInfo(ist);
-    const istChip = '<span class="badge bg-' + istInfo.badge + ' ms-auto flex-shrink-0" style="font-size:.56rem;" title="Repair status"><i class="bi ' + istInfo.icon + ' me-1"></i>' + esc(istInfo.label) + '</span>';
+    const istChip = '<span class="mtn-pill is-' + _mtnItemTone(ist) + ' ms-auto flex-shrink-0" style="font-size:.58rem;padding:2px 7px;" title="Repair status"><i class="bi ' + istInfo.icon + '"></i>' + esc(istInfo.label) + '</span>';
     return '<div class="p-2 mb-2" style="background:var(--bg-color);border-radius:8px;">' +
       '<div class="fw-semibold small d-flex align-items-start gap-1" style="line-height:1.25;">' + mtnCodeBadge(item.code, '.62rem') + '<span class="flex-grow-1" style="min-width:0;">' + esc(item.itemKhmer) + locChip + '</span>' + istChip + '</div>' +
       (item.itemEng ? '<div class="small text-muted" style="font-size:.7rem;">' + esc(item.itemEng) + '</div>' : '') +
-      (item.note ? '<div class="small text-muted mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(item.note) + '</div>' : '') +
+      (item.note ? '<div class="mtn-cell-sub mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(item.note) + '</div>' : '') +
     '</div>';
   };
 
@@ -5425,17 +5481,18 @@ function renderMtnManagement(subTabBar){
     }
 
     const reqLine = meta.requestedBy
-      ? '<div class="small mt-1"><i class="bi bi-send me-1 text-muted"></i>Requested by <strong>' + esc(meta.requestedBy) + '</strong>' + (meta.requestedAt ? ' · ' + esc(meta.requestedAt) : '') + '</div>'
+      ? '<div class="mtn-cell-sub mt-1"><i class="bi bi-send me-1"></i>Requested by <strong>' + esc(meta.requestedBy) + '</strong>' + (meta.requestedAt ? ' · ' + esc(meta.requestedAt) : '') + '</div>'
       : '';
     const updLine = (last && last.by && mtnHasRealUpdate(sub))
-      ? '<div class="small mt-1"><i class="bi bi-clock-history me-1 text-muted"></i>Updated by <strong>' + esc(last.by) + '</strong>' + (last.at ? ' · ' + esc(last.at) : '') + (last.remark ? '<div class="mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(last.remark) + '</div>' : '') + '</div>'
+      ? '<div class="mtn-cell-sub mt-1"><i class="bi bi-clock-history me-1"></i>Updated by <strong>' + esc(last.by) + '</strong>' + (last.at ? ' · ' + esc(last.at) : '') + (last.remark ? '<div class="mt-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(last.remark) + '</div>' : '') + '</div>'
       : '';
 
     return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center gap-2 flex-wrap"><span><i class="bi bi-truck text-primary me-2"></i><strong>' + esc(eq.shortName || sub.equipmentId) + '</strong> <span class="text-muted small ms-2">(' + esc(sub.date) + ')</span></span>' + mtnStatusBadge(sub) + '</div>' +
       '<div class="card-body py-2">' +
-        '<div class="small mb-2"><i class="bi bi-person me-1 text-muted"></i>Inspector: ' + esc(sub.driverName || sub.username) + ' · <span class="text-muted">' + esc(sub.checkId) + '</span></div>' +
-        '<div class="small text-danger fw-semibold mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>Issues (' + items.length + ')' + (function(){ const p = mtnItemProgress(sub); return p.done ? '<span class="text-muted fw-normal ms-1">· ' + p.done + ' done</span>' : ''; })() + '</div>' +
+        '<div class="mtn-cell-sub mb-2"><i class="bi bi-person me-1"></i>Inspector: ' + esc(sub.driverName || sub.username) + ' · <span class="text-muted">' + esc(sub.checkId) + '</span></div>' +
+        '<div class="mtn-issue-meta text-danger mb-2"><i class="bi bi-exclamation-triangle-fill me-1"></i><strong>Issues (' + items.length + ')</strong>' + (function(){ const p = mtnItemProgress(sub); return p.done ? '<span class="ms-1">· ' + p.done + ' done</span>' : ''; })() + '</div>' +
         displayItems.map(i => issueRow(sub, i)).join('') + reqLine + updLine +
+        (meta.confirmedBy ? '<div class="mtn-cell-sub mt-1"><i class="bi bi-patch-check-fill me-1"></i>Confirmed by <strong>' + esc(meta.confirmedBy) + '</strong>' + (meta.confirmedAt ? ' · ' + esc(meta.confirmedAt) : '') + '</div>' : '') +
         '<div class="d-flex gap-2 mt-3 flex-wrap"><button class="btn btn-sm btn-outline-primary flex-fill" onclick="viewCheck(\'' + escAttr(sub.checkId) + '\')"><i class="bi bi-eye me-1"></i>View Checklist</button>' + mtnActionHtml(sub) + '</div>' +
       '</div></div>';
   };
@@ -5445,6 +5502,7 @@ function renderMtnManagement(subTabBar){
   if (mtnFilter === 'requested') visible = lists.requested;
   if (mtnFilter === 'pending')   visible = lists.pending;
   if (mtnFilter === 'done')      visible = lists.done;
+  if (mtnFilter === 'confirmed') visible = lists.confirmed;
 
   const visibleSlice = visible.slice(0, mtnDisplayLimit);
 
@@ -5465,29 +5523,28 @@ function renderMtnManagement(subTabBar){
     filterChip = '<div class="d-flex align-items-center gap-2 mb-3"><span class="badge bg-danger d-flex align-items-center gap-1" style="font-size:.8rem;padding:6px 10px;"><i class="bi bi-funnel-fill"></i> Filtering by: ' + esc(mtnItemLabel) + '<span onclick="clearMtnItemFilter()" style="cursor:pointer;margin-left:6px;font-weight:700;">✕</span></span></div>';
   }
 
-  const card = (f, color, label, count) => '<div class="col-6 col-md-2"><div class="' + cardCls(f) + '" onclick="setMtnFilter(\'' + f + '\')"><div class="num text-' + color + '">' + count + '</div><div class="lbl" style="font-size:.62rem;">' + esc(label) + '</div></div></div>';
+  const card = (f, tone, icon, label, count) => '<div class="col-6 col-md-4 col-lg"><div class="' + cardCls(f) + '" onclick="setMtnFilter(\'' + f + '\')"><div class="num mtn-num-' + tone + '">' + count + '</div><div class="lbl"><i class="bi ' + icon + ' me-1"></i>' + esc(label) + '</div></div></div>';
 
-  const titleMap = { none: 'Not Requested', requested: 'Requested', pending: 'Pending', done: 'Done' };
-  const heading = (mtnFilter === 'all') ? 'All Issue Checklists (' + issues.length + ')' : (titleMap[mtnFilter] || '') + ' (' + visible.length + ')';
+  const titleMap = { none: 'Not Requested', requested: 'Requested', pending: 'Pending', done: 'Done', confirmed: 'Confirmed' };
+  const heading = (mtnFilter === 'all') ? 'All issue checklists' : (titleMap[mtnFilter] || '');
 
-  const roleHint = mtnIsRequester() ? 'Select a case and press "Make a Request" to send it to Repair Service.'
-                 : mtnIsRepairer() ? 'Update the repair status of the cases requested by Admin.'
-                 : 'Read-only view — repair requests are created by Admin and updated by Repair Service.';
-
-  $('#app').html('<div class="container-fluid px-0"><div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0"><i class="bi bi-wrench-adjustable me-2"></i>MTN Management</h5><small class="text-muted">' + esc(currentUser.group === 'ALL' ? 'All groups' : currentUser.group) + '</small></div><button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onclick="syncAllData(true)"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px;">--:--:--</span></button></div>' + subTabBar + filterChip +
-    '<div class="alert alert-light border small py-2 mb-3"><i class="bi bi-info-circle me-1 text-primary"></i>' + roleHint + '</div>' +
-    '<div class="row g-2 mb-3">' + card('none', 'warning', 'Not Requested', lists.none.length) + card('requested', 'dark', 'Requested', lists.requested.length) + card('pending', 'info', 'Pending', lists.pending.length) + card('done', 'success', 'Done', lists.done.length) + card('all', 'secondary', 'All Cases', issues.length) + '</div>' +
-    '<h6 class="mb-2"><i class="bi bi-list-check text-primary me-2"></i>' + heading + '</h6>' + listHtml + loadMoreHtml + '</div>');
+  $('#app').html('<div class="container-fluid px-0"><div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0"><i class="bi bi-wrench-adjustable me-2"></i>MTN Management</h5><small class="text-muted">' + esc(currentUser.group === 'ALL' ? 'All groups' : currentUser.group) + ' · ' + esc(roleLabel(currentUser.role)) + '</small></div><button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" onclick="syncAllData(true)"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px;">--:--:--</span></button></div>' + subTabBar + filterChip +
+    '<div class="mtn-hint"><i class="bi bi-info-circle me-1"></i>' + esc(mtnRoleNote()) + '</div>' +
+    '<div class="row g-2 mb-3">' + card('all', 'all', 'bi-collection', 'All Cases', issues.length) + card('none', 'nr', 'bi-dash-circle', 'Not Requested', lists.none.length) + card('requested', 'req', 'bi-send-check', 'Requested', lists.requested.length) + card('pending', 'pend', 'bi-hourglass-split', 'Pending', lists.pending.length) + card('done', 'done', 'bi-check-circle-fill', 'Done', lists.done.length) + card('confirmed', 'conf', 'bi-patch-check-fill', 'Confirmed', lists.confirmed.length) + '</div>' +
+    '<div class="mtn-table-head standalone mb-2"><span class="fw-semibold"><i class="bi bi-list-check me-1"></i>' + esc(heading) + '</span><span class="text-muted">Showing ' + visibleSlice.length + ' of ' + visible.length + '</span></div>' +
+    listHtml + loadMoreHtml + '</div>');
 }
 
 
 /* =========================================================
    REPAIR REQUEST ACTIONS
-   Admin  -> Make a Request (creates the case request)
-   Repair -> per item: Requested | Waiting Repairing |
-                        Waiting Spare Part | Repaired
+   Admin          -> Make a Request (creates the case request)
+   Repair Service -> per item: Requested | Waiting Repairing |
+                                Waiting Spare Part | Repaired
+   Repair Manager -> Confirm a Done case (sign-off)
    ('Not Request' stays display-only — it is never offered as a choice)
-   The checklist status is the rollup: Requested | Pending | Done
+   The checklist status is the rollup: Requested | Pending | Done,
+   then Confirmed once the Repair Manager signs it off.
    ========================================================= */
 function _applyMtnLocal(checkId, status, remark){
   const sub = (APP.submissions || []).find(x => x.checkId === checkId);
@@ -5496,22 +5553,33 @@ function _applyMtnLocal(checkId, status, remark){
   if (!sub.mtnItems) sub.mtnItems = {};
   let meta = (sub.mtnItems.__request && typeof sub.mtnItems.__request === 'object') ? sub.mtnItems.__request : {};
   if (!Array.isArray(meta.history)) meta.history = [];
+  if (!meta.itemStatus || typeof meta.itemStatus !== 'object') meta.itemStatus = {};
+  const isConfirm = (status === 'Confirmed');
   if (status === 'Requested') {
     meta.requestedBy = currentUser.username;
     meta.requestedAt = stamp;
     meta.requestedItems = getIssueItems(sub).map(i => ({ itemId: i.itemId, code: i.code }));
     meta.repairedBy = '';
     meta.repairedAt = '';
+    meta.confirmedBy = '';
+    meta.confirmedAt = '';
   } else if (!meta.requestedBy) {
     meta.requestedBy = currentUser.username;
     meta.requestedAt = stamp;
   }
   meta.history.push({ status: status, by: currentUser.username, at: stamp, remark: remark || '' });
-  if (!meta.itemStatus || typeof meta.itemStatus !== 'object') meta.itemStatus = {};
-  const itemSt = mtnCaseToItemStatus(status) || 'Requested';
-  getIssueItems(sub).forEach(i => {
-    meta.itemStatus[i.itemId] = { status: itemSt, by: currentUser.username, at: stamp, remark: remark || '' };
-  });
+  if (isConfirm) {
+    // Sign-off only: the per-item repair statuses stay exactly as repaired
+    meta.confirmedBy = currentUser.username;
+    meta.confirmedAt = stamp;
+  } else {
+    const itemSt = mtnCaseToItemStatus(status) || 'Requested';
+    getIssueItems(sub).forEach(i => {
+      meta.itemStatus[i.itemId] = { status: itemSt, by: currentUser.username, at: stamp, remark: remark || '' };
+    });
+    meta.confirmedBy = '';
+    meta.confirmedAt = '';
+  }
   meta.updatedBy = currentUser.username;
   meta.updatedAt = stamp;
   meta.lastRemark = remark || '';
@@ -5545,6 +5613,9 @@ function _applyMtnItemsLocal(checkId, updates, remark){
   meta.lastRemark = remark || '';
   if (derived === 'Done') { meta.repairedBy = currentUser.username; meta.repairedAt = stamp; }
   else { meta.repairedBy = ''; meta.repairedAt = ''; }
+  // A new repair edit re-opens the case: any earlier sign-off no longer applies
+  meta.confirmedBy = '';
+  meta.confirmedAt = '';
   sub.mtnStatus = derived;
   sub.mtnBy = currentUser.username;
   sub.mtnAt = stamp;
@@ -5573,6 +5644,25 @@ window.requestMtnRepair = function(checkId){
     }).withFailureHandler(handleError).updateMtnRequest({
       checkId: checkId, status: 'Requested', username: currentUser.username, remark: remark || ''
     });
+  });
+};
+
+/* Repair Manager: sign off a case the Repair Service has finished */
+window.confirmMtnCase = function(checkId){
+  if (!mtnIsRepairManager()) { showAlert('Only Repair Manager can confirm a repaired case', 'warning'); return; }
+  const sub = (APP.submissions || []).find(x => x.checkId === checkId);
+  if (!sub) { showAlert('Checklist not found', 'danger'); return; }
+  const st = mtnCaseStatus(sub);
+  if (st === 'Confirmed') { showAlert('This case is already confirmed', 'info'); return; }
+  if (st !== 'Done') { showAlert('Only a fully repaired (Done) case can be confirmed', 'warning'); return; }
+  const p = mtnItemProgress(sub);
+  askRemark({
+    title: 'Confirm Repair',
+    label: 'All ' + p.total + ' issue item(s) are repaired (' + p.done + '/' + p.total + ' done). Confirm this case? Remark (optional):',
+    placeholder: 'ចំណាំបន្ថែម...'
+  }, function(remark){
+    if (remark === null) return;
+    _submitMtnStatus(checkId, 'Confirmed', remark || '');
   });
 };
 
@@ -5728,6 +5818,7 @@ window.setAllMtnItems = function(status){
 };
 
 window.saveMtnItemsEditor = function(checkId){
+  if (!mtnIsRepairer()) { showAlert('Only Repair Service can update the repair status', 'warning'); return; }
   const sub = (APP.submissions || []).find(x => x.checkId === checkId);
   if (!sub) { showAlert('Checklist not found', 'danger'); return; }
   const sel = mtnEditorSelection();
@@ -5822,7 +5913,7 @@ function mtnStatusFilterRows(rowsAll, ignoreStatus){
 }
 
 function mtnStatusSortRows(rows){
-  const order = { '': 0, 'Requested': 1, 'Pending': 2, 'Done': 3 };
+  const order = { '': 0, 'Requested': 1, 'Pending': 2, 'Done': 3, 'Confirmed': 4 };
   const list = rows.slice();
   if (mtnStatusSort === 'oldest') list.sort((a, b) => a.ms - b.ms);
   else if (mtnStatusSort === 'status') list.sort((a, b) => (order[a.status] - order[b.status]) || (b.ms - a.ms));
@@ -5843,7 +5934,7 @@ function renderMtnStatusTab(subTabBar){
   companyList.sort();
 
   const rowsForCounts = mtnStatusFilterRows(rowsAll, true);
-  const counts = { 'all': rowsForCounts.length, '': 0, 'Requested': 0, 'Pending': 0, 'Done': 0 };
+  const counts = { 'all': rowsForCounts.length, '': 0, 'Requested': 0, 'Pending': 0, 'Done': 0, 'Confirmed': 0 };
   rowsForCounts.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
 
   const rows = mtnStatusSortRows(mtnStatusFilterRows(rowsAll, false));
@@ -5969,12 +6060,13 @@ function renderMtnStatusTab(subTabBar){
       card('Requested', 'req', 'bi-send-check', 'Requested', counts['Requested']) +
       card('Pending', 'pend', 'bi-hourglass-split', 'Pending', counts['Pending']) +
       card('Done', 'done', 'bi-check-circle-fill', 'Done', counts['Done']) +
+      card('Confirmed', 'conf', 'bi-patch-check-fill', 'Confirmed', counts['Confirmed']) +
     '</div>' + filters +
     '<div class="card">' +
       '<div class="mtn-table-head"><span class="fw-semibold"><i class="bi bi-list-check me-1"></i>Cases</span>' +
         '<span class="text-muted">Showing ' + shown.length + ' of ' + rows.length + '</span></div>' +
       '<div class="table-responsive"><table class="table mtn-table align-middle mb-0" style="white-space:nowrap;"><thead><tr>' + tableHead + '</tr></thead><tbody>' + tbody + '</tbody></table></div>' +
-      '<div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2 small text-muted"><span><i class="bi bi-info-circle me-1"></i>Click a row to open the checklist</span><span>' + (mtnCanAct() ? (mtnIsRequester() ? 'Admin: create requests' : 'Repair Service: update status') : 'Read-only view') + '</span></div>' +
+      '<div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2 small text-muted"><span><i class="bi bi-info-circle me-1"></i>Click a row to open the checklist</span><span>' + esc(mtnRoleNote()) + '</span></div>' +
     '</div>' +
     loadMore + '<div style="padding-bottom:100px;"></div></div>');
 
