@@ -835,3 +835,106 @@ body.dark-mode .daily-info-card .text-muted { color: #9fb0c7 !important; }
 body.dark-mode .daily-info-card .form-control { background: #101722; color: #e9eef7; border-color: #33415c; }
 
 
+
+/* =========================================================
+   DRIVER CHECK CARDS — 2 column unit grid
+   (daily / weekly / finished form / handover / detail view)
+   ========================================================= */
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+}
+.check-grid > .check-item {
+  margin-bottom: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.check-grid .check-item .row-line { align-items: flex-start; gap: 4px; }
+.check-grid .check-item .item-name-kh { font-size: .78rem; }
+.check-grid .check-item .item-name-en { font-size: .64rem; }
+.check-grid .item-num { font-size: .72rem; }
+.check-grid .check-item .check-actions {
+  padding-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.check-grid .check-btn {
+  min-width: 0;
+  padding: 6px 2px;
+  font-size: .68rem;
+  font-weight: 700;
+  line-height: 1.1;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.check-grid .check-btn i { display: none; }
+.check-grid .nok-note { margin-top: 6px; }
+.check-grid .check-item .photo-gallery { gap: 6px; margin-top: 6px; }
+.check-grid .photo-tile { height: 62px; }
+.check-grid .photo-tile.photo-add-tile,
+.check-grid .photo-tile.photo-loading { width: 62px; font-size: 18px; }
+.check-grid .status-badge { font-size: .6rem; padding: 1px 6px; white-space: nowrap; }
+
+@media (max-width: 360px) {
+  .check-grid { gap: 6px; }
+  .check-grid .check-btn { font-size: .62rem; padding: 5px 1px; }
+  .check-grid .photo-tile { height: 54px; }
+  .check-grid .photo-tile.photo-add-tile,
+  .check-grid .photo-tile.photo-loading { width: 54px; }
+}
+
+/* =========================================================
+   PHOTO REVEAL IN VIEW MODE — tap the item's photo chip
+   ========================================================= */
+.view-photo-wrap { margin-top: 6px; }
+.photo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  color: var(--tab-text);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: .68rem;
+  font-weight: 700;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.photo-chip:hover { border-color: var(--tab-active); color: var(--tab-active); }
+.photo-chip .chev { font-size: .62rem; transition: transform .15s ease; }
+.photo-chip.is-open .chev { transform: rotate(180deg); }
+.is-collapsed { display: none !important; }
+
+/* =========================================================
+   FINISHED FORM — four inputs in one unit block
+   ========================================================= */
+.finish-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.finish-field,
+.finish-tile {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+.finish-field .form-label { line-height: 1.25; min-height: 2.4em; }
+.finish-field .photo-gallery { margin-top: 6px; gap: 6px; }
+.finish-tile .finish-val { margin-top: 2px; font-weight: 800; font-size: 1rem; color: var(--text-color); }
+.finish-field .photo-tile { height: 62px; }
+.finish-field .photo-tile.photo-add-tile,
+.finish-field .photo-tile.photo-loading { width: 62px; font-size: 18px; }
+body.dark-mode .finish-field,
+body.dark-mode .finish-tile { background: #101722; border-color: #33415c; }
+body.dark-mode .finish-tile .finish-val { color: #e9eef7; }
+body.dark-mode .photo-chip { background: #101722; border-color: #33415c; color: #9fb0c7; }
+
