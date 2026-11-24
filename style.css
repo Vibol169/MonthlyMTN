@@ -825,4 +825,14 @@ body.dark-mode .confirm-box.confirm-pending { background: rgba(255,193,7,0.16); 
 body.dark-mode .check-item[data-status="nok"] { background: rgba(220,53,69,0.16); }
 .daily-form-page .check-btn { border-radius: 8px; }
 
+/* ---- Monthly-style info cards (daily form, handover, daily detail) ---- */
+.daily-info-card { border-radius: 12px; }
+.daily-info-card .text-dark { word-break: break-word; }
+.daily-form-page .stat-card { cursor: default; }
+.daily-form-page .stat-card:active { transform: none; }
+body.dark-mode .daily-info-card { background: #1b2330 !important; border-color: #33415c !important; }
+body.dark-mode .daily-info-card .text-dark { color: #e9eef7 !important; }
+body.dark-mode .daily-info-card .text-muted { color: #9fb0c7 !important; }
+body.dark-mode .daily-info-card .form-control { background: #101722; color: #e9eef7; border-color: #33415c; }
+
 
