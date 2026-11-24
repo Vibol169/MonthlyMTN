@@ -1292,6 +1292,18 @@ function renderHomeHistoryTable(){
     const doneCount = rows.filter(r => r.done).length;
     const pendingCount = rows.length - doneCount;
     
+    // 👇 Checked / Pending filter 👇
+    const historyFilterChip = (key, icon, label, count, cls) =>
+      '<div class="tab' + (homeHistoryFilter === key ? ' active' : '') + '" style="flex:1 1 0;text-align:center;" onclick="setHomeHistoryFilter(\'' + key + '\')">' +
+        '<i class="bi ' + icon + ' me-1"></i>' + label +
+        '<span class="tab-count' + (cls ? ' ' + cls : '') + '">' + count + '</span>' +
+      '</div>';
+    html += '<div class="px-3 pt-2 pb-2"><div class="tab-bar mb-0" style="border-radius:10px;">' +
+      historyFilterChip('all', 'bi-collection', 'All', rows.length, '') +
+      historyFilterChip('done', 'bi-check2-circle', 'Checked', doneCount, 'is-ok') +
+      historyFilterChip('pending', 'bi-hourglass-split', 'Pending', pendingCount, 'is-warn') +
+    '</div></div>';
+
     let visibleRows = rows;
     if (homeHistoryFilter === 'done')    visibleRows = rows.filter(r => r.done);
     if (homeHistoryFilter === 'pending') visibleRows = rows.filter(r => !r.done);
@@ -1350,7 +1362,10 @@ function renderHomeHistoryTable(){
   return html;
 }
 
-window.setHomeHistoryFilter = function(filter){ homeHistoryFilter = (homeHistoryFilter === filter) ? 'all' : filter; renderHome(); };
+window.setHomeHistoryFilter = function(filter){
+  homeHistoryFilter = ['all', 'done', 'pending'].indexOf(filter) === -1 ? 'all' : filter;
+  renderHome();
+};
 window.clearHomeHistoryFilter = function(){ homeHistoryFilter = 'all'; renderHome(); };
 window.onHistoryMonthChange = function(value){ const cur = isoToday().slice(0, 7); if (value > cur) return; homeHistoryMonth = value; renderHome(); };
 window.setHomeView = function(mode){ homeViewMode = mode; renderHome(); };
@@ -1574,20 +1589,34 @@ function renderTechnicianReportTab(){
     }
   }
 
-  return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2"><span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span><div class="d-flex gap-1"><span class="badge bg-success">' + checkedCount + ' checked</span><span class="badge bg-warning text-dark">' + pendingCount + ' pending</span></div></div><div class="card-body">' +
+  return '<div class="card mb-3">' +
+    '<div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2">' +
+      '<span><i class="bi bi-file-earmark-text me-2"></i>Monthly Inspection Report</span>' +
+      '<div class="d-flex align-items-center gap-2">' +
+        '<span class="metric-pill is-ok" title="' + pct + '% of equipment checked this month"><i class="bi bi-check2-circle"></i>' + checkedCount + ' checked</span>' +
+        '<span class="metric-pill is-warn" title="Not checked yet this month"><i class="bi bi-hourglass-split"></i>' + pendingCount + ' pending</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card-body">' +
+
+    // 👇 CONTROLS TOOLBAR 👇
+    '<div class="rpt-toolbar">' +
     
     // Month Selector Row
-    '<div class="row g-2 align-items-center mb-3"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()"><i class="bi bi-chevron-left"></i></button></div><div class="col"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button></div></div>' +
+    '<div class="row g-2 align-items-end">' +
+      '<div class="col-12 col-lg-4">' +
+        '<label class="rpt-lbl"><i class="bi bi-calendar3 me-1"></i>Month</label>' +
+        '<div class="row g-1 align-items-center"><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportPrevMonth()" title="Previous month"><i class="bi bi-chevron-left"></i></button></div><div class="col" style="min-width:0;"><select class="form-select form-select-sm text-center fw-bold" onchange="onReportMonthChange(this.value)">' + monthSelectOptions + '</select></div><div class="col-auto"><button class="btn btn-sm btn-outline-secondary" onclick="reportNextMonth()"' + (ym === currentYM ? ' disabled' : '') + ' title="Next month"><i class="bi bi-chevron-right"></i></button></div></div>' +
+      '</div>' +
     
-    // 👇 DATE AND GROUP SELECTOR ROW 👇
-    '<div class="row g-2 align-items-end mb-3">' +
-      '<div class="col-12 col-md-6">' +
-        '<label class="small fw-bold text-muted mb-1"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label>' +
+    // 👇 DATE + GROUP COLUMNS (same row as month) 👇
+      '<div class="col-12 col-sm-6 col-lg-4">' +
+        '<label class="rpt-lbl"><i class="bi bi-calendar-event me-1"></i>Report Date (Date on)</label>' +
         '<input type="date" class="form-control form-control-sm" id="rptDateInput" value="' + escAttr(homeReportDate) + '" onchange="onReportDateChange(this.value)">' +
       '</div>' +
       (isManagerViewing ? 
-        '<div class="col-12 col-md-6">' +
-          '<label class="small fw-bold text-muted mb-1"><i class="bi bi-diagram-3 me-1"></i>Select Group</label>' +
+        '<div class="col-12 col-sm-6 col-lg-4">' +
+          '<label class="rpt-lbl"><i class="bi bi-diagram-3 me-1"></i>Select Group</label>' +
           '<select class="form-select form-select-sm fw-bold text-primary" onchange="onManagerReportGroupChange(this.value)">' +
             availableGroups.map(g => '<option value="' + escAttr(g) + '"' + (g === myGroup ? ' selected' : '') + '>' + esc(g) + '</option>').join('') +
           '</select>' +
@@ -1597,8 +1626,8 @@ function renderTechnicianReportTab(){
 
     // 👇 COMPANY SELECTOR (TCC&FCC only) – shown for Technician, Admin & Manager 👇
     (String(myGroup).trim() === 'TCC&FCC' ?
-      '<div class="row g-2 align-items-end mb-3"><div class="col-12">' +
-        '<label class="small fw-bold text-muted mb-1"><i class="bi bi-building me-1"></i>Select Company</label>' +
+      '<div class="row g-2 align-items-end mt-2"><div class="col-12">' +
+        '<label class="rpt-lbl"><i class="bi bi-building me-1"></i>Select Company</label>' +
         '<select class="form-select form-select-sm fw-bold text-primary" onchange="setTccCompany(this.value)">' +
           tccCompanySelectOptions() +
         '</select>' +
@@ -1607,24 +1636,24 @@ function renderTechnicianReportTab(){
 
     // Standard / After Inspection Toggle (Only for Trucks)
     (String(myGroup).trim() === 'រថយន្ត' ? 
-      '<div class="btn-group w-100 mb-2" role="group">' +
-        '<button type="button" class="btn ' + (window.techReportForm === 'standard' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i> Standard</button>' +
-        '<button type="button" class="btn ' + (window.techReportForm === 'after' ? 'btn-primary' : 'btn-outline-primary') + '" onclick="setTechReportForm(\'after\')"><i class="bi bi-table me-1"></i> After Inspection</button>' +
+      '<div class="tab-bar mt-2 mb-0" style="border-radius:8px;">' +
+        '<div class="tab' + (window.techReportForm === 'standard' ? ' active' : '') + '" style="flex:1 1 0;text-align:center;" onclick="setTechReportForm(\'standard\')"><i class="bi bi-list-ul me-1"></i>Standard</div>' +
+        '<div class="tab' + (window.techReportForm === 'after' ? ' active' : '') + '" style="flex:1 1 0;text-align:center;" onclick="setTechReportForm(\'after\')"><i class="bi bi-table me-1"></i>After Inspection</div>' +
       '</div>' 
     : '') +
 
     // Action Buttons
-    '<div class="d-flex gap-2 flex-wrap mb-2">' +
-      '<button class="btn btn-primary flex-fill" onclick="generateMonthlyReportPDF()"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</button>' +
-      '<button class="btn btn-outline-primary flex-fill" onclick="printMonthlyReport()"><i class="bi bi-printer me-1"></i>Print</button>' +
-      '<button class="btn btn-outline-secondary" id="btnZoomToggle" onclick="toggleReportZoom()" title="Toggle Zoom"><i class="bi bi-arrows-fullscreen"></i></button>' +
+    '<div class="d-flex flex-wrap gap-2 mt-2">' +
+      '<button class="btn btn-sm btn-primary flex-grow-1" onclick="generateMonthlyReportPDF()"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</button>' +
+      '<button class="btn btn-sm btn-outline-primary flex-grow-1" onclick="printMonthlyReport()"><i class="bi bi-printer me-1"></i>Print</button>' +
+      '<button class="btn btn-sm btn-outline-secondary" id="btnZoomToggle" onclick="toggleReportZoom()" title="Toggle Zoom"><i class="bi bi-arrows-fullscreen"></i></button>' +
     '</div>' +
 
     // Generate Missing PDFs
         // 👇 HIDE FOR MANAGER/DIRECTOR 👇
     (currentUser.role === 'manager' || currentUser.role === 'manager-viewer' ? '' : 
-      '<div class="d-flex gap-2 flex-wrap mb-3"><button class="btn btn-success flex-fill" onclick="generateMissingPdfs(\'' + ym + '\')"><i class="bi bi-cloud-arrow-up me-1"></i>Generate Missing PDFs to Drive</button></div>'
-    ) + '</div></div>' +  
+      '<div class="d-flex mt-2"><button class="btn btn-sm btn-outline-success flex-grow-1" onclick="generateMissingPdfs(\'' + ym + '\')"><i class="bi bi-cloud-arrow-up me-1"></i>Generate Missing PDFs to Drive</button></div>'
+    ) + '</div>' + '</div></div>' +  
     
     // Preview Wrapper
     '<div id="reportPreviewWrapper" style="background:#e9ecef; padding: 8px; border-radius:8px; width: 100%; display: flex; align-items: flex-start; overflow: hidden; transition: height 0.2s; position: relative;">' +
