@@ -709,7 +709,7 @@ function bootLoad(){
     const raw = LS.get(BOOTSTRAP_CACHE_KEY, '');
     if (raw) {
       const obj = JSON.parse(raw);
-      if (obj && obj.token === authToken && obj.user && obj.savedAt && (Date.now() - obj.savedAt < BOOTSTRAP_CACHE_TTL)) {
+      if (obj && obj.token === authToken && isMonthlyPayload(obj.monthly) && isDailyPayload(obj.daily) && obj.savedAt && (Date.now() - obj.savedAt < BOOTSTRAP_CACHE_TTL)) {
         cached = obj;
       } else if (obj && obj.token && obj.token !== authToken) {
         // Cache belongs to a different sign-in (or a previous user) — never reuse it
@@ -758,49 +758,76 @@ function fetchBothDatasets(silent){
   if (!authToken) return Promise.resolve();
   
   if (!silent) localStorage.removeItem('_gVersion'); 
-  
+
+  const tokenAtStart = authToken;
+  const getMonthly = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getBootstrapData(tokenAtStart));
+  const getDaily   = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getDailyBootstrapData(tokenAtStart));
+
   return new Promise((resolve) => {
-    const reqMonthly = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r({success:false})).getBootstrapData(authToken));
-    const reqDaily = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(e => r({success:false})).getDailyBootstrapData(authToken));
+    // Serial on purpose: two google.script.run calls in flight at the same time
+    // can deliver their responses to the wrong handler, and the daily payload
+    // used to overwrite / wipe the monthly (or daily) cache.
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; resolve(); } };
 
-    Promise.all([reqMonthly, reqDaily]).then(([resM, resD]) => {
-      if (!authToken) { resolve(); return; }
-      
+    const finish = (resM, resD) => {
+      if (!authToken || tokenAtStart !== authToken) { done(); return; }
       if (!silent) hideLoading();
-      
-      if (resM.unchanged && resD.unchanged) {
-         // 👇 If unchanged, resM still has notifications now!
-         if (resM.notifications) { APP.notifications = resM.notifications; updateNotifBadge(); }
-         resolve(); return;
-      }
-      
-      if (resM.unchanged || resD.unchanged) {
-         localStorage.removeItem('_gVersion'); 
-         fetchBothDatasets(silent).then(resolve);
-         return;
+
+      const mUnchanged = !!(resM && resM.unchanged) && !isMonthlyPayload(resM);
+      const dUnchanged = !!(resD && resD.unchanged) && !isDailyPayload(resD);
+
+      if (mUnchanged && (dUnchanged || !resD)) {
+        if (resM.notifications) { APP.notifications = resM.notifications; updateNotifBadge(); }
+        done(); return;
       }
 
-      if (!resM.success) { 
-        if(!silent) {
+      if (!isMonthlyPayload(resM)) {
+        // A "no change" stub is not an error — keep everything we already have
+        if (mUnchanged) {
+          if (isDailyPayload(resD)) applyDailyBootstrap(resD);
+          done(); return;
+        }
+        if (!silent) {
           showAlert('Load failed. Please check your internet or login again.', 'danger'); 
           authToken = null; LS.del('authToken'); LS.del(BOOTSTRAP_CACHE_KEY); showLogin(); 
         }
-        resolve(); return; 
+        done(); return;
       }
-      
-      applyBootstrap(resM, resD); // 👈 This handles the notifications automatically now!
+
+      applyBootstrap(resM, resD); // keeps the old daily data when resD is invalid
 
       lastSyncTime = Date.now();
       LS.set('lastSyncTime', lastSyncTime);
 
       if (!silent) {
-        try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: authToken, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+        if (isDailyPayload(resD)) {
+          try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: authToken, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+        }
         showApp();
       } else {
         if (safeToRefresh()) showPage($('#bottomNav a.active').data('page') || 'home');
       }
-      resolve(); 
-    });
+      done();
+    };
+
+    getMonthly().then(resM => {
+      if (!authToken || tokenAtStart !== authToken) { done(); return; }
+
+      // Version cache short-circuit → ask once more for the real payload
+      if (resM && resM.unchanged && !isMonthlyPayload(resM)) {
+        localStorage.removeItem('_gVersion');
+        return getMonthly().then(retry => getDaily().then(resD => finish(retry, resD)));
+      }
+      getDaily().then(resD => {
+        // Daily side did not arrive / was a "no change" stub → retry it once
+        if (!isDailyPayload(resD)) {
+          localStorage.removeItem('_gVersion');
+          return getDaily().then(retryD => finish(resM, isDailyPayload(retryD) ? retryD : null));
+        }
+        finish(resM, resD);
+      });
+    }).catch(() => { if (!silent) hideLoading(); done(); });
   });
 }
 
@@ -883,6 +910,9 @@ window.syncAllData = function(silent) {
         return;
       }
 
+      // Never apply a payload that is missing the session/user part
+      if (!isMonthlyPayload(resM)) { console.warn('[Sync] Unexpected monthly payload ignored'); return; }
+
       // 2. If we get here, Monthly data changed. Fetch Daily data too.
       google.script.run
         .withSuccessHandler(resD => {
@@ -905,8 +935,10 @@ window.syncAllData = function(silent) {
               updateLastSyncDisplay(); // Updates time for silent sync
             }
           } else {
-            // Hard update (manual refresh or initial load)
-            try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: authToken, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+            // Hard update (manual refresh or initial load) — only cache usable data
+            if (isDailyPayload(resD)) {
+              try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: authToken, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+            }
             showApp(); // (showApp calls showPage, which handles the UI update)
             fetchExtendedData(true);
           }
@@ -927,9 +959,36 @@ window.reloadAll = function() {
   syncAllData(true); 
 };
 
+/* ---------- Payload guards ----------
+   Two google.script.run calls fired together can, on some browsers, deliver
+   their responses to each other's success handler. Applying the daily payload
+   as if it were the monthly one (or the other way round) wiped
+   APP.dailySubmissions / APP.dailyTemplates (card flipped to "Start new
+   checklist", template "missing") and crashed on APP.user.username.
+   Every payload is now validated first and only then applied — an unexpected
+   payload changes nothing at all. */
+function isMonthlyPayload(res){
+  return !!(res && res.success === true && res.user && typeof res.user === 'object');
+}
+function isDailyPayload(res){
+  return !!(res && res.success === true && Array.isArray(res.dailySubmissions) &&
+            res.dailyTemplates && typeof res.dailyTemplates === 'object');
+}
+/* Apply only the daily half of the bootstrap (also used to self-heal a
+   missing template without touching the monthly data). */
+function applyDailyBootstrap(resD){
+  if (!isDailyPayload(resD)) return false;
+  APP.dailySubmissions = resD.dailySubmissions;
+  APP.dailyTemplates   = resD.dailyTemplates;
+  if (resD.dailySettings) APP.dailySettings = resD.dailySettings;
+  return true;
+}
+
 function applyBootstrap(resM, resD){
+  if (!isMonthlyPayload(resM)) return false;   // never half-apply a bad payload
+
   APP.user = resM.user; APP.scope = resM.scope || {}; 
-  if (APP.user) APP.user.role = String(APP.user.role || '').trim().toLowerCase();
+  APP.user.role = String(APP.user.role || '').trim().toLowerCase();
   APP.users = resM.users || []; 
   APP.equipment = resM.equipment || []; APP.trailers = resM.trailers || [];
   APP.templates = resM.templates || {}; APP.submissions = resM.submissions || [];
@@ -940,16 +999,13 @@ function applyBootstrap(resM, resD){
   APP.assignments = resM.assignments || [];
   APP.filterOptions = resM.filterOptions || { groups: [], equipmentIds: [], drivers: [] };
 
-    if (resM.notifications) {
+  if (resM.notifications) {
     APP.notifications = resM.notifications;
     updateNotifBadge();
   }
-  // Daily Data
-  if (resD && resD.success) {
-    APP.dailySubmissions = resD.dailySubmissions || [];
-    APP.dailyTemplates = resD.dailyTemplates || {};
-    if (resD.dailySettings) APP.dailySettings = resD.dailySettings;
-  }
+
+  // Daily data — kept intact when the daily payload did not arrive
+  applyDailyBootstrap(resD);
 
   APP.equipmentMap = {};
   APP.equipment.forEach(e => { APP.equipmentMap[e.equipmentId] = e; });
@@ -960,6 +1016,7 @@ function applyBootstrap(resM, resD){
     group: APP.user.group, equipment: APP.user.equipment || [], 
     fullName: APP.user.fullName 
   };
+  return true;
 }
 
 function refreshCurrentPage(){
@@ -983,27 +1040,63 @@ function repaintCurrentPage(){
 }
 
 /* Pull monthly + daily bootstrap after a daily action, then repaint.
-   Unlike fetchBothDatasets(silent) this always refreshes APP and always
-   repaints, so a submitted / finished / handed-over shift shows up at once. */
+   Serial calls (never in parallel) + validated payloads, so a slow or failed
+   request can never wipe the checklist that is already on screen. */
 let _dailySyncSeq = 0;
 function dailySyncNow(){
   if (!authToken) return Promise.resolve();
   const seq = ++_dailySyncSeq;
+  const tokenAtStart = authToken;
+
+  const getMonthly = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r(null)).getBootstrapData(tokenAtStart));
+  const getDaily   = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r(null)).getDailyBootstrapData(tokenAtStart));
+
   return new Promise(resolve => {
-    const reqM = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getBootstrapData(authToken));
-    const reqD = new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false })).getDailyBootstrapData(authToken));
-    Promise.all([reqM, reqD]).then(([resM, resD]) => {
-      if (!authToken || seq !== _dailySyncSeq) { resolve(); return; }
-      if (!resM || !resM.success || !resD || !resD.success) { resolve(); return; }
-      applyBootstrap(resM, resD);
+    const stale = () => !authToken || seq !== _dailySyncSeq;
+    const done = () => resolve();
+
+    getMonthly().then(resM => {
+      if (stale()) { done(); return; }
+      const again = (resM && resM.unchanged && !isMonthlyPayload(resM)) ? getMonthly() : Promise.resolve(resM);
+      return again.then(resM2 => {
+        if (stale()) { done(); return; }
+        return getDaily().then(resD => {
+          if (stale()) { done(); return; }
+          const retry = (resD && resD.unchanged && !isDailyPayload(resD)) ? getDaily() : Promise.resolve(resD);
+          return retry.then(resD2 => {
+            if (stale()) { done(); return; }
+            finish(resM2, resD2);
+          });
+        });
+      });
+    }).catch(() => done());
+
+    function finish(resM, resD) {
+      // Apply whatever arrived in a valid shape — an invalid/absent half keeps
+      // the data we already have instead of clearing it.
+      const okM = applyBootstrap(resM, resD);
+      if (!okM) applyDailyBootstrap(resD);
+
       lastSyncTime = Date.now();
       LS.set('lastSyncTime', lastSyncTime);
-      try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: authToken, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+      if (okM && isDailyPayload(resD) && resM && !resM.unchanged) {
+        try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: tokenAtStart, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+      }
       repaintCurrentPage();
       updateLastSyncDisplay();
-      resolve();
-    });
+      done();
+    }
   });
+}
+
+/* Reload only the daily half of the bootstrap (used when a template or a
+   submission is missing from memory after a failed sync). */
+function reloadDailyData(cb){
+  if (!authToken) { if (cb) cb(false); return; }
+  google.script.run
+    .withSuccessHandler(res => { const ok = applyDailyBootstrap(res); if (cb) cb(ok); })
+    .withFailureHandler(() => { if (cb) cb(false); })
+    .getDailyBootstrapData(authToken);
 }
 
 function safeToRefresh(){
@@ -6861,16 +6954,12 @@ window.startDailyChecklist = function(equipmentId, group, shortName){
 
 // Weekly check (every 7 days): a plain form — no operating state, no handover, no meter inheritance
 window.startWeeklyChecklist = function(equipmentId, group, shortName){
-  const items = dailyTplItems(group, DAILY_FREQ_WEEKLY);
-  if (!items.length) {
-    showAlert('No weekly items in the template for group: ' + (group || '—') + '. Add rows with Frequency = Weekly.', 'danger');
-    return;
-  }
   const info = dailyWeeklyInfo(equipmentId);
   if (!info.due && info.last) {
     showAlert('Weekly check already done on ' + info.last.date + ' — next due ' + info.nextDate, 'info');
     return;
   }
+  // loadAndRenderDailyForm self-heals a template that is missing from memory
   loadAndRenderDailyForm(equipmentId, group, shortName, '', '', null, DAILY_FREQ_WEEKLY);
 };
 
@@ -6883,7 +6972,17 @@ function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, hand
       : (type === DAILY_FREQ_FINISH)
         ? 'No Finished Form items in the template for group: ' + (group || '—') + '. Add rows with Frequency = Finish.'
         : 'No template for group: ' + (group || '—');
-    showAlert(hint, 'danger');
+    // The template may only be missing from memory (a sync that did not arrive).
+    // Reload the daily data once and retry before telling the user it is missing.
+    showLoading('កំពុងផ្ទុក template...');
+    reloadDailyData(ok => {
+      hideLoading();
+      if (dailyTplItems(group, type).length) {
+        loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, handoverRemark, prevSub, type);
+        return;
+      }
+      showAlert(ok ? hint : 'Could not load the checklist data. Check your connection and try again.', 'danger');
+    });
     return;
   }
   const starts = (type === DAILY_FREQ_DAILY) ? dailyShiftStartValues(prevSub) : { odo: '', hour: '' };
@@ -6985,18 +7084,18 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
         '</div>' +
       '</div></div>' +
 
-      '<div class="card mb-3"><div class="group-header"><i class="bi bi-truck me-2"></i>Shift details</div><div class="card-body py-3"><div class="row g-3">' +
-        '<div class="col-6"><div class="small text-muted">Last Driver</div><strong><i class="bi bi-person me-1"></i>'+esc(prev.driverName)+'</strong></div>' +
-        '<div class="col-6"><div class="small text-muted">When</div><strong><i class="bi bi-calendar me-1"></i>'+esc(prev.date)+' '+esc(prev.time)+'</strong></div>' +
-        '<div class="col-6"><div class="small text-muted">Equipment</div><strong>'+esc(prev.equipmentId)+'</strong></div>' +
-        '<div class="col-6"><div class="small text-muted">Result</div><span class="status-badge status-'+overallCls+'" style="min-width:auto;">'+overallLbl+'</span></div>' +
-      '</div></div></div>' +
-
       '<div class="row g-2 mb-3">' +
-        '<div class="col-4"><div class="stat-card"><div class="num text-success">'+okCount+'</div><div class="lbl">OK</div></div></div>' +
-        '<div class="col-4"><div class="stat-card"><div class="num text-danger">'+nokCount+'</div><div class="lbl">NOT OK</div></div></div>' +
-        '<div class="col-4"><div class="stat-card"><div class="num text-secondary">'+naCount+'</div><div class="lbl">N/A</div></div></div>' +
+        dailyInfoCard('truck', esc(group || 'ឧបករណ៍'),
+          '<div>' + esc(shortName) + '</div>' +
+          '<div class="small text-muted fw-normal mt-1">' + esc(prev.equipmentId) + '</div>', 'primary') +
+        dailyInfoCard('person', 'អ្នកបើកបរ', dailyInfoCardName(prev.driverName, ''), 'success') +
+        dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(prev.date) + ' ' + esc(prev.time), 'warning') +
+        dailyInfoCard('clipboard-check', 'លទ្ធផល',
+          '<span class="status-badge status-'+overallCls+'" style="min-width:auto;">'+overallLbl+'</span>', 'info') +
       '</div>' +
+
+      dailyCountCards(okCount, nokCount, 'handover') +
+      '<div class="small text-muted mb-3"><i class="bi bi-dash-circle me-1"></i>' + naCount + ' N/A items in this checklist</div>' +
       issuesHtml +
       (prev.remark ? '<div class="card mb-3"><div class="card-body"><div class="small text-muted">Remark</div><div>'+esc(prev.remark)+'</div></div></div>' : '') +
     '</div>'
@@ -7040,6 +7139,60 @@ window.confirmDailyHandover = function(equipmentId, group, shortName, prevCheckI
 /* =========================================================
    DAILY CHECKLIST FORM
    ========================================================= */
+/* Monthly-style white info card: small label on top, bold value underneath */
+function dailyInfoCard(icon, label, valueHtml, color){
+  return '<div class="col-6"><div class="p-3 border rounded-3 bg-white h-100 shadow-sm daily-info-card">' +
+    '<div class="d-flex align-items-center mb-2">' +
+      '<i class="bi bi-' + icon + ' text-' + (color || 'primary') + ' me-2" style="font-size:1.1rem;"></i>' +
+      '<span class="text-muted small" style="letter-spacing:.5px;font-family:\'Battambang\',\'Kantumruy Pro\',sans-serif;font-weight:400;">' + label + '</span>' +
+    '</div>' +
+    '<div class="text-dark" style="font-size:1rem;font-family:\'Battambang\',\'Kantumruy Pro\',sans-serif;font-weight:700;">' + (valueHtml || '-') + '</div>' +
+  '</div></div>';
+}
+
+function dailyInfoCardName(name, phone){
+  return '<div>' + esc(name || '—') + '</div>' +
+    (phone ? '<div class="small text-muted fw-normal mt-1" style="font-size:.85rem;"><i class="bi bi-telephone me-1"></i>' + esc(phone) + '</div>' : '');
+}
+
+/* Live N – Normal / Issues counters above the items (same two cards as the
+   monthly checklist, they follow every OK / NOT OK / N/A tap) */
+function dailyCountCards(okCount, nokCount, idPrefix){
+  const p = idPrefix || 'daily';
+  return '<div class="row g-2 mb-3">' +
+    '<div class="col-6"><div class="stat-card"><div class="num text-success" id="' + p + 'NormalCount">' + okCount + '</div><div class="lbl">N – Normal</div></div></div>' +
+    '<div class="col-6"><div class="stat-card"><div class="num text-danger" id="' + p + 'IssueCount">' + nokCount + '</div><div class="lbl">Issues</div></div></div>' +
+  '</div>';
+}
+
+function dailyAnswerCounts(state){
+  const list = Object.keys((state && state.checks) || (state && state.answers) || {}).map(k => {
+    const v = ((state.checks || state.answers) || {})[k];
+    return v && v.status;
+  });
+  return {
+    ok:  list.filter(s => s === 'ok').length,
+    nok: list.filter(s => s === 'nok').length,
+    na:  list.filter(s => s === 'na').length
+  };
+}
+
+function updateDailyFormCounts(){
+  if (!pendingDailyChecklist) return;
+  const n = dailyAnswerCounts(pendingDailyChecklist);
+  $('#dailyNormalCount').text(n.ok);
+  $('#dailyIssueCount').text(n.nok);
+  $('#dailyNaCount').text(n.na + ' N/A');
+}
+
+function updateDailyFinishCounts(){
+  if (!dailyFinishState) return;
+  const n = dailyAnswerCounts({ answers: dailyFinishState.answers });
+  $('#dailyFinishNormalCount').text(n.ok);
+  $('#dailyFinishIssueCount').text(n.nok);
+  $('#dailyFinishNaCount').text(n.na + ' N/A');
+}
+
 function renderDailyChecklistForm(){
   const c = pendingDailyChecklist;
   if (!c) return;
@@ -7081,13 +7234,17 @@ function renderDailyChecklistForm(){
 
   // Agreement gate — monthly-style confirmation block (wording from Settings: DriverAgreement)
   const agreementHtml =
-    '<div class="card mb-3 confirm-box ' + (c.agreed ? '' : 'confirm-pending') + '" id="dailyAgreementBox">' +
-      '<div class="group-header d-flex justify-content-between align-items-center">' +
-        '<span><i class="bi bi-shield-check me-2"></i>Driver Confirmation</span>' +
-        '<span class="status-badge ' + (c.agreed ? 'status-ok' : 'status-pending') + '" id="dailyAgreementBadge">' + (c.agreed ? 'Confirmed' : 'Required') + '</span>' +
+    '<div class="card mb-3 confirm-box ' + (c.agreed ? '' : 'confirm-pending') + '" id="dailyAgreementBox" style="border-left:4px solid ' + (c.agreed ? '#198754' : '#ffc107') + ';">' +
+      '<div class="group-header d-flex justify-content-between align-items-center" style="background:transparent;border-bottom:1px solid var(--border-color);">' +
+        '<span><i class="bi bi-chat-left-text me-2 ' + (c.agreed ? 'text-success' : 'text-warning') + '" id="dailyAgreementIcon"></i>Driver Confirmation</span>' +
+        '<span class="status-badge ' + (c.agreed ? 'status-ok' : 'status-pending') + '" id="dailyAgreementBadge">' + (c.agreed ? 'Confirmed' : 'Pending') + '</span>' +
       '</div>' +
       '<div class="card-body">' +
-        '<div class="form-check">' +
+        '<div class="small fw-bold mb-2 ' + (c.agreed ? 'text-success' : 'text-warning') + '" id="dailyAgreementState">' +
+          '<i class="bi bi-' + (c.agreed ? 'check2-circle' : 'hourglass-split') + ' me-1"></i>' +
+          (c.agreed ? 'Driver confirmed the safety agreement' : 'Waiting for Driver to confirm') +
+        '</div>' +
+        '<div class="form-check mb-0">' +
           '<input class="form-check-input" type="checkbox" id="dailyAgree" ' + (c.agreed ? 'checked' : '') + ' onchange="toggleDailyAgreement(this.checked)">' +
           '<label class="form-check-label small" for="dailyAgree">' + esc(dailyAgreementText()) + '</label>' +
         '</div>' +
@@ -7106,26 +7263,37 @@ function renderDailyChecklistForm(){
       '</div>' +
     '</div>';
 
+  const counts = dailyAnswerCounts(c);
+  const myPhone = (currentUser && currentUser.phone) ? currentUser.phone : '';
+  const trl = (APP.trailers || []).find(t => t.trailerId && String(t.trailerId) === String(eq.trailerId || ''));
+
   const headerCard =
-    '<div class="card mb-3"><div class="card-body">' +
-      '<h5 class="mb-1">' + esc(c.shortName || c.equipmentId) + typeBadge + '</h5>' +
-      '<div class="small text-muted mb-0">' + esc(c.equipmentId) + ' · ' + esc(c.group) +
-        (eq.model ? ' · ' + esc(eq.model) : '') +
-        (eq.specificGroup ? ' - ' + esc(eq.specificGroup) : '') + '</div>' +
-      '<div class="small text-primary mt-2"><i class="bi bi-person me-1"></i>' + esc(currentUser.fullName) + '</div>' +
-      '<div class="small text-muted mt-1"><i class="bi bi-list-check me-1"></i>' + c.items.length + ' items · ' + esc(dmyToday()) + '</div>' +
-      startLine + handoverChip +
-    '</div></div>';
+    '<div class="row g-2 mb-3">' +
+      dailyInfoCard('truck', esc(c.group || 'ឧបករណ៍'),
+        '<div>' + esc(c.shortName || c.equipmentId) + typeBadge + '</div>' +
+        '<div class="small text-muted fw-normal mt-1">' + esc(c.equipmentId) +
+          (eq.model ? ' · ' + esc(eq.model) : '') +
+          (eq.specificGroup ? ' - ' + esc(eq.specificGroup) : '') + '</div>', 'primary') +
+      (trl ? dailyInfoCard('link', 'រ៉ឺម៉ក', esc(trl.shortName || trl.trailerId), 'secondary') : '') +
+      dailyInfoCard('person', 'អ្នកត្រួតពិនិត្យ', dailyInfoCardName((currentUser && currentUser.fullName) || '', myPhone), 'success') +
+      (c.prevDriverName ? dailyInfoCard('person-badge', 'អ្នកបើកបរ (រង្វង់មុន)', esc(c.prevDriverName), 'info') : '') +
+      dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(dmyToday()) + ' ' + esc(nowTimeStr()), 'warning') +
+      dailyInfoCard('list-check', 'ចំនួនចំណុច',
+        '<div>' + c.items.length + ' items</div>' +
+        '<div class="small text-muted fw-normal mt-1">' + (isWeekly ? 'Weekly Check' : 'Daily Checklist') + '</div>', 'secondary') +
+    '</div>' +
+    ((startLine || handoverChip) ? '<div class="mb-3">' + startLine + handoverChip + '</div>' : '');
 
   $('#app').html(
     '<div class="container-fluid px-0 daily-form-page">' +
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyChecklist()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
       headerCard +
-      legendHtml +
+      dailyCountCards(counts.ok, counts.nok, 'daily') +
       agreementHtml +
+      legendHtml +
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-clipboard-check me-2"></i>' + title + '</span>' +
-        '<small class="text-muted">' + c.items.length + ' items</small>' +
+        '<small class="text-muted">' + c.items.length + ' items · <span id="dailyNaCount">' + counts.na + ' N/A</span></small>' +
       '</div><div class="card-body p-2">' + itemsHtml + '</div></div>' +
       '<div class="card mb-3"><div class="card-body">' +
         '<label class="form-label fw-bold">Remark</label>' +
@@ -7161,9 +7329,15 @@ window.toggleDailyAgreement = function(checked){
   pendingDailyChecklist.agreed = !!checked;
   const $box = $('#dailyAgreementBox');
   $box.toggleClass('confirm-pending', !checked);
+  $box.css('border-left-color', checked ? '#198754' : '#ffc107');
+  $('#dailyAgreementIcon').removeClass('text-success text-warning').addClass(checked ? 'text-success' : 'text-warning');
   $('#dailyAgreementBadge').removeClass('status-ok status-pending')
     .addClass(checked ? 'status-ok' : 'status-pending')
-    .text(checked ? 'Confirmed' : 'Required');
+    .text(checked ? 'Confirmed' : 'Pending');
+  $('#dailyAgreementState')
+    .removeClass('text-success text-warning').addClass(checked ? 'text-success' : 'text-warning')
+    .html('<i class="bi bi-' + (checked ? 'check2-circle' : 'hourglass-split') + ' me-1"></i>' +
+          (checked ? 'Driver confirmed the safety agreement' : 'Waiting for Driver to confirm'));
 };
 
 function renderCheckPhotos(){
@@ -7189,6 +7363,7 @@ window.setDailyCheck = function(itemId, status){
   $item.find('.check-btn').removeClass('selected-ok selected-nok selected-na');
   $item.find('.check-btn').eq(status==='ok'?0:status==='nok'?1:2).addClass('selected-'+status);
   $item.find('.nok-note').toggleClass('visible', status !== 'ok');
+  updateDailyFormCounts();
 };
 
 window.setDailyNokNote = function(itemId, val){
@@ -7354,6 +7529,7 @@ window.setDailyFinishCheck = function(itemId, status){
   $item.find('.check-btn').removeClass('selected-ok selected-nok selected-na');
   $item.find('.check-btn').eq(status==='ok'?0:status==='nok'?1:2).addClass('selected-'+status);
   $item.find('.nok-note').toggleClass('visible', status !== 'ok');
+  updateDailyFinishCounts();
 };
 
 window.setDailyFinishNote = function(itemId, val){
@@ -7367,9 +7543,6 @@ window.openDailyFinishForm = function(checkId){
   const eq = APP.equipmentMap[s.equipmentId] || {};
   const startOdo  = (s.startOdo === '' || s.startOdo == null) ? '' : dailyNumText(s.startOdo);
   const startHour = (s.startHour === '' || s.startHour == null) ? '' : dailyNumText(s.startHour);
-  const startTxt  = (startOdo !== '' || startHour !== '')
-    ? ' · Start Odometer ' + (startOdo || '—') + ' · Start OPHour ' + (startHour || '—')
-    : '';
 
   const items = dailyTplItems(s.group, DAILY_FREQ_FINISH);
   const answers = {};
@@ -7401,28 +7574,41 @@ window.openDailyFinishForm = function(checkId){
       }).join('')
     : '<div class="text-muted small text-center py-3">No Finished Form items configured for this group.</div>';
 
-  const meterHtml =
-    '<div class="card mb-3"><div class="group-header"><i class="bi bi-speedometer2 me-2"></i>End Meters</div><div class="card-body">' +
-      '<div class="row g-2">' +
-        '<div class="col-6"><label class="form-label small fw-bold mb-1">End Odometer</label>' +
-          '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndOdo" placeholder="0.0" value="' + escAttr((s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo) + '">' +
+  const weeklyItems = dailyTplItems(s.group, DAILY_FREQ_WEEKLY);
+  const weekCounts = dailyAnswerCounts({ answers: answers });
+  const infoGrid =
+    '<div class="row g-2 mb-3">' +
+      dailyInfoCard('truck', esc(s.group || 'ឧបករណ៍'),
+        '<div>' + esc(eq.shortName || s.equipmentId) + '<span class="badge bg-danger ms-2">Finished Form</span></div>' +
+        '<div class="small text-muted fw-normal mt-1">' + esc(s.equipmentId) +
+          (eq.model ? ' · ' + esc(eq.model) : '') + '</div>', 'primary') +
+      dailyInfoCard('person', 'អ្នកបើកបរ', dailyInfoCardName(s.driverName, ''), 'success') +
+      dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(s.date) + ' ' + esc(s.time), 'warning') +
+      '<div class="col-12"><div class="p-3 border rounded-3 bg-white h-100 shadow-sm daily-info-card">' +
+        '<div class="d-flex align-items-center mb-2">' +
+          '<i class="bi bi-speedometer2 text-info me-2" style="font-size:1.1rem;"></i>' +
+          '<span class="text-muted small" style="letter-spacing:.5px;font-family:\'Battambang\',\'Kantumruy Pro\',sans-serif;font-weight:400;">ម៉ែត្រចុងក្រោយ · End Meters</span>' +
         '</div>' +
-        '<div class="col-6"><label class="form-label small fw-bold mb-1">End OPHour</label>' +
-          '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndHour" placeholder="0.0" value="' + escAttr((s.endHour === '' || s.endHour == null) ? '' : s.endHour) + '">' +
+        '<div class="row g-2">' +
+          '<div class="col-6"><label class="form-label small fw-bold mb-1">End Odometer</label>' +
+            '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndOdo" placeholder="0.0" value="' + escAttr((s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo) + '">' +
+            '<div class="small text-muted mt-1">Start: ' + esc(startOdo || '—') + '</div>' +
+          '</div>' +
+          '<div class="col-6"><label class="form-label small fw-bold mb-1">End OPHour</label>' +
+            '<input type="number" step="0.1" min="0" class="form-control form-control-sm" id="dailyEndHour" placeholder="0.0" value="' + escAttr((s.endHour === '' || s.endHour == null) ? '' : s.endHour) + '">' +
+            '<div class="small text-muted mt-1">Start: ' + esc(startHour || '—') + '</div>' +
+          '</div>' +
         '</div>' +
-      '</div>' +
-      '<div class="op-finish-tip text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Fill at least one meter. After submitting, the equipment becomes <strong>Waiting Handover</strong> and your shift ends.</div>' +
-    '</div></div>';
+      '</div></div>' +
+    '</div>' +
+    '<div class="op-finish-tip text-muted mb-3"><i class="bi bi-info-circle me-1"></i>Fill at least one end meter. After submitting, the equipment becomes <strong>Waiting Handover</strong> and your shift ends.</div>' +
+    (weeklyItems.length ? '<div class="small text-muted mb-3"><i class="bi bi-calendar-week me-1"></i>' + weeklyItems.length + ' weekly items are part of this group (Weekly check stays separate).</div>' : '');
 
   $('#app').html(
     '<div class="container-fluid px-0 daily-form-page">' +
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyFinish()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
-      '<div class="card mb-3"><div class="card-body">' +
-        '<h5 class="mb-1">' + esc(eq.shortName || s.equipmentId) + '<span class="badge bg-danger ms-2">Finished Form</span></h5>' +
-        '<div class="small text-muted mb-0">' + esc(s.equipmentId) + ' · ' + esc(s.group) + '</div>' +
-        '<div class="small text-primary mt-2"><i class="bi bi-person me-1"></i>' + esc(s.driverName) + '</div>' +
-        '<div class="small text-muted mt-1"><i class="bi bi-clock-history me-1"></i>Shift started ' + esc(s.date) + ' ' + esc(s.time) + esc(startTxt) + '</div>' +
-      '</div></div>' +
+      infoGrid +
+      dailyCountCards(weekCounts.ok, weekCounts.nok, 'dailyFinish') +
       '<div class="card mb-3 legend-card">' +
         '<div class="legend-title">FINISHED FORM</div>' +
         '<div class="legend-body text-center">' +
@@ -7430,10 +7616,9 @@ window.openDailyFinishForm = function(checkId){
           '<div class="lbl-kh"><span class="acronym">OK</span>=ធម្មតា &nbsp; <span class="acronym">NOT OK</span>=មានបញ្ហា (សូមចំណាំ) &nbsp; <span class="acronym">N/A</span>=មិនពាក់ព័ន្ធ</div>' +
         '</div>' +
       '</div>' +
-      meterHtml +
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-clipboard2-check me-2"></i>Finished Form items</span>' +
-        '<small class="text-muted">' + items.length + ' items</small>' +
+        '<small class="text-muted">' + items.length + ' items · <span id="dailyFinishNaCount">' + weekCounts.na + ' N/A</span></small>' +
       '</div><div class="card-body p-2">' + itemsHtml + '</div></div>' +
       '<div class="card mb-3"><div class="card-body">' +
         '<label class="form-label fw-bold">Final Remark</label>' +
@@ -7739,23 +7924,25 @@ function renderDailyDetailModal(s) {
   const nokCount = enriched.filter(c => c.status === 'nok').length;
   const naCount  = enriched.filter(c => c.status === 'na').length;
 
+  const drv = (APP.users || []).find(u => u.username === s.username) || {};
+  const trl = (APP.trailers || []).find(t => t.trailerId && String(t.trailerId) === String((APP.equipmentMap[s.equipmentId] || {}).trailerId || ''));
+
   const info =
     '<div class="p-3">' +
-      '<div class="card mb-3"><div class="card-body p-0"><div class="row g-0">' +
-        infoCell('bi-truck', 'Equipment', s.equipmentId, 'primary') +
-        infoCell('bi-people', 'Driver', s.driverName, 'success') +
-        infoCell('bi-tag', 'Group', s.group, 'info') +
-        infoCell('bi-calendar', 'Date', (s.date || '') + ' ' + (s.time || ''), 'warning') +
-      '</div></div></div>' +
+      '<div class="row g-2 mb-3">' +
+        dailyInfoCard('truck', esc(s.group || 'ឧបករណ៍'), esc(eqShort(s.equipmentId)), 'primary') +
+        (trl ? dailyInfoCard('link', 'រ៉ឺម៉ក', esc(trl.shortName || trl.trailerId), 'secondary') : '') +
+        dailyInfoCard('person', 'អ្នកត្រួតពិនិត្យ', dailyInfoCardName(drv.fullName || s.driverName, drv.phone || ''), 'success') +
+        dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(s.date || '') + ' ' + esc(s.time || ''), 'warning') +
+      '</div>' +
+
+      '<div class="row g-2 mb-3">' +
+        '<div class="col-6"><div class="stat-card" data-filter="ok" onclick="filterDailyDetailItems(\'ok\')"><div class="num text-success">'+okCount+'</div><div class="lbl">N – Normal</div></div></div>' +
+        '<div class="col-6"><div class="stat-card" data-filter="nok" onclick="filterDailyDetailItems(\'nok\')"><div class="num text-danger">'+nokCount+'</div><div class="lbl">Issues</div></div></div>' +
+      '</div>' +
 
       dailyOpSectionHtml(s) +
       dailyFinishChecksHtml(s) +
-
-      '<div class="row g-2 mb-3">' +
-        '<div class="col-4"><div class="stat-card" data-filter="ok" onclick="filterDailyDetailItems(\'ok\')"><div class="num text-success">'+okCount+'</div><div class="lbl">OK</div></div></div>' +
-        '<div class="col-4"><div class="stat-card" data-filter="nok" onclick="filterDailyDetailItems(\'nok\')"><div class="num text-danger">'+nokCount+'</div><div class="lbl">NOT OK</div></div></div>' +
-        '<div class="col-4"><div class="stat-card" data-filter="na" onclick="filterDailyDetailItems(\'na\')"><div class="num text-secondary">'+naCount+'</div><div class="lbl">N/A</div></div></div>' +
-      '</div>' +
 
       (s.reviewedBy
         ? (s.reviewedRemark
@@ -7768,7 +7955,7 @@ function renderDailyDetailModal(s) {
       '<div class="card mb-3">' +
         '<div class="group-header d-flex justify-content-between align-items-center">' +
           '<span><i class="bi bi-list-check me-2"></i>Items</span>' +
-          '<small class="text-muted" id="detailItemCount">'+enriched.length+' shown</small>' +
+          '<small class="text-muted"><span id="detailItemCount">'+enriched.length+' shown</span>' + (naCount ? ' · ' + naCount + ' N/A' : '') + '</small>' +
         '</div>' +
         '<div class="card-body p-2" id="dailyDetailItemsList">' +
           enriched.map((c, i) => {
