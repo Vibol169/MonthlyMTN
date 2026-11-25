@@ -7609,9 +7609,9 @@ function renderDailyChecklistForm(){
   $('#app').html(
     '<div class="container-fluid px-0 daily-form-page">' +
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyChecklist()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
+      agreementHtml +
       headerCard +
       dailyCountCards(counts.ok, counts.nok, 'daily') +
-      agreementHtml +
       legendHtml +
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-clipboard-check me-2"></i>' + title + '</span>' +
