@@ -7122,24 +7122,80 @@ function dailyOpSectionHtml(s){
   const isOwner = s.username === (currentUser && currentUser.username);
   const active = dailyIsOpenOp(info.status);
 
-  let html = '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center"><span><i class="bi bi-activity me-2"></i>Operational Status</span>' + dailyOpBadge(s.opStatus) + '</div><div class="card-body py-2">';
-  if (s.opAt) html += '<div class="small text-muted mb-1"><i class="bi bi-clock-history me-1"></i>Updated ' + esc(s.opAt) + (s.opBy ? ' · ' + esc(dailyUserLabel(s.opBy)) : '') + '</div>';
-  html += dailyKvRow('Start Odometer', (s.startOdo === '' || s.startOdo == null) ? '' : dailyNumText(s.startOdo));
-  html += dailyKvRow('Start OPHour', (s.startHour === '' || s.startHour == null) ? '' : dailyNumText(s.startHour));
-  html += dailyKvRow('End Odometer', (s.endOdo === '' || s.endOdo == null) ? '' : dailyNumText(s.endOdo));
-  html += dailyKvRow('End OPHour', (s.endHour === '' || s.endHour == null) ? '' : dailyNumText(s.endHour));
-  if (s.endRemark) html += '<div class="small mt-2"><span class="text-muted">Final Remark</span><div>' + esc(s.endRemark) + '</div></div>';
+  // Calculate Nets (Difference between Start and End)
+  const startOdo  = parseFloat(s.startOdo) || 0;
+  const endOdo    = parseFloat(s.endOdo) || 0;
+  const startHour = parseFloat(s.startHour) || 0;
+  const endHour   = parseFloat(s.endHour) || 0;
+
+  const netOdo  = (s.startOdo !== '' && s.endOdo !== '' && endOdo >= startOdo) ? (endOdo - startOdo) : null;
+  const netHour = (s.startHour !== '' && s.endHour !== '' && endHour >= startHour) ? (endHour - startHour) : null;
+
+  // Helper to format numbers (removes trailing .0 if integer)
+  const fmt = (val, isNet) => {
+    if (val === null || isNaN(val)) return '—';
+    let txt = Number.isInteger(val) ? val.toString() : val.toFixed(1);
+    return isNet && val > 0 ? '+' + txt : txt;
+  };
+
+  // CSS for the clean table layout
+  const tableStyle = 'width:100%; border-collapse:collapse; font-size:.82rem; text-align:center;';
+  const thStyle = 'padding:6px; background:var(--bg-color); border-bottom:2px solid var(--border-color); color:var(--tab-text); font-weight:700; font-size:.72rem;';
+  const tdStyle = 'padding:6px; border-bottom:1px dashed var(--border-color); font-weight:600; color:var(--text-color);';
+  const tdNetStyle = 'padding:6px; border-bottom:1px dashed var(--border-color); font-weight:800; color:var(--tab-active);';
+
+  let html = '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center"><span><i class="bi bi-activity me-2"></i>ស្ថានភាពប្រតិបត្តិការ (Operational Status)</span>' + dailyOpBadge(s.opStatus) + '</div><div class="card-body py-2 px-2">';
+  
+  if (s.opAt) html += '<div class="small text-muted mb-3"><i class="bi bi-clock-history me-1"></i>Updated ' + esc(s.opAt) + (s.opBy ? ' · ' + esc(dailyUserLabel(s.opBy)) : '') + '</div>';
+  
+  // 👇 NEW TABLE VIEW 👇
+  html += '<table style="' + tableStyle + '">' +
+    '<thead><tr>' +
+      '<th style="' + thStyle + ' text-align:left; padding-left:12px;">Start</th>' +
+      '<th style="' + thStyle + '">End</th>' +
+      '<th style="' + thStyle + '">Net</th>' +
+    '</tr></thead>' +
+    '<tbody>' +
+      '<tr>' +
+        '<td style="' + tdStyle + ' text-align:left; padding-left:12px;"><i class="bi bi-speedometer2 me-1 text-muted"></i>អូដូម៉ែត្រ (Odo)</td>' +
+        '<td style="' + tdStyle + '">' + fmt(startOdo) + '</td>' +
+        '<td style="' + tdStyle + '">' + fmt(endOdo) + '</td>' +
+        '<td style="' + tdNetStyle + '">' + fmt(netOdo, true) + '</td>' +
+      '</tr>' +
+      '<tr>' +
+        '<td style="' + tdStyle + ' text-align:left; padding-left:12px;"><i class="bi bi-hourglass-split me-1 text-muted"></i>ម៉ោង (OPHour)</td>' +
+        '<td style="' + tdStyle + '">' + fmt(startHour) + '</td>' +
+        '<td style="' + tdStyle + '">' + fmt(endHour) + '</td>' +
+        '<td style="' + tdNetStyle + '">' + fmt(netHour, true) + '</td>' +
+      '</tr>' +
+    '</tbody>' +
+  '</table>';
+
+  // 👇 Moved Table Headers to match the Row Layout properly 👇
+  html = html.replace('<thead><tr><th style="' + thStyle + ' text-align:left; padding-left:12px;">Start</th><th style="' + thStyle + '">End</th><th style="' + thStyle + '">Net</th></tr></thead>', 
+    '<thead><tr>' +
+      '<th style="' + thStyle + ' text-align:left; padding-left:12px;">ប្រភេទ (Type)</th>' +
+      '<th style="' + thStyle + '">Start</th>' +
+      '<th style="' + thStyle + '">End</th>' +
+      '<th style="' + thStyle + '">Net</th>' +
+    '</tr></thead>'
+  );
+
+
+  if (s.endRemark) html += '<div class="small mt-3"><span class="text-muted">Final Remark</span><div>' + esc(s.endRemark) + '</div></div>';
   if (s.finishedAt) html += '<div class="small text-muted mt-2"><i class="bi bi-flag me-1"></i>Finished ' + esc(s.finishedAt) + (s.finishedBy ? ' · ' + esc(dailyUserLabel(s.finishedBy)) : '') + '</div>';
+  
   if (s.handoverBy) {
-    html += '<div class="small text-success mt-1"><i class="bi bi-shield-check me-1"></i>Handover verified by ' + esc(dailyUserLabel(s.handoverBy)) + (s.handoverAt ? ' · ' + esc(s.handoverAt) : '') + '</div>';
+    html += '<div class="small text-success mt-2"><i class="bi bi-shield-check me-1"></i>Handover verified by ' + esc(dailyUserLabel(s.handoverBy)) + (s.handoverAt ? ' · ' + esc(s.handoverAt) : '') + '</div>';
     if (s.handoverRemark) html += '<div class="small text-muted mt-1">' + esc(s.handoverRemark) + '</div>';
   }
+  
   if (isOwner && active) {
-    html += '<div class="d-flex gap-2 flex-wrap mt-2">' +
+    html += '<div class="d-flex gap-2 flex-wrap mt-3 pt-3 border-top" style="border-color:var(--border-color) !important;">' +
       (info.status === DAILY_OP_OPERATING
-        ? '<button class="btn btn-sm btn-outline-warning" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_STANDBY + '\')"><i class="bi bi-pause-circle me-1"></i>Stand By</button>'
-        : '<button class="btn btn-sm btn-outline-success" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>') +
-      '<button class="btn btn-sm btn-danger" onclick="dailyDetailFinish(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>' +
+        ? '<button class="btn btn-sm btn-outline-warning flex-fill" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_STANDBY + '\')"><i class="bi bi-pause-circle me-1"></i>Stand By</button>'
+        : '<button class="btn btn-sm btn-outline-success flex-fill" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>') +
+      '<button class="btn btn-sm btn-danger flex-fill" onclick="dailyDetailFinish(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>' +
     '</div>';
   }
   html += '</div></div>';
@@ -8709,28 +8765,60 @@ function dailyConfirmInfo(s){
 /* One compact card with the current confirmation stage — the daily flow is
    Admin first, Manager second; the card only shows the stage that is relevant. */
 function buildDailyConfirmSection(s) {
-  const isManagerRole = (currentUser.role === 'manager'); const isAdminRole = (currentUser.role === 'admin');
-  const mgrStatus = s.confirmStatus || 'Pending'; const dirStatus = s.directorStatus || '';
+  const isManagerRole = (currentUser.role === 'manager');
+  const isAdminRole = (currentUser.role === 'admin');
+  const mgrStatus = s.confirmStatus || 'Pending'; 
+  const dirStatus = s.directorStatus || '';
   const ci = dailyConfirmInfo(s);
   const stage = ci.stage;
   const stageLabel = ci.label;
   const stageCls = ci.cls;
   const border = stage === 'Confirmed' ? '#198754' : stage === 'Rejected' ? '#dc3545' : '#0dcaf0';
 
+  // Build the specific status line based on the current stage
+  let statusLines = '';
+
+  if (stage === 'Pending-Admin') {
+    statusLines += 
+      '<div class="small mb-1"><i class="bi bi-person-check me-1"></i>Admin: <strong>' +
+        esc(mgrStatus === 'Pending' ? 'រង់ចាំ' : mgrStatus) + '</strong>' +
+        (s.confirmedBy ? ' · ' + esc(s.confirmedBy) : '') + 
+        (s.confirmedAt ? ' · ' + esc(s.confirmedAt) : '') + 
+      '</div>';
+    if (s.confirmRemark) {
+      statusLines += '<div class="small text-muted mb-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(s.confirmRemark) + '</div>';
+    }
+  } 
+  else if (stage === 'Pending-Manager') {
+    statusLines += 
+      '<div class="small mb-1"><i class="bi bi-patch-check me-1"></i>Manager: <strong>' +
+        esc(dirStatus || 'រង់ចាំ') + '</strong>' +
+        (s.directorBy ? ' · ' + esc(s.directorBy) : '') + 
+        (s.directorAt ? ' · ' + esc(s.directorAt) : '') + 
+      '</div>';
+    if (s.directorRemark) {
+      statusLines += '<div class="small text-muted mb-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(s.directorRemark) + '</div>';
+    }
+  } 
+  else if (stage === 'Confirmed' || stage === 'Rejected') {
+    // Show final status only (Completed / Rejected)
+    const finalDate = s.directorAt || s.confirmedAt || '';
+    const finalBy = s.directorBy || s.confirmedBy || '';
+    statusLines += 
+      '<div class="small mb-1"><i class="bi bi-check-circle me-1 text-success"></i>Completed' +
+        (finalBy ? ' · ' + esc(finalBy) : '') + 
+        (finalDate ? ' · ' + esc(finalDate) : '') + 
+      '</div>';
+  }
+
   let html = '<div class="card mb-3 confirm-box" style="border-left:4px solid ' + border + ';">' +
     '<div class="group-header d-flex justify-content-between align-items-center" style="background:transparent;border-bottom:1px solid var(--border-color);">' +
       '<span><i class="bi bi-patch-check me-2 text-info"></i>ការបញ្ជាក់ · Confirmation</span>' +
       '<span class="status-badge status-' + stageCls + '">' + esc(stageLabel) + '</span>' +
     '</div><div class="card-body">' +
-    '<div class="small mb-1"><i class="bi bi-person-check me-1"></i>Admin: <strong>' +
-      esc(mgrStatus === 'Pending' ? 'រង់ចាំ' : mgrStatus) + '</strong>' +
-      (s.confirmedBy ? ' · ' + esc(s.confirmedBy) : '') + (s.confirmedAt ? ' · ' + esc(s.confirmedAt) : '') + '</div>' +
-    (s.confirmRemark ? '<div class="small text-muted mb-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(s.confirmRemark) + '</div>' : '') +
-    '<div class="small mb-1"><i class="bi bi-patch-check me-1"></i>Manager: <strong>' +
-      esc(dirStatus || 'រង់ចាំ') + '</strong>' +
-      (s.directorBy ? ' · ' + esc(s.directorBy) : '') + (s.directorAt ? ' · ' + esc(s.directorAt) : '') + '</div>' +
-    (s.directorRemark ? '<div class="small text-muted mb-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(s.directorRemark) + '</div>' : '');
+    statusLines;
 
+  // Action buttons / Waiting messages
   if (stage === 'Pending-Admin' && isAdminRole) {
     html += '<button class="btn btn-sm btn-outline-primary w-100 mt-1" onclick="renderDailyConfirmInput(\'' + escAttr(s.checkId) + '\',\'admin\')"><i class="bi bi-pencil-square me-1"></i>Confirm</button>';
   } else if (stage === 'Pending-Manager' && isManagerRole) {
