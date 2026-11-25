@@ -8696,13 +8696,11 @@ function dailyConfirmInfo(s){
     'Pending-Admin':   'រង់ចាំ Admin',
     'Pending-Manager': 'រង់ចាំ Manager',
     'Confirmed':       'បានបញ្ជាក់'
-    'Rejected':        'បដិសេធ'
   }[stage];
   const icon = {
     'Pending-Admin':   'hourglass-split',
     'Pending-Manager': 'hourglass-split',
-    'Confirmed':       'patch-check',
-    'Rejected':        'x-circle'
+    'Confirmed':       'patch-check'
   }[stage];
   const cls = stage === 'Confirmed' ? 'ok' : stage === 'Rejected' ? 'nok' : 'pending';
   return { stage: stage, label: label, icon: icon, cls: cls };
