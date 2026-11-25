@@ -8761,7 +8761,7 @@ function dailyConfirmInfo(s){
 function buildDailyConfirmSection(s) {
   const isManagerRole = (currentUser.role === 'manager');
   const isAdminRole = (currentUser.role === 'admin');
-  const mgrStatus = s.confirmStatus || 'Pending'; 
+  const mgrStatus = s.confirmStatus || 'Pending';
   const dirStatus = s.directorStatus || '';
   const ci = dailyConfirmInfo(s);
   const stage = ci.stage;
@@ -8769,10 +8769,10 @@ function buildDailyConfirmSection(s) {
   const stageCls = ci.cls;
   const border = stage === 'Confirmed' ? '#198754' : stage === 'Rejected' ? '#dc3545' : '#0dcaf0';
 
-  // Build the specific status line based on the current stage
   let statusLines = '';
 
-  if (stage === 'Pending-Admin') {
+  // Only show detailed Admin & Manager info when fully Confirmed (or Rejected)
+  if (stage === 'Confirmed' || stage === 'Rejected') {
     statusLines += 
       '<div class="small mb-1"><i class="bi bi-person-check me-1"></i>Admin: <strong>' +
         esc(mgrStatus === 'Pending' ? 'រង់ចាំ' : mgrStatus) + '</strong>' +
@@ -8782,8 +8782,7 @@ function buildDailyConfirmSection(s) {
     if (s.confirmRemark) {
       statusLines += '<div class="small text-muted mb-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(s.confirmRemark) + '</div>';
     }
-  } 
-  else if (stage === 'Pending-Manager') {
+
     statusLines += 
       '<div class="small mb-1"><i class="bi bi-patch-check me-1"></i>Manager: <strong>' +
         esc(dirStatus || 'រង់ចាំ') + '</strong>' +
@@ -8793,16 +8792,6 @@ function buildDailyConfirmSection(s) {
     if (s.directorRemark) {
       statusLines += '<div class="small text-muted mb-1"><i class="bi bi-chat-left-text me-1"></i>' + esc(s.directorRemark) + '</div>';
     }
-  } 
-  else if (stage === 'Confirmed' || stage === 'Rejected') {
-    // Show final status only (Completed / Rejected)
-    const finalDate = s.directorAt || s.confirmedAt || '';
-    const finalBy = s.directorBy || s.confirmedBy || '';
-    statusLines += 
-      '<div class="small mb-1"><i class="bi bi-check-circle me-1 text-success"></i>Completed' +
-        (finalBy ? ' · ' + esc(finalBy) : '') + 
-        (finalDate ? ' · ' + esc(finalDate) : '') + 
-      '</div>';
   }
 
   let html = '<div class="card mb-3 confirm-box" style="border-left:4px solid ' + border + ';">' +
