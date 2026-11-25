@@ -7062,26 +7062,77 @@ window.toggleItemPhotos = function(ev, btn){
   $btn.toggleClass('is-open', open);
 };
 
-function dailyFinishChecksHtml(s){
+function dailyFinishChecksHtml(s) {
   const list = Array.isArray(s && s.finishChecks) ? s.finishChecks : [];
   if (!list.length) return '';
+
   const labels = { ok: 'OK', nok: 'NOT OK', na: 'N/A' };
-  const rows = list.map((c, i) => {
-    const cls  = c.status === 'ok' ? 'ok' : c.status === 'nok' ? 'nok' : 'na';
-    const icon = c.status === 'ok' ? 'check-circle' : c.status === 'nok' ? 'x-circle' : 'dash-circle';
-    const name = c.itemKhmer || c.itemEng || c.itemId;
-    return '<div class="check-item '+cls+'">' +
-      '<div class="d-flex justify-content-between align-items-center">' +
-        '<div><span class="item-num">'+(i+1)+'.</span><span class="item-name-kh">'+esc(name)+'</span>' +
-        (c.itemEng && c.itemKhmer ? '<div class="item-name-en">'+esc(c.itemEng)+'</div>' : '') + '</div>' +
-        '<span class="small text-nowrap">'+esc(labels[c.status] || c.status) + ' <i class="bi bi-'+icon+'"></i></span>' +
+  const icons  = { ok: 'check-circle-fill', nok: 'x-circle-fill', na: 'dash-circle-fill' };
+  const colors = { ok: 'success', nok: 'danger', na: 'secondary' };
+
+  const counts = { ok: 0, nok: 0, na: 0 };
+  list.forEach(c => { if (counts[c.status] !== undefined) counts[c.status]++; });
+
+  const summary =
+    '<div class="d-flex gap-2 flex-wrap">' +
+      '<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">' +
+        '<i class="bi bi-check-circle-fill me-1"></i>OK: ' + counts.ok + '</span>' +
+      '<span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">' +
+        '<i class="bi bi-x-circle-fill me-1"></i>NOT OK: ' + counts.nok + '</span>' +
+      '<span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">' +
+        '<i class="bi bi-dash-circle-fill me-1"></i>N/A: ' + counts.na + '</span>' +
+    '</div>';
+
+  const cards = list.map((c, i) => {
+    const color = colors[c.status] || 'secondary';
+    const icon  = icons[c.status]  || 'dash-circle-fill';
+    const name  = c.itemKhmer || c.itemEng || c.itemId;
+
+    const rawPhotos = Array.isArray(c.photos) ? c.photos : [];
+    const photoIds = rawPhotos
+      .map(p => (typeof p === 'string' ? p : (p && p.fileId) ? p.fileId : null))
+      .filter(Boolean);
+
+    const photoHtml = photoIds.length
+      ? '<div class="mt-2">' + dailyPhotoIdsHtml(photoIds) + '</div>'
+      : '';
+
+    return '<div class="col-12 col-md-6">' +
+      '<div class="border border-' + color + '-subtle rounded-3 p-3 h-100 bg-' + color + '-subtle bg-opacity-10">' +
+        '<div class="d-flex justify-content-between align-items-start gap-2">' +
+          '<div class="flex-grow-1">' +
+            '<div class="d-flex align-items-center gap-2 mb-1">' +
+              '<span class="badge bg-' + color + ' text-white rounded-pill" style="font-size:0.7rem;">' + (i + 1) + '</span>' +
+              '<span class="fw-semibold text-dark">' + esc(name) + '</span>' +
+            '</div>' +
+            (c.itemEng && c.itemKhmer
+              ? '<div class="text-muted" style="font-size:0.72rem;">' + esc(c.itemEng) + '</div>'
+              : '') +
+          '</div>' +
+          '<span class="text-' + color + ' text-nowrap fw-semibold small">' +
+            '<i class="bi bi-' + icon + ' me-1"></i>' + esc(labels[c.status] || c.status) +
+          '</span>' +
+        '</div>' +
+        (c.note
+          ? '<div class="mt-2 small text-danger d-flex align-items-start gap-1">' +
+              '<i class="bi bi-chat-left-text mt-1"></i><span>' + esc(c.note) + '</span>' +
+            '</div>'
+          : '') +
+        photoHtml +
       '</div>' +
-      (c.note ? '<div class="small text-danger mt-1"><i class="bi bi-chat-left-text me-1"></i>'+esc(c.note)+'</div>' : '') +
-      dailyPhotoIdsHtml(c.photos) +
     '</div>';
   }).join('');
-  return '<div class="card mb-3"><div class="group-header"><i class="bi bi-flag me-2 text-danger"></i>Finished Form</div>' +
-    '<div class="card-body p-2"><div class="check-grid">' + rows + '</div></div></div>';
+
+  return '<div class="card mb-3 border-0 shadow-sm">' +
+      '<div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2 px-3 py-2" ' +
+           'style="background:transparent;border-bottom:1px solid var(--border-color);">' +
+        '<span class="fw-semibold"><i class="bi bi-flag me-2 text-danger"></i>Finished Form — Checklist</span>' +
+        summary +
+      '</div>' +
+      '<div class="card-body p-3">' +
+        '<div class="row g-2">' + cards + '</div>' +
+      '</div>' +
+    '</div>';
 }
 
 /* The four Finished Form inputs (End Odometer, End OPHour, Diesel level, Fuel
@@ -7097,23 +7148,21 @@ function dailyFinishExtraHtml(s) {
     { key: 'fuelAdded', label: 'បរិមាណបេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', en: 'Fuel added' }
   ];
 
-  const tiles = defs.map(d => {
+  const cards = defs.map(d => {
     const v = fx[d.key] || {};
     const value = (d.value !== undefined) ? d.value : v.value;
-    const photos = Array.isArray(v.photos) ? v.photos : [];
-    const has = (value !== '' && value != null) || photos.length > 0;
+
+    // Normalize photos: support ["id"] and [{fileId:"id"}]
+    const rawPhotos = Array.isArray(v.photos) ? v.photos : [];
+    const photoIds = rawPhotos
+      .map(p => (typeof p === 'string' ? p : (p && p.fileId) ? p.fileId : null))
+      .filter(Boolean);
+
+    const has = (value !== '' && value != null) || photoIds.length > 0;
     if (!has) return '';
 
-    const photoHtml = photos.length
-      ? '<div class="d-flex flex-wrap gap-1 mt-2">' +
-          photos.map(id =>
-            '<img src="' + photoUrl(id) + '" ' +
-                 'class="rounded border" ' +
-                 'style="width:48px;height:48px;object-fit:cover;cursor:pointer;" ' +
-                 'onclick="openPhotoViewer(\'' + escAttr(id) + '\')" ' +
-                 'alt="photo">'
-          ).join('') +
-        '</div>'
+    const photoHtml = photoIds.length
+      ? '<div class="mt-2">' + dailyPhotoIdsHtml(photoIds) + '</div>'
       : '';
 
     return '<div class="col-6 col-md-3">' +
@@ -7133,7 +7182,7 @@ function dailyFinishExtraHtml(s) {
     '</div>';
   }).join('');
 
-  if (!tiles) return '';
+  if (!cards) return '';
 
   return '<div class="card mb-3 border-0 shadow-sm">' +
       '<div class="group-header d-flex justify-content-between align-items-center px-3 py-2" ' +
@@ -7142,7 +7191,7 @@ function dailyFinishExtraHtml(s) {
         '<small class="text-muted">4 fields</small>' +
       '</div>' +
       '<div class="card-body p-3">' +
-        '<div class="row g-2">' + tiles + '</div>' +
+        '<div class="row g-2">' + cards + '</div>' +
       '</div>' +
     '</div>';
 }
