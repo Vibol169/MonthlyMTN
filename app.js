@@ -7452,6 +7452,57 @@ function updateDailyFinishCounts(){
 /* "1 item" / "3 items" — keeps the count labels grammatical */
 function dailyItemWord(n){ return (n === 1) ? '1 item' : (n + ' items'); }
 
+/* ---------------- Trailer picker (searchable) ----------------
+   The choices come from APP.trailers. The search box rebuilds the <select>
+   so only matching trailers stay in the list; a trailer picked earlier is
+   kept visible even when it no longer matches the filter. */
+function dailyTrailerList(){
+  return (APP.trailers || []).filter(t => t && t.trailerId).map(t => {
+    const id = String(t.trailerId);
+    return { id: id, label: (t.shortName || id) + (t.status ? ' · ' + t.status : '') };
+  });
+}
+
+function dailyTrailerMatch(list, filter){
+  const needle = String(filter || '').trim().toLowerCase();
+  if (!needle) return list.slice();
+  return list.filter(o =>
+    o.label.toLowerCase().indexOf(needle) !== -1 ||
+    o.id.toLowerCase().indexOf(needle) !== -1);
+}
+
+function dailyTrailerOptionsHtml(filter, selectedId){
+  const sel = String(selectedId || '');
+  const all = dailyTrailerList();
+  const list = dailyTrailerMatch(all, filter);
+  const picked = all.filter(o => o.id === sel)[0];
+  if (picked && list.indexOf(picked) === -1) list.unshift(picked);
+  return '<option value="">— គ្មានរ៉ឺម៉ក / No trailer —</option>' +
+    list.map(o => '<option value="' + escAttr(o.id) + '"' + (o.id === sel ? ' selected' : '') + '>' +
+      esc(o.label) + '</option>').join('');
+}
+
+function dailyTrailerHintHtml(filter, selectedId){
+  const all = dailyTrailerList();
+  const n = dailyTrailerMatch(all, filter).length;
+  if (!n) return '<i class="bi bi-exclamation-circle me-1 text-warning"></i>រកមិនឃើញរ៉ឺម៉ក · No match';
+  if (selectedId && n === all.length) {
+    return '<i class="bi bi-check-circle me-1 text-success"></i>រ៉ឺម៉កបានជ្រើសរើស · Trailer selected';
+  }
+  return '<i class="bi bi-info-circle me-1"></i>' + n + ' រ៉ឺម៉ក' +
+    (String(filter || '').trim() ? ' · filtered' : ' · available');
+}
+
+window.filterDailyTrailers = function(q){
+  const sel = document.getElementById('dailyTrailerSelect');
+  if (!sel) return;
+  const keep = String(sel.value || '');
+  sel.innerHTML = dailyTrailerOptionsHtml(q, keep);
+  if (keep) sel.value = keep;
+  const hint = document.getElementById('dailyTrailerHint');
+  if (hint) hint.innerHTML = dailyTrailerHintHtml(q, keep);
+};
+
 function renderDailyChecklistForm(){
   const c = pendingDailyChecklist;
   if (!c) return;
@@ -7461,7 +7512,6 @@ function renderDailyChecklistForm(){
   const typeBadge = isWeekly
     ? '<span class="badge bg-info text-dark ms-2">Weekly</span>'
     : '<span class="badge bg-primary ms-2">Daily</span>';
-  const eq = APP.equipmentMap[c.equipmentId] || {};
 
   const itemsHtml = c.items.map((it, i) => {
     const sel = c.checks[it.itemId] || { status: 'ok', note: '' };
@@ -7527,30 +7577,29 @@ function renderDailyChecklistForm(){
   const myPhone = (currentUser && currentUser.phone) ? currentUser.phone : '';
   const trailerId = String(c.trailerId || '');
   const trailerChoices = (APP.trailers || []).filter(t => t && t.trailerId);
-  const trailerOptions = ['<option value="">— គ្មានរ៉ឺម៉ក / No trailer —</option>']
-    .concat(trailerChoices.map(t => {
-      const id = String(t.trailerId);
-      const label = (t.shortName || id) + (t.status ? ' · ' + t.status : '');
-      return '<option value="' + escAttr(id) + '"' + (trailerId === id ? ' selected' : '') + '>' + esc(label) + '</option>';
-    })).join('');
+  /* Trailer picker: the two cards sit side by side, and the trailer list is
+     searchable (the search box rebuilds the <select> options). */
   const trailerCard = (!isWeekly && trailerChoices.length)
-    ? '<div class="col-12"><div class="p-3 border rounded-3 bg-white h-100 shadow-sm daily-info-card">' +
+    ? '<div class="col-6"><div class="p-3 border rounded-3 bg-white h-100 shadow-sm daily-info-card daily-trailer-card">' +
         '<div class="d-flex align-items-center mb-2">' +
           '<i class="bi bi-link text-secondary me-2" style="font-size:1.1rem;"></i>' +
           '<span class="text-muted small" style="letter-spacing:.5px;font-family:\'Battambang\',\'Kantumruy Pro\',sans-serif;font-weight:400;">រ៉ឺម៉ក · Trailer</span>' +
         '</div>' +
-        '<select class="form-select form-select-sm" id="dailyTrailerSelect" onchange="setDailyTrailer(this.value)">' + trailerOptions + '</select>' +
-        '<div class="small text-muted mt-1"><i class="bi bi-info-circle me-1"></i>ជ្រើសរើសរ៉ឺម៉កសម្រាប់ការត្រួតពិនិត្យនេះ</div>' +
+        '<input type="search" class="form-control form-control-sm trailer-search mb-1" id="dailyTrailerSearch" autocomplete="off" ' +
+          'placeholder="ស្វែងរករ៉ឺម៉ក · Search..." oninput="filterDailyTrailers(this.value)">' +
+        '<select class="form-select form-select-sm" id="dailyTrailerSelect" onchange="setDailyTrailer(this.value)">' +
+          dailyTrailerOptionsHtml('', trailerId) +
+        '</select>' +
+        '<div class="small text-muted mt-1" id="dailyTrailerHint">' +
+          dailyTrailerHintHtml('', trailerId) +
+        '</div>' +
       '</div></div>'
     : '';
 
   const headerCard =
     '<div class="row g-2 mb-3">' +
       dailyInfoCard('truck', esc(c.group || 'ឧបករណ៍'),
-        '<div>' + esc(c.shortName || c.equipmentId) + typeBadge + '</div>' +
-        '<div class="small text-muted fw-normal mt-1">' + esc(c.equipmentId) +
-          (eq.model ? ' · ' + esc(eq.model) : '') +
-          (eq.specificGroup ? ' - ' + esc(eq.specificGroup) : '') + '</div>', 'primary') +
+        '<div>' + esc(c.shortName || c.equipmentId) + typeBadge + '</div>', 'primary') +
       trailerCard +
       dailyInfoCard('person', 'អ្នកត្រួតពិនិត្យ', dailyInfoCardName((currentUser && currentUser.fullName) || '', myPhone), 'success') +
       (c.prevDriverName ? dailyInfoCard('person-badge', 'អ្នកបើកបរ (រង្វង់មុន)', esc(c.prevDriverName), 'info') : '') +
@@ -7571,7 +7620,7 @@ function renderDailyChecklistForm(){
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-clipboard-check me-2"></i>' + title + '</span>' +
         '<small class="text-muted">' + dailyItemWord(c.items.length) + ' · <span id="dailyNaCount">' + counts.na + ' N/A</span></small>' +
-      '</div><div class="card-body p-2"><div class="check-grid">' + itemsHtml + '</div></div></div>' +
+      '</div><div class="card-body p-2"><div class="check-grid is-single">' + itemsHtml + '</div></div></div>' +
       '<div class="card mb-3"><div class="card-body">' +
         '<label class="form-label fw-bold">Remark</label>' +
         '<textarea class="form-control form-control-sm" id="checkRemark" rows="2" placeholder="កំណត់សម្គាល់បន្ថែម..."></textarea>' +
@@ -8022,9 +8071,7 @@ window.openDailyFinishForm = function(checkId){
   const infoGrid =
     '<div class="row g-2 mb-3">' +
       dailyInfoCard('truck', esc(s.group || 'ឧបករណ៍'),
-        '<div>' + esc(eq.shortName || s.equipmentId) + '<span class="badge bg-danger ms-2">Finished Form</span></div>' +
-        '<div class="small text-muted fw-normal mt-1">' + esc(s.equipmentId) +
-          (eq.model ? ' · ' + esc(eq.model) : '') + '</div>', 'primary') +
+        '<div>' + esc(eq.shortName || s.equipmentId) + '<span class="badge bg-danger ms-2">Finished Form</span></div>', 'primary') +
       dailyInfoCard('person', 'អ្នកបើកបរ', dailyInfoCardName(s.driverName, ''), 'success') +
       dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(s.date) + ' ' + esc(s.time), 'warning') +
     '</div>' +
