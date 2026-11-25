@@ -7542,19 +7542,19 @@ function renderDailyChecklistForm(){
       (c.prevDriverName ? ' <span class="text-muted">(from '+esc(c.prevDriverName)+')</span>' : '') + '</div>'
     : '';
 
-  // Agreement gate — monthly-style confirmation block (wording from Settings: DriverAgreement)
+    // Agreement gate — monthly-style confirmation block
   const agreementHtml =
     '<div class="card mb-3 confirm-box ' + (c.agreed ? '' : 'confirm-pending') + '" id="dailyAgreementBox" style="border-left: 4px solid ' + (c.agreed ? 'var(--status-ok-text)' : 'var(--status-pending-text)') + '; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.04);">' +
       
       /* Header */
       '<div class="d-flex justify-content-between align-items-center px-3 py-3" style="background: var(--card-bg); border-bottom: 1px solid var(--border-color);">' +
         '<div class="d-flex align-items-center gap-2">' +
-          '<div class="d-flex align-items-center justify-content-center rounded-circle" style="width: 32px; height: 32px; background: ' + (c.agreed ? 'rgba(25,135,84,.1)' : 'rgba(255,193,7,.15)') + '; color: ' + (c.agreed ? 'var(--status-ok-text)' : 'var(--status-pending-text)') + ';">' +
+          '<div id="dailyAgreementIconBg" class="d-flex align-items-center justify-content-center rounded-circle" style="width: 32px; height: 32px; background: ' + (c.agreed ? 'rgba(25,135,84,.1)' : 'rgba(255,193,7,.15)') + '; color: ' + (c.agreed ? 'var(--status-ok-text)' : 'var(--status-pending-text)') + ';">' +
             '<i class="bi bi-shield-check" style="font-size: 1.1rem;"></i>' +
           '</div>' +
           '<div>' +
             '<h6 class="mb-0 fw-bold" style="font-size: .95rem; color: var(--text-color);">ការព្រមព្រៀងមុនប្រតិបត្តិការ</h6>' +
-            '<div class="small fw-semibold" style="color: ' + (c.agreed ? 'var(--status-ok-text)' : 'var(--status-pending-text)') + '; font-size: .75rem;">' +
+            '<div class="small fw-semibold" style="color: ' + (c.agreed ? 'var(--status-ok-text)' : 'var(--status-pending-text)') + '; font-size: .75rem;" id="dailyAgreementStateText">' +
               '<i class="bi bi-' + (c.agreed ? 'check2-circle' : 'hourglass-split') + ' me-1"></i>' +
               (c.agreed ? 'បានបញ្ជាក់ការព្រមព្រៀងសុវត្ថិភាព' : 'រង់ចាំការបញ្ជាក់ពីអ្នកបើកបរ') +
             '</div>' +
@@ -7657,20 +7657,38 @@ window.setDailyTrailer = function(trailerId){
   pendingDailyChecklist.trailerId = String(trailerId || '');
 };
 
-window.toggleDailyAgreement = function(checked){
+window.toggleDailyAgreement = function(checked) {
   if (!pendingDailyChecklist) return;
   pendingDailyChecklist.agreed = !!checked;
+
   const $box = $('#dailyAgreementBox');
+  const $badge = $('#dailyAgreementBadge');
+  const $stateText = $('#dailyAgreementStateText');
+  const $iconBg = $('#dailyAgreementIconBg');
+
+  // 1. Update the border and background tint
   $box.toggleClass('confirm-pending', !checked);
-  $box.css('border-left-color', checked ? '#198754' : '#ffc107');
-  $('#dailyAgreementIcon').removeClass('text-success text-warning').addClass(checked ? 'text-success' : 'text-warning');
-  $('#dailyAgreementBadge').removeClass('status-ok status-pending')
-    .addClass(checked ? 'status-ok' : 'status-pending')
-    .text(checked ? 'Confirmed' : 'Pending');
-  $('#dailyAgreementState')
-    .removeClass('text-success text-warning').addClass(checked ? 'text-success' : 'text-warning')
-    .html('<i class="bi bi-' + (checked ? 'check2-circle' : 'hourglass-split') + ' me-1"></i>' +
-          (checked ? 'Driver confirmed the safety agreement' : 'Waiting for Driver to confirm'));
+  $box.css('border-left-color', checked ? 'var(--status-ok-text)' : 'var(--status-pending-text)');
+
+  // 2. Update the Header Icon background and color
+  if (checked) {
+    $iconBg.css({ background: 'rgba(25,135,84,.1)', color: 'var(--status-ok-text)' });
+  } else {
+    $iconBg.css({ background: 'rgba(255,193,7,.15)', color: 'var(--status-pending-text)' });
+  }
+
+  // 3. Update the Badge (Bootstrap classes instead of status-ok/pending)
+  $badge.removeClass('bg-success bg-warning text-dark')
+        .addClass(checked ? 'bg-success' : 'bg-warning text-dark')
+        .text(checked ? 'បានយល់ព្រម' : 'រង់ចាំ');
+
+  // 4. Update the subtitle text & icon with Khmer translations
+  $stateText.parent().css('color', checked ? 'var(--status-ok-text)' : 'var(--status-pending-text)');
+  
+  $stateText.html(
+    '<i class="bi bi-' + (checked ? 'check2-circle' : 'hourglass-split') + ' me-1"></i>' +
+    (checked ? 'បានបញ្ជាក់ការព្រមព្រៀងសុវត្ថិភាព' : 'រង់ចាំការបញ្ជាក់ពីអ្នកបើកបរ')
+  );
 };
 
 /* ---------- Daily item photos (same camera / gallery UX as the monthly form) ----------
