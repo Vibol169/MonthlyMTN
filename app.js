@@ -8353,6 +8353,13 @@ window.renderDailyList = function() {
   shell += '<input type="text" class="form-control form-control-sm mb-2" id="fDailySearch" placeholder="ស្វែងរក Check-ID / ឧបករណ៍ / អ្នកបើកបរ..." value="'+esc(dailyListFilters.search)+'" oninput="onDailyListSearch(this)">';
   shell += '<div class="d-flex gap-1 mb-2 flex-wrap"><button class="btn btn-sm btn-outline-primary date-preset" data-preset="today" onclick="setDailyDatePreset(\'today\')">ថ្ងៃនេះ</button><button class="btn btn-sm btn-outline-primary date-preset" data-preset="7d" onclick="setDailyDatePreset(\'7d\')">7 ថ្ងៃ</button><button class="btn btn-sm btn-outline-primary date-preset" data-preset="30d" onclick="setDailyDatePreset(\'30d\')">30 ថ្ងៃ</button><button class="btn btn-sm btn-outline-primary date-preset" data-preset="all" onclick="setDailyDatePreset(\'all\')">ទាំងអស់</button></div>';
   shell += '<div class="row g-2 mb-2"><div class="col-6"><input type="date" class="form-control form-control-sm" id="fDailyFrom" value="'+dailyListFilters.dateFrom+'" onchange="onDailyListDateChange()"></div><div class="col-6"><input type="date" class="form-control form-control-sm" id="fDailyTo" value="'+dailyListFilters.dateTo+'" onchange="onDailyListDateChange()"></div></div>';
+
+    // Frequency — daily shift checks vs weekly checks
+  shell += dailyListTabBar('dailyTypeTabBar', 'checkType', [
+    { value: 'all',    label: 'ទាំងអស់' },
+    { value: 'daily',  label: 'Daily' },
+    { value: 'weekly', label: 'Weekly' }
+  ], dailyListFilters.checkType);
   
   shell += dailyListTabBar('dailyStatusTabBar', 'status', [
     { value: 'all',    label: 'ទាំងអស់' },
@@ -8360,20 +8367,12 @@ window.renderDailyList = function() {
     { value: 'Issues', label: 'Issues' }
   ], dailyListFilters.status);
 
-  // Frequency — daily shift checks vs weekly checks
-  shell += dailyListTabBar('dailyTypeTabBar', 'checkType', [
-    { value: 'all',    label: 'ទាំងអស់' },
-    { value: 'daily',  label: 'Daily' },
-    { value: 'weekly', label: 'Weekly' }
-  ], dailyListFilters.checkType);
-
   // Confirmation workflow — same two-step flow as the Monthly list
   shell += dailyListTabBar('dailyConfirmTabBar', 'confirmStatus', [
     { value: 'all',             label: 'ទាំងអស់' },
     { value: 'Pending-Admin',   label: 'រង់ចាំ Admin' },
     { value: 'Pending-Manager', label: 'រង់ចាំ Manager' },
-    { value: 'Confirmed',       label: 'បានបញ្ជាក់' },
-    { value: 'Rejected',        label: 'បដិសេធ' }
+    { value: 'Confirmed',       label: 'បានបញ្ជាក់' }
   ], dailyListFilters.confirmStatus);
 
   // Equipment / shift status (Operating, Stand By, …)
@@ -8696,7 +8695,7 @@ function dailyConfirmInfo(s){
   const label = {
     'Pending-Admin':   'រង់ចាំ Admin',
     'Pending-Manager': 'រង់ចាំ Manager',
-    'Confirmed':       'បានបញ្ជាក់',
+    'Confirmed':       'បានបញ្ជាក់'
     'Rejected':        'បដិសេធ'
   }[stage];
   const icon = {
