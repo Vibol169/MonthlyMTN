@@ -8688,12 +8688,6 @@ function renderDailyDetailModal(s) {
         dailyInfoCard('person', 'អ្នកត្រួតពិនិត្យ', dailyInfoCardName(drv.fullName || s.driverName, drv.phone || ''), 'success') +
         dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(s.date || '') + ' ' + esc(s.time || ''), 'warning') +
       '</div>' +
-
-      (s.reviewedBy
-        ? (s.reviewedRemark
-            ? '<div class="card mb-3" style="border-left:4px solid #ffc107;background:rgba(255,193,7,0.08);"><div class="card-body"><div class="small text-warning fw-bold mb-1"><i class="bi bi-pencil-square me-1"></i>Modified by <strong>'+esc(s.reviewedBy)+'</strong>' + (s.reviewedAt ? ' · '+esc(s.reviewedAt) : '') + '</div><div class="mt-2">'+esc(s.reviewedRemark)+'</div></div></div>'
-            : '<div class="card mb-3 review-box"><div class="card-body"><div class="small text-primary fw-bold"><i class="bi bi-check2-circle me-1"></i>Reviewed by <strong>'+esc(s.reviewedBy)+'</strong>' + (s.reviewedAt ? ' · '+esc(s.reviewedAt) : '') + '</div></div></div>')
-        : '') +
       
       dailyOpSectionHtml(s) +
       buildDailyConfirmSection(s) +
