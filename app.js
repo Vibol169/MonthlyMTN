@@ -7546,7 +7546,7 @@ function renderDailyChecklistForm(){
   const agreementHtml =
     '<div class="card mb-3 confirm-box ' + (c.agreed ? '' : 'confirm-pending') + '" id="dailyAgreementBox" style="border-left: 4px solid ' + (c.agreed ? 'var(--status-ok-text)' : 'var(--status-pending-text)') + '; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.04);">' +
       
-      // Header
+      /* Header */
       '<div class="d-flex justify-content-between align-items-center px-3 py-3" style="background: var(--card-bg); border-bottom: 1px solid var(--border-color);">' +
         '<div class="d-flex align-items-center gap-2">' +
           '<div class="d-flex align-items-center justify-content-center rounded-circle" style="width: 32px; height: 32px; background: ' + (c.agreed ? 'rgba(25,135,84,.1)' : 'rgba(255,193,7,.15)') + '; color: ' + (c.agreed ? 'var(--status-ok-text)' : 'var(--status-pending-text)') + ';">' +
@@ -7556,14 +7556,14 @@ function renderDailyChecklistForm(){
             '<h6 class="mb-0 fw-bold" style="font-size: .95rem; color: var(--text-color);">ការព្រមព្រៀងមុនប្រតិបត្តិការ</h6>' +
             '<div class="small fw-semibold" style="color: ' + (c.agreed ? 'var(--status-ok-text)' : 'var(--status-pending-text)') + '; font-size: .75rem;">' +
               '<i class="bi bi-' + (c.agreed ? 'check2-circle' : 'hourglass-split') + ' me-1"></i>' +
-              (c.agreed ? 'Safety agreement confirmed' : 'Waiting for confirmation') +
+              (c.agreed ? 'បានបញ្ជាក់ការព្រមព្រៀងសុវត្ថិភាព' : 'រង់ចាំការបញ្ជាក់ពីអ្នកបើកបរ') +
             '</div>' +
           '</div>' +
         '</div>' +
-        '<span class="badge rounded-pill ' + (c.agreed ? 'bg-success' : 'bg-warning text-dark') + '" style="font-size: .75rem; padding: 6px 12px;" id="dailyAgreementBadge">' + (c.agreed ? 'បានយល់ព្រម' : 'មិនយល់ព្រម') + '</span>' +
+        '<span class="badge rounded-pill ' + (c.agreed ? 'bg-success' : 'bg-warning text-dark') + '" style="font-size: .75rem; padding: 6px 12px;" id="dailyAgreementBadge">' + (c.agreed ? 'បានយល់ព្រម' : 'រង់ចាំ') + '</span>' +
       '</div>' +
       
-      // Body
+      /* Body */
       '<div class="card-body p-3" style="background: ' + (c.agreed ? 'var(--bg-color)' : 'rgba(255,193,7,.03)') + ';">' +
         '<div class="form-check d-flex align-items-start gap-2 mb-0">' +
           '<input class="form-check-input mt-1 flex-shrink-0" type="checkbox" id="dailyAgree" ' + (c.agreed ? 'checked' : '') + ' onchange="toggleDailyAgreement(this.checked)" style="width: 1.2em; height: 1.2em; cursor: pointer;">' +
@@ -7573,10 +7573,10 @@ function renderDailyChecklistForm(){
         '</div>' +
       '</div>' +
       
-      // Footer
+      /* Footer */
       '<div class="px-3 py-2 text-muted d-flex align-items-center gap-2" style="background: var(--header-bg); border-top: 1px solid var(--border-color); font-size: .7rem; border-radius: 0 0 12px 12px;">' +
         '<i class="bi bi-info-circle"></i>' +
-        '<span>Saved with this checklist (time stamped).</span>' +
+        '<span>រក្សាទុកជាមួយបញ្ជីត្រួតពិនិត្យនេះ (កំណត់ពេលវេលា)។</span>' +
       '</div>' +
       
     '</div>';
