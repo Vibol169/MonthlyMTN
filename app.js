@@ -8756,8 +8756,6 @@ function dailyConfirmInfo(s){
   return { stage: stage, label: label, icon: icon, cls: cls };
 }
 
-/* One compact card with the current confirmation stage — the daily flow is
-   Admin first, Manager second; the card only shows the stage that is relevant. */
 function buildDailyConfirmSection(s) {
   const isManagerRole = (currentUser.role === 'manager');
   const isAdminRole = (currentUser.role === 'admin');
@@ -8776,7 +8774,7 @@ function buildDailyConfirmSection(s) {
     statusLines += 
       '<div class="small mb-1"><i class="bi bi-person-check me-1"></i>Admin: <strong>' +
         esc(mgrStatus === 'Pending' ? 'រង់ចាំ' : mgrStatus) + '</strong>' +
-        (s.confirmedBy ? ' · ' + esc(s.confirmedBy) : '') + 
+        (s.confirmedByName ? ' · ' + esc(s.confirmedByName) : '') + 
         (s.confirmedAt ? ' · ' + esc(s.confirmedAt) : '') + 
       '</div>';
     if (s.confirmRemark) {
@@ -8786,7 +8784,7 @@ function buildDailyConfirmSection(s) {
     statusLines += 
       '<div class="small mb-1"><i class="bi bi-patch-check me-1"></i>Manager: <strong>' +
         esc(dirStatus || 'រង់ចាំ') + '</strong>' +
-        (s.directorBy ? ' · ' + esc(s.directorBy) : '') + 
+        (s.directorByName ? ' · ' + esc(s.directorByName) : '') + 
         (s.directorAt ? ' · ' + esc(s.directorAt) : '') + 
       '</div>';
     if (s.directorRemark) {
@@ -8801,7 +8799,7 @@ function buildDailyConfirmSection(s) {
     '</div><div class="card-body">' +
     statusLines;
 
-  // Action buttons / Waiting messages
+  // Action buttons / Waiting messages (no "Locked" message for completed)
   if (stage === 'Pending-Admin' && isAdminRole) {
     html += '<button class="btn btn-sm btn-outline-primary w-100 mt-1" onclick="renderDailyConfirmInput(\'' + escAttr(s.checkId) + '\',\'admin\')"><i class="bi bi-pencil-square me-1"></i>Confirm</button>';
   } else if (stage === 'Pending-Manager' && isManagerRole) {
@@ -8810,9 +8808,8 @@ function buildDailyConfirmSection(s) {
     html += '<div class="small text-muted mt-1"><i class="bi bi-hourglass-split me-1"></i>Waiting for Admin</div>';
   } else if (stage === 'Pending-Manager') {
     html += '<div class="small text-muted mt-1"><i class="bi bi-hourglass-split me-1"></i>Waiting for Manager</div>';
-  } else {
-    html += '<div class="small text-muted mt-1"><i class="bi bi-lock me-1"></i>Locked — no further edits</div>';
   }
+  // No "Locked" message shown for Confirmed/Rejected stages
 
   html += '</div></div>';
   return html;
