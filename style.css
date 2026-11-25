@@ -880,6 +880,29 @@ body.dark-mode .daily-info-card .form-control { background: #101722; color: #e9e
 .check-grid .photo-tile.photo-loading { width: 62px; font-size: 18px; }
 .check-grid .status-badge { font-size: .6rem; padding: 1px 6px; white-space: nowrap; }
 
+/* Daily / Weekly start checklist: one item per row (single column) */
+.check-grid.is-single { grid-template-columns: minmax(0, 1fr); }
+.check-grid.is-single .check-item .item-name-kh { font-size: .88rem; }
+.check-grid.is-single .check-item .item-name-en { font-size: .7rem; }
+.check-grid.is-single .check-btn { padding: 9px 4px; font-size: .76rem; }
+.check-grid.is-single .photo-tile { height: 66px; }
+.check-grid.is-single .photo-tile.photo-add-tile,
+.check-grid.is-single .photo-tile.photo-loading { width: 66px; }
+
+/* Equipment + Trailer cards sit side by side; the trailer list is searchable */
+.daily-info-card.daily-trailer-card { padding: .6rem .65rem !important; }
+.daily-trailer-card .trailer-search {
+  padding: 3px 8px;
+  font-size: .72rem;
+  border-radius: 8px;
+}
+.daily-trailer-card .form-select {
+  padding: 3px 22px 3px 8px;
+  font-size: .74rem;
+  border-radius: 8px;
+}
+.daily-trailer-card #dailyTrailerHint { font-size: .66rem; line-height: 1.25; }
+
 @media (max-width: 360px) {
   .check-grid { gap: 6px; }
   .check-grid .check-btn { font-size: .62rem; padding: 5px 1px; }
