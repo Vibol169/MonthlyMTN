@@ -8066,10 +8066,10 @@ window.openDailyFinishForm = function(checkId){
       .filter(p => p && p.fileId).map(p => ({ fileId: p.fileId }));
   });
 
-  // Two extra fields, each with its own photos (saved in Finish-Extra-JSON)
+  // Initialize extras for all 4 inputs so they can hold photos
   const fx = s.finishExtra || {};
   const extras = {};
-  ['fuelLevel', 'fuelAdded'].forEach(k => {
+  ['fuelLevel', 'fuelAdded', 'dailyEndOdo', 'dailyEndHour'].forEach(k => {
     const v = fx[k] || {};
     extras[k] = {
       value: (v.value === '' || v.value == null) ? '' : String(v.value),
@@ -8097,10 +8097,11 @@ window.openDailyFinishForm = function(checkId){
           dailyPhotoGalleryHtml(it.itemId, a.photos || [], st === 'nok') +
         '</div>';
       }).join('')
-    : '<div class="text-muted small text-center py-3">No Finished Form items configured for this group.</div>';
+    : '<div class="text-muted small text-center py-3">គ្មានទម្រង់បញ្ចប់ការងារសម្រាប់ក្រុមនេះទេ (No Finished Form items configured).</div>';
 
   const weeklyItems = dailyTplItems(s.group, DAILY_FREQ_WEEKLY);
   const weekCounts = dailyAnswerCounts({ answers: answers });
+  
   const infoGrid =
     '<div class="row g-2 mb-3">' +
       dailyInfoCard('truck', esc(s.group || 'ឧបករណ៍'),
@@ -8108,13 +8109,14 @@ window.openDailyFinishForm = function(checkId){
       dailyInfoCard('person', 'អ្នកបើកបរ', dailyInfoCardName(s.driverName, ''), 'success') +
       dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(s.date) + ' ' + esc(s.time), 'warning') +
     '</div>' +
-    '<div class="op-finish-tip text-muted mb-3"><i class="bi bi-info-circle me-1"></i>Fill at least one end meter. After submitting, the equipment becomes <strong>Waiting Handover</strong> and your shift ends.</div>' +
-    (weeklyItems.length ? '<div class="small text-muted mb-3"><i class="bi bi-calendar-week me-1"></i>' + weeklyItems.length + ' weekly items are part of this group (Weekly check stays separate).</div>' : '');
+    '<div class="op-finish-tip text-muted mb-3"><i class="bi bi-info-circle me-1"></i>បំពេញយ៉ាងហោចណាស់មួយក្នុងចំណោមម៉ែត្របញ្ចប់។ បន្ទាប់ពីដាក់ស្នើរួច ឧបករណ៍នឹងក្លាយទៅជា <strong>រង់ចាំប្រគល់ការងារ (Waiting Handover)</strong> ហើយវេនរបស់អ្នកនឹងបញ្ចប់។</div>' +
+    (weeklyItems.length ? '<div class="small text-muted mb-3"><i class="bi bi-calendar-week me-1"></i>' + weeklyItems.length + ' ចំណុចប្រចាំសប្តាហ៍គឺជាផ្នែកមួយនៃក្រុមនេះ (ការត្រួតពិនិត្យប្រចាំសប្តាហ៍នៅដាច់ដោយឡែក)។</div>' : '');
 
-  /* The four Finished Form inputs stay in ONE block: End Odometer, End OPHour,
-     Diesel level and Fuel added. The two fuel fields also keep their photos. */
   const numField = (opts) => {
+    // Determine a unique key for photos (extraKey for fuel, or inputId for odometer)
+    const photoKey = opts.extraKey || opts.inputId; 
     const inputId = opts.inputId || (opts.extraKey ? 'daily_' + opts.extraKey : '');
+    
     return '<div class="finish-field">' +
       '<label class="form-label small fw-bold mb-1"' + (inputId ? ' for="' + inputId + '"' : '') + '>' +
         esc(opts.labelKh) + ' <span class="text-muted fw-normal">(' + esc(opts.labelEn) + ')</span></label>' +
@@ -8123,27 +8125,48 @@ window.openDailyFinishForm = function(checkId){
         ' placeholder="0.0" value="' + escAttr(opts.value == null ? '' : opts.value) + '"' +
         (opts.extraKey ? ' oninput="setDailyFinishExtraValue(\'' + opts.extraKey + '\', this.value)"' : '') + '>' +
       (opts.hint ? '<div class="small text-muted mt-1">' + opts.hint + '</div>' : '') +
-      (opts.extraKey ? dailyPhotoGalleryHtml(opts.extraKey, extras[opts.extraKey].photos) : '') +
+      // Renders photos for ALL 4 fields using the photoKey
+      (photoKey ? dailyPhotoGalleryHtml(photoKey, opts.photos || []) : '') +
     '</div>';
   };
 
   const inputsCard =
     '<div class="card mb-3">' +
       '<div class="group-header d-flex justify-content-between align-items-center">' +
-        '<span><i class="bi bi-speedometer2 me-2"></i>Finished Form — inputs</span>' +
-        '<small class="text-muted">4 fields</small>' +
+        '<span><i class="bi bi-speedometer2 me-2"></i>បញ្ចូលព័ត៌មានបញ្ចប់ការងារ</span>' +
+        '<small class="text-muted">៤ ចំណុច</small>' +
       '</div>' +
       '<div class="card-body p-2"><div class="finish-grid">' +
-        numField({ inputId: 'dailyEndOdo', labelKh: 'អូដូម៉ែត្រចុងក្រោយ', labelEn: 'End Odometer',
+        numField({ 
+          inputId: 'dailyEndOdo', 
+          labelKh: 'អូដូម៉ែត្រចុងក្រោយ', 
+          labelEn: 'End Odometer',
           value: (s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo,
-          hint: 'Start: ' + esc(startOdo || '—') }) +
-        numField({ inputId: 'dailyEndHour', labelKh: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ', labelEn: 'End OPHour',
+          hint: '<i class="bi bi-arrow-right-short"></i> Start: ' + esc(startOdo || '—'),
+          photos: extras.dailyEndOdo.photos 
+        }) +
+        numField({ 
+          inputId: 'dailyEndHour', 
+          labelKh: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ', 
+          labelEn: 'End OPHour',
           value: (s.endHour === '' || s.endHour == null) ? '' : s.endHour,
-          hint: 'Start: ' + esc(startHour || '—') }) +
-        numField({ extraKey: 'fuelLevel', labelKh: 'កម្រិតប្រេងម៉ាស៊ូត', labelEn: 'Diesel level',
-          value: extras.fuelLevel.value }) +
-        numField({ extraKey: 'fuelAdded', labelKh: 'បរិមាណបេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', labelEn: 'Fuel added',
-          value: extras.fuelAdded.value }) +
+          hint: '<i class="bi bi-arrow-right-short"></i> Start: ' + esc(startHour || '—'),
+          photos: extras.dailyEndHour.photos
+        }) +
+        numField({ 
+          extraKey: 'fuelLevel', 
+          labelKh: 'កម្រិតប្រេងម៉ាស៊ូត', 
+          labelEn: 'Diesel level',
+          value: extras.fuelLevel.value,
+          photos: extras.fuelLevel.photos
+        }) +
+        numField({ 
+          extraKey: 'fuelAdded', 
+          labelKh: 'បរិមាណបេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', 
+          labelEn: 'Fuel added',
+          value: extras.fuelAdded.value,
+          photos: extras.fuelAdded.photos
+        }) +
       '</div></div>' +
     '</div>';
 
@@ -8152,23 +8175,23 @@ window.openDailyFinishForm = function(checkId){
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyFinish()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
       infoGrid +
       inputsCard +
-      dailyCountCards(weekCounts.ok, weekCounts.nok, 'dailyFinish') +
       '<div class="card mb-3 legend-card">' +
-        '<div class="legend-title">FINISHED FORM</div>' +
+        '<div class="legend-title">ទម្រង់បញ្ចប់ការងារ</div>' +
         '<div class="legend-body text-center">' +
           '<div class="lbl-en"><span class="acronym">OK</span>=Normal &nbsp; <span class="acronym">NOT OK</span>=Problem found (add a note) &nbsp; <span class="acronym">N/A</span>=Not applicable</div>' +
           '<div class="lbl-kh"><span class="acronym">OK</span>=ធម្មតា &nbsp; <span class="acronym">NOT OK</span>=មានបញ្ហា (សូមចំណាំ) &nbsp; <span class="acronym">N/A</span>=មិនពាក់ព័ន្ធ</div>' +
         '</div>' +
+      dailyCountCards(weekCounts.ok, weekCounts.nok, 'dailyFinish') +
       '</div>' +
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
-        '<span><i class="bi bi-clipboard2-check me-2"></i>Finished Form items</span>' +
+        '<span><i class="bi bi-clipboard2-check me-2"></i>បញ្ជីត្រួតពិនិត្យបញ្ចប់ការងារ</span>' +
         '<small class="text-muted">' + dailyItemWord(items.length) + ' · <span id="dailyFinishNaCount">' + weekCounts.na + ' N/A</span></small>' +
       '</div><div class="card-body p-2"><div class="check-grid">' + itemsHtml + '</div></div></div>' +
       '<div class="card mb-3"><div class="card-body">' +
-        '<label class="form-label fw-bold">Final Remark</label>' +
+        '<label class="form-label fw-bold">កំណត់សម្គាល់ចុងក្រោយ (Final Remark)</label>' +
         '<textarea class="form-control form-control-sm" id="dailyEndRemark" rows="3" placeholder="សូមបញ្ជាក់ស្ថានភាពចុងក្រោយ...">' + esc(s.endRemark || '') + '</textarea>' +
       '</div></div>' +
-      '<button class="btn btn-danger w-100" style="margin-bottom:100px !important;" onclick="submitDailyFinishForm(\'' + escAttr(checkId) + '\')"><i class="bi bi-check2-circle me-1"></i>Submit Finished Form</button>' +
+      '<button class="btn btn-danger w-100" style="margin-bottom:100px !important;" onclick="submitDailyFinishForm(\'' + escAttr(checkId) + '\')"><i class="bi bi-check2-circle me-1"></i>បញ្ជូនទម្រង់បញ្ចប់ការងារ (Submit)</button>' +
     '</div>'
   );
   window.scrollTo(0, 0);
@@ -8188,20 +8211,20 @@ window.submitDailyFinishForm = function(checkId){
   const hourRaw = String($('#dailyEndHour').val() || '').trim();
   const remark  = $('#dailyEndRemark').val() || '';
 
-  if (!odoRaw && !hourRaw) { showAlert('Please fill the End Odometer or the End OPHour', 'warning'); return; }
+  if (!odoRaw && !hourRaw) { showAlert('សូមបំពេញអូដូម៉ែត្រចុងក្រោយ ឬម៉ោងប្រតិបត្តិការចុងក្រោយ (Please fill the End Odometer or the End OPHour)', 'warning'); return; }
 
   const odo  = odoRaw  === '' ? null : parseFloat(odoRaw);
   const hour = hourRaw === '' ? null : parseFloat(hourRaw);
-  if (odo !== null && (isNaN(odo) || odo < 0))    { showAlert('End Odometer must be a positive number', 'warning'); return; }
-  if (hour !== null && (isNaN(hour) || hour < 0)) { showAlert('End OPHour must be a positive number', 'warning'); return; }
+  if (odo !== null && (isNaN(odo) || odo < 0))    { showAlert('អូដូម៉ែត្រចុងក្រោយត្រូវតែជាលេខវិជ្ជមាន (End Odometer must be a positive number)', 'warning'); return; }
+  if (hour !== null && (isNaN(hour) || hour < 0)) { showAlert('ម៉ោងប្រតិបត្តិការចុងក្រោយត្រូវតែជាលេខវិជ្ជមាន (End OPHour must be a positive number)', 'warning'); return; }
 
   const startOdo  = (s.startOdo === '' || s.startOdo == null) ? null : parseFloat(s.startOdo);
   const startHour = (s.startHour === '' || s.startHour == null) ? null : parseFloat(s.startHour);
   if (odo !== null && startOdo !== null && !isNaN(startOdo) && odo < startOdo) {
-    showAlert('End Odometer cannot be lower than the start (' + startOdo + ')', 'warning'); return;
+    showAlert('អូដូម៉ែត្រចុងក្រោយមិនអាចតិចជាងអូដូម៉ែត្រចាប់ផ្តើមបានទេ (' + startOdo + ')', 'warning'); return;
   }
   if (hour !== null && startHour !== null && !isNaN(startHour) && hour < startHour) {
-    showAlert('End OPHour cannot be lower than the start (' + startHour + ')', 'warning'); return;
+    showAlert('ម៉ោងប្រតិបត្តិការចុងក្រោយមិនអាចតិចជាងម៉ោងចាប់ផ្តើមបានទេ (' + startHour + ')', 'warning'); return;
   }
 
   // Every configured Finished Form item must be answered (OK / NOT OK / N/A)
@@ -8211,7 +8234,7 @@ window.submitDailyFinishForm = function(checkId){
     return !a || ['ok', 'nok', 'na'].indexOf(a.status) === -1;
   });
   if (unanswered.length) {
-    showAlert('Please answer every Finished Form item (' + unanswered.length + ' left)', 'warning'); return;
+    showAlert('សូមឆ្លើយរាល់ចំណុចក្នុងទម្រង់បញ្ចប់ការងារ (Please answer every Finished Form item - ' + unanswered.length + ' left)', 'warning'); return;
   }
   if (dailyHasPendingUploads(st)) {
     showAlert('រូបថតកំពុងផ្ទុកឡើង — សូមរង់ចាំបន្តិច (photos still uploading)', 'warning'); return;
@@ -8231,11 +8254,12 @@ window.submitDailyFinishForm = function(checkId){
     return entry;
   });
 
-  // Fuel level + fuel added — numbers with their own photos (Photos stay as ids)
+  // Process Extras (Now includes all 4 fields: fuel, fuelAdded, dailyEndOdo, dailyEndHour)
   const extras = st.extras || {};
   const finishExtra = {};
   const extraNums = {};
   let badField = '';
+  
   Object.keys(extras).forEach(k => {
     const raw = String(extras[k].value == null ? '' : extras[k].value).trim();
     let value = '';
@@ -8244,11 +8268,27 @@ window.submitDailyFinishForm = function(checkId){
       if (isNaN(n) || n < 0) badField = k;
       else value = n;
     }
-    finishExtra[k] = { value: value, photos: dailyPhotosPayload(extras[k].photos) };
-    extraNums[k] = value;
+    
+    // Save the value AND the photos for this field
+    finishExtra[k] = { 
+      value: value, 
+      photos: dailyPhotosPayload(extras[k].photos) 
+    };
+    
+    // Only map the fuel numbers to extraNums, since Odo/Hour are handled separately above
+    if (k === 'fuelLevel' || k === 'fuelAdded') {
+      extraNums[k] = value;
+    }
   });
+
   if (badField) {
-    showAlert(badField === 'fuelLevel' ? 'កម្រិតប្រេងម៉ាស៊ូត must be a positive number' : 'បរិមាណបេងបានចាក់ must be a positive number', 'warning');
+    const fieldNames = {
+      fuelLevel: 'កម្រិតប្រេងម៉ាស៊ូត',
+      fuelAdded: 'បរិមាណបេងបានចាក់',
+      dailyEndOdo: 'អូដូម៉ែត្រចុងក្រោយ',
+      dailyEndHour: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ'
+    };
+    showAlert((fieldNames[badField] || badField) + ' ត្រូវតែជាលេខវិជ្ជមាន (must be a positive number)', 'warning');
     return;
   }
 
@@ -8257,7 +8297,6 @@ window.submitDailyFinishForm = function(checkId){
     .withSuccessHandler(res => {
       hideLoading();
       if (!res || !res.success) {
-        // Keep the form open so the driver can fix it, but make sure nothing is left frozen
         hideLoading();
         showAlert((res && res.message) || 'Error', 'danger');
         return;
@@ -8277,7 +8316,7 @@ window.submitDailyFinishForm = function(checkId){
       // Leave the form page first, then repaint from the updated local copy
       dailyFinishState = { checkId: '', items: [], answers: {}, extras: {} };
       hideDailyFlowModal();
-      showAlert('Finished — equipment is waiting for handover', 'success');
+      showAlert('បានបញ្ចប់ការងារ — ឧបករណ៍កំពុងរង់ចាំការប្រគល់ការងារ (Finished — waiting for handover)', 'success');
       showPage('home');
       dailySyncNow();
     })
