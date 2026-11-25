@@ -7601,12 +7601,8 @@ function renderDailyChecklistForm(){
       dailyInfoCard('truck', esc(c.group || 'ឧបករណ៍'),
         '<div>' + esc(c.shortName || c.equipmentId) + typeBadge + '</div>', 'primary') +
       trailerCard +
-      dailyInfoCard('person', 'អ្នកត្រួតពិនិត្យ', dailyInfoCardName((currentUser && currentUser.fullName) || '', myPhone), 'success') +
-      (c.prevDriverName ? dailyInfoCard('person-badge', 'អ្នកបើកបរ (រង្វង់មុន)', esc(c.prevDriverName), 'info') : '') +
+      (c.prevDriverName ? dailyInfoCard('person-badge', 'អ្នកបើកបរ', esc(c.prevDriverName), 'info') : '') +
       dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(dmyToday()) + ' ' + esc(nowTimeStr()), 'warning') +
-      dailyInfoCard('list-check', 'ចំនួនចំណុច',
-        '<div>' + dailyItemWord(c.items.length) + '</div>' +
-        '<div class="small text-muted fw-normal mt-1">' + (isWeekly ? 'Weekly Check' : 'Daily Checklist') + '</div>', 'secondary') +
     '</div>' +
     ((startLine || handoverChip) ? '<div class="mb-3">' + startLine + handoverChip + '</div>' : '');
 
