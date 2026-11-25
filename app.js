@@ -7087,7 +7087,7 @@ function dailyFinishChecksHtml(s){
 /* The four Finished Form inputs (End Odometer, End OPHour, Diesel level, Fuel
    added) read back as ONE block — each tile carries its own photos, revealed
    only when the viewer taps that tile's photo chip. */
-function dailyFinishExtraHtml(s){
+function dailyFinishExtraHtml(s) {
   const fx = (s && s.finishExtra) || {};
   const txt = v => (v === '' || v == null) ? '—' : dailyNumText(v);
   const defs = [
@@ -7096,23 +7096,55 @@ function dailyFinishExtraHtml(s){
     { key: 'fuelLevel', label: 'កម្រិតប្រេងម៉ាស៊ូត',                    en: 'Diesel level' },
     { key: 'fuelAdded', label: 'បរិមាណបេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', en: 'Fuel added' }
   ];
+
   const tiles = defs.map(d => {
     const v = fx[d.key] || {};
     const value = (d.value !== undefined) ? d.value : v.value;
     const photos = Array.isArray(v.photos) ? v.photos : [];
     const has = (value !== '' && value != null) || photos.length > 0;
     if (!has) return '';
-    return '<div class="finish-tile">' +
-      '<div class="small text-muted">' + esc(d.label) + ' <span class="fw-normal">(' + esc(d.en) + ')</span></div>' +
-      '<div class="finish-val">' + esc(txt(value)) + '</div>' +
-      dailyPhotoIdsHtml(photos) +
+
+    const photoHtml = photos.length
+      ? '<div class="d-flex flex-wrap gap-1 mt-2">' +
+          photos.map(id =>
+            '<img src="' + photoUrl(id) + '" ' +
+                 'class="rounded border" ' +
+                 'style="width:48px;height:48px;object-fit:cover;cursor:pointer;" ' +
+                 'onclick="openPhotoViewer(\'' + escAttr(id) + '\')" ' +
+                 'alt="photo">'
+          ).join('') +
+        '</div>'
+      : '';
+
+    return '<div class="col-6 col-md-3">' +
+      '<div class="card border-0 shadow-sm h-100">' +
+        '<div class="card-body p-3 d-flex flex-column">' +
+          '<div class="d-flex justify-content-between align-items-start mb-2">' +
+            '<div>' +
+              '<div class="small fw-semibold text-dark">' + esc(d.label) + '</div>' +
+              '<div class="text-muted" style="font-size:0.7rem;">' + esc(d.en) + '</div>' +
+            '</div>' +
+            '<i class="bi bi-check-circle-fill text-success" style="font-size:0.8rem;"></i>' +
+          '</div>' +
+          '<div class="fw-bold text-primary" style="font-size:1.1rem;">' + esc(txt(value)) + '</div>' +
+          photoHtml +
+        '</div>' +
+      '</div>' +
     '</div>';
   }).join('');
+
   if (!tiles) return '';
-  return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
-      '<span><i class="bi bi-clipboard2-data me-2"></i>Finished Form — inputs</span>' +
-      '<small class="text-muted">4 fields</small>' +
-    '</div><div class="card-body p-2"><div class="finish-grid">' + tiles + '</div></div></div>';
+
+  return '<div class="card mb-3 border-0 shadow-sm">' +
+      '<div class="group-header d-flex justify-content-between align-items-center px-3 py-2" ' +
+           'style="background:transparent;border-bottom:1px solid var(--border-color);">' +
+        '<span class="fw-semibold"><i class="bi bi-clipboard2-data me-2 text-primary"></i>Finished Form — Inputs</span>' +
+        '<small class="text-muted">4 fields</small>' +
+      '</div>' +
+      '<div class="card-body p-3">' +
+        '<div class="row g-2">' + tiles + '</div>' +
+      '</div>' +
+    '</div>';
 }
 
 /* Operational panel used inside the daily detail modal */
@@ -8704,6 +8736,7 @@ function renderDailyDetailModal(s) {
           '<span><i class="bi bi-list-check me-2"></i>Items</span>' +
           '<small class="text-muted"><span id="detailItemCount">'+enriched.length+' shown</span>' + (naCount ? ' · ' + naCount + ' N/A' : '') + '</small>' +
         '</div>' +
+    
         '<div class="card-body p-2" id="dailyDetailItemsList"><div class="check-grid">' +
           enriched.map((c, i) => {
             const cls   = c.status === 'ok' ? 'ok' : c.status === 'nok' ? 'nok' : 'na';
