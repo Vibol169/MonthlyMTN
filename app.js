@@ -7553,14 +7553,14 @@ function renderDailyChecklistForm(){
             '<i class="bi bi-shield-check" style="font-size: 1.1rem;"></i>' +
           '</div>' +
           '<div>' +
-            '<h6 class="mb-0 fw-bold" style="font-size: .95rem; color: var(--text-color);">Driver Confirmation</h6>' +
+            '<h6 class="mb-0 fw-bold" style="font-size: .95rem; color: var(--text-color);">ការព្រមព្រៀងមុនប្រតិបត្តិការ</h6>' +
             '<div class="small fw-semibold" style="color: ' + (c.agreed ? 'var(--status-ok-text)' : 'var(--status-pending-text)') + '; font-size: .75rem;">' +
               '<i class="bi bi-' + (c.agreed ? 'check2-circle' : 'hourglass-split') + ' me-1"></i>' +
               (c.agreed ? 'Safety agreement confirmed' : 'Waiting for confirmation') +
             '</div>' +
           '</div>' +
         '</div>' +
-        '<span class="badge rounded-pill ' + (c.agreed ? 'bg-success' : 'bg-warning text-dark') + '" style="font-size: .75rem; padding: 6px 12px;" id="dailyAgreementBadge">' + (c.agreed ? 'Confirmed' : 'Pending') + '</span>' +
+        '<span class="badge rounded-pill ' + (c.agreed ? 'bg-success' : 'bg-warning text-dark') + '" style="font-size: .75rem; padding: 6px 12px;" id="dailyAgreementBadge">' + (c.agreed ? 'បានយល់ព្រម' : 'មិនយល់ព្រម') + '</span>' +
       '</div>' +
       
       // Body
@@ -7630,8 +7630,8 @@ function renderDailyChecklistForm(){
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyChecklist()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
       agreementHtml +
       headerCard +
-      dailyCountCards(counts.ok, counts.nok, 'daily') +
       legendHtml +
+      dailyCountCards(counts.ok, counts.nok, 'daily') +
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-clipboard-check me-2"></i>' + title + '</span>' +
         '<small class="text-muted">' + dailyItemWord(c.items.length) + ' · <span id="dailyNaCount">' + counts.na + ' N/A</span></small>' +
