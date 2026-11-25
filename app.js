@@ -7062,138 +7062,58 @@ window.toggleItemPhotos = function(ev, btn){
   $btn.toggleClass('is-open', open);
 };
 
-function dailyFinishChecksHtml(s) {
+function dailyFinishChecksHtml(s){
   const list = Array.isArray(s && s.finishChecks) ? s.finishChecks : [];
   if (!list.length) return '';
-
   const labels = { ok: 'OK', nok: 'NOT OK', na: 'N/A' };
-  const icons  = { ok: 'check-circle-fill', nok: 'x-circle-fill', na: 'dash-circle-fill' };
-  const colors = { ok: 'success', nok: 'danger', na: 'secondary' };
-
-  const counts = { ok: 0, nok: 0, na: 0 };
-  list.forEach(c => { if (counts[c.status] !== undefined) counts[c.status]++; });
-
-  const summary =
-    '<div class="d-flex gap-2 flex-wrap">' +
-      '<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">' +
-        '<i class="bi bi-check-circle-fill me-1"></i>OK: ' + counts.ok + '</span>' +
-      '<span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">' +
-        '<i class="bi bi-x-circle-fill me-1"></i>NOT OK: ' + counts.nok + '</span>' +
-      '<span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">' +
-        '<i class="bi bi-dash-circle-fill me-1"></i>N/A: ' + counts.na + '</span>' +
-    '</div>';
-
-  const cards = list.map((c, i) => {
-    const color = colors[c.status] || 'secondary';
-    const icon  = icons[c.status]  || 'dash-circle-fill';
-    const name  = c.itemKhmer || c.itemEng || c.itemId;
-
-    const rawPhotos = Array.isArray(c.photos) ? c.photos : [];
-    const photoIds = rawPhotos
-      .map(p => (typeof p === 'string' ? p : (p && p.fileId) ? p.fileId : null))
-      .filter(Boolean);
-
-    const photoHtml = photoIds.length
-      ? '<div class="mt-2">' + dailyPhotoIdsHtml(photoIds) + '</div>'
-      : '';
-
-    return '<div class="col-12 col-md-6">' +
-      '<div class="border border-' + color + '-subtle rounded-3 p-3 h-100 bg-' + color + '-subtle bg-opacity-10">' +
-        '<div class="d-flex justify-content-between align-items-start gap-2">' +
-          '<div class="flex-grow-1">' +
-            '<div class="d-flex align-items-center gap-2 mb-1">' +
-              '<span class="badge bg-' + color + ' text-white rounded-pill" style="font-size:0.7rem;">' + (i + 1) + '</span>' +
-              '<span class="fw-semibold text-dark">' + esc(name) + '</span>' +
-            '</div>' +
-            (c.itemEng && c.itemKhmer
-              ? '<div class="text-muted" style="font-size:0.72rem;">' + esc(c.itemEng) + '</div>'
-              : '') +
-          '</div>' +
-          '<span class="text-' + color + ' text-nowrap fw-semibold small">' +
-            '<i class="bi bi-' + icon + ' me-1"></i>' + esc(labels[c.status] || c.status) +
-          '</span>' +
-        '</div>' +
-        (c.note
-          ? '<div class="mt-2 small text-danger d-flex align-items-start gap-1">' +
-              '<i class="bi bi-chat-left-text mt-1"></i><span>' + esc(c.note) + '</span>' +
-            '</div>'
-          : '') +
-        photoHtml +
+  const rows = list.map((c, i) => {
+    const cls  = c.status === 'ok' ? 'ok' : c.status === 'nok' ? 'nok' : 'na';
+    const icon = c.status === 'ok' ? 'check-circle' : c.status === 'nok' ? 'x-circle' : 'dash-circle';
+    const name = c.itemKhmer || c.itemEng || c.itemId;
+    return '<div class="check-item '+cls+'">' +
+      '<div class="d-flex justify-content-between align-items-center">' +
+        '<div><span class="item-num">'+(i+1)+'.</span><span class="item-name-kh">'+esc(name)+'</span>' +
+        (c.itemEng && c.itemKhmer ? '<div class="item-name-en">'+esc(c.itemEng)+'</div>' : '') + '</div>' +
+        '<span class="small text-nowrap">'+esc(labels[c.status] || c.status) + ' <i class="bi bi-'+icon+'"></i></span>' +
       '</div>' +
+      (c.note ? '<div class="small text-danger mt-1"><i class="bi bi-chat-left-text me-1"></i>'+esc(c.note)+'</div>' : '') +
+      dailyPhotoIdsHtml(c.photos) +
     '</div>';
   }).join('');
-
-  return '<div class="card mb-3 border-0 shadow-sm">' +
-      '<div class="group-header d-flex justify-content-between align-items-center flex-wrap gap-2 px-3 py-2" ' +
-           'style="background:transparent;border-bottom:1px solid var(--border-color);">' +
-        '<span class="fw-semibold"><i class="bi bi-flag me-2 text-danger"></i>Finished Form — Checklist</span>' +
-        summary +
-      '</div>' +
-      '<div class="card-body p-3">' +
-        '<div class="row g-2">' + cards + '</div>' +
-      '</div>' +
-    '</div>';
+  return '<div class="card mb-3"><div class="group-header"><i class="bi bi-flag me-2 text-danger"></i>Finished Form</div>' +
+    '<div class="card-body p-2"><div class="check-grid">' + rows + '</div></div></div>';
 }
+
 
 /* The four Finished Form inputs (End Odometer, End OPHour, Diesel level, Fuel
    added) read back as ONE block — each tile carries its own photos, revealed
    only when the viewer taps that tile's photo chip. */
-function dailyFinishExtraHtml(s) {
+function dailyFinishExtraHtml(s){
   const fx = (s && s.finishExtra) || {};
   const txt = v => (v === '' || v == null) ? '—' : dailyNumText(v);
   const defs = [
-    { key: 'endOdo',    label: 'អូដូម៉ែត្រចុងក្រោយ',                    en: 'End Odometer', value: s ? s.endOdo  : '' },
+    { key: 'endOdo',    label: 'គីឡូម៉ែត្រចុងក្រោយ',                    en: 'End Odometer', value: s ? s.endOdo  : '' },
     { key: 'endHour',   label: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ',                en: 'End OPHour',   value: s ? s.endHour : '' },
     { key: 'fuelLevel', label: 'កម្រិតប្រេងម៉ាស៊ូត',                    en: 'Diesel level' },
-    { key: 'fuelAdded', label: 'បរិមាណបេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', en: 'Fuel added' }
+    { key: 'fuelAdded', label: 'បរិមាណប្រេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', en: 'Fuel added' }
   ];
-
-  const cards = defs.map(d => {
+  const tiles = defs.map(d => {
     const v = fx[d.key] || {};
     const value = (d.value !== undefined) ? d.value : v.value;
-
-    // Normalize photos: support ["id"] and [{fileId:"id"}]
-    const rawPhotos = Array.isArray(v.photos) ? v.photos : [];
-    const photoIds = rawPhotos
-      .map(p => (typeof p === 'string' ? p : (p && p.fileId) ? p.fileId : null))
-      .filter(Boolean);
-
-    const has = (value !== '' && value != null) || photoIds.length > 0;
+    const photos = Array.isArray(v.photos) ? v.photos : [];
+    const has = (value !== '' && value != null) || photos.length > 0;
     if (!has) return '';
-
-    const photoHtml = photoIds.length
-      ? '<div class="mt-2">' + dailyPhotoIdsHtml(photoIds) + '</div>'
-      : '';
-
-    return '<div class="col-6 col-md-3">' +
-      '<div class="card border-0 shadow-sm h-100">' +
-        '<div class="card-body p-3 d-flex flex-column">' +
-          '<div class="d-flex justify-content-between align-items-start mb-2">' +
-            '<div>' +
-              '<div class="small fw-semibold text-dark">' + esc(d.label) + '</div>' +
-              '<div class="text-muted" style="font-size:0.7rem;">' + esc(d.en) + '</div>' +
-            '</div>' +
-            '<i class="bi bi-check-circle-fill text-success" style="font-size:0.8rem;"></i>' +
-          '</div>' +
-          '<div class="fw-bold text-primary" style="font-size:1.1rem;">' + esc(txt(value)) + '</div>' +
-          photoHtml +
-        '</div>' +
-      '</div>' +
+    return '<div class="finish-tile">' +
+      '<div class="small text-muted">' + esc(d.label) + ' <span class="fw-normal">(' + esc(d.en) + ')</span></div>' +
+      '<div class="finish-val">' + esc(txt(value)) + '</div>' +
+      dailyPhotoIdsHtml(photos) +
     '</div>';
   }).join('');
-
-  if (!cards) return '';
-
-  return '<div class="card mb-3 border-0 shadow-sm">' +
-      '<div class="group-header d-flex justify-content-between align-items-center px-3 py-2" ' +
-           'style="background:transparent;border-bottom:1px solid var(--border-color);">' +
-        '<span class="fw-semibold"><i class="bi bi-clipboard2-data me-2 text-primary"></i>Finished Form — Inputs</span>' +
-        '<small class="text-muted">4 fields</small>' +
-      '</div>' +
-      '<div class="card-body p-3">' +
-        '<div class="row g-2">' + cards + '</div>' +
-      '</div>' +
-    '</div>';
+  if (!tiles) return '';
+  return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
+      '<span><i class="bi bi-clipboard2-data me-2"></i>ទិន្នន័យបញ្ចប់ប្រតិបត្តិការ</span>' +
+      '<small class="text-muted">4 fields</small>' +
+    '</div><div class="card-body p-2"><div class="finish-grid">' + tiles + '</div></div></div>';
 }
 
 /* Operational panel used inside the daily detail modal */
@@ -7225,7 +7145,7 @@ function dailyOpSectionHtml(s){
   const tdStyle = 'padding:6px; border-bottom:1px dashed var(--border-color); font-weight:600; color:var(--text-color);';
   const tdNetStyle = 'padding:6px; border-bottom:1px dashed var(--border-color); font-weight:800; color:var(--tab-active);';
 
-  let html = '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center"><span><i class="bi bi-activity me-2"></i>ស្ថានភាពប្រតិបត្តិការ (Operational Status)</span>' + dailyOpBadge(s.opStatus) + '</div><div class="card-body py-2 px-2">';
+  let html = '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center"><span><i class="bi bi-activity me-2"></i>ស្ថានភាពប្រតិបត្តិការ</span>' + dailyOpBadge(s.opStatus) + '</div><div class="card-body py-2 px-2">';
   
   if (s.opAt) html += '<div class="small text-muted mb-3"><i class="bi bi-clock-history me-1"></i>Updated ' + esc(s.opAt) + (s.opBy ? ' · ' + esc(dailyUserLabel(s.opBy)) : '') + '</div>';
   
@@ -7238,13 +7158,13 @@ function dailyOpSectionHtml(s){
     '</tr></thead>' +
     '<tbody>' +
       '<tr>' +
-        '<td style="' + tdStyle + ' text-align:left; padding-left:12px;"><i class="bi bi-speedometer2 me-1 text-muted"></i>អូដូម៉ែត្រ (Odo)</td>' +
+        '<td style="' + tdStyle + ' text-align:left; padding-left:12px;"><i class="bi bi-speedometer2 me-1 text-muted"></i>កុងទ័រគីឡូម៉ែត្រ</td>' +
         '<td style="' + tdStyle + '">' + fmt(startOdo) + '</td>' +
         '<td style="' + tdStyle + '">' + fmt(endOdo) + '</td>' +
         '<td style="' + tdNetStyle + '">' + fmt(netOdo, true) + '</td>' +
       '</tr>' +
       '<tr>' +
-        '<td style="' + tdStyle + ' text-align:left; padding-left:12px;"><i class="bi bi-hourglass-split me-1 text-muted"></i>ម៉ោង (OPHour)</td>' +
+        '<td style="' + tdStyle + ' text-align:left; padding-left:12px;"><i class="bi bi-hourglass-split me-1 text-muted"></i>កុងទ័រម៉ោង</td>' +
         '<td style="' + tdStyle + '">' + fmt(startHour) + '</td>' +
         '<td style="' + tdStyle + '">' + fmt(endHour) + '</td>' +
         '<td style="' + tdNetStyle + '">' + fmt(netHour, true) + '</td>' +
@@ -7255,7 +7175,7 @@ function dailyOpSectionHtml(s){
   // 👇 Moved Table Headers to match the Row Layout properly 👇
   html = html.replace('<thead><tr><th style="' + thStyle + ' text-align:left; padding-left:12px;">Start</th><th style="' + thStyle + '">End</th><th style="' + thStyle + '">Net</th></tr></thead>', 
     '<thead><tr>' +
-      '<th style="' + thStyle + ' text-align:left; padding-left:12px;">ប្រភេទ (Type)</th>' +
+      '<th style="' + thStyle + ' text-align:left; padding-left:12px;">Description</th>' +
       '<th style="' + thStyle + '">Start</th>' +
       '<th style="' + thStyle + '">End</th>' +
       '<th style="' + thStyle + '">Net</th>' +
@@ -8775,6 +8695,16 @@ function renderDailyDetailModal(s) {
       dailyFinishExtraHtml(s) +
       dailyFinishChecksHtml(s) +    
 
+    // ── Start Form — Checklist header ──
+      '<div class="card mb-3 border-0 shadow-sm">' +
+        '<div class="group-header d-flex justify-content-between align-items-center px-3 py-2" ' +
+             'style="background:transparent;border-bottom:1px solid var(--border-color);">' +
+          '<span class="fw-semibold"><i class="bi bi-play-circle me-2 text-primary"></i>Start Form — Checklist</span>' +
+          '<small class="text-muted">' + enriched.length + ' items</small>' +
+        '</div>' +
+      '</div>' +
+    
+
         '<div class="row g-2 mb-3">' +
         '<div class="col-6"><div class="stat-card" data-filter="ok" onclick="filterDailyDetailItems(\'ok\')"><div class="num text-success">'+okCount+'</div><div class="lbl">N – Normal</div></div></div>' +
         '<div class="col-6"><div class="stat-card" data-filter="nok" onclick="filterDailyDetailItems(\'nok\')"><div class="num text-danger">'+nokCount+'</div><div class="lbl">Issues</div></div></div>' +
@@ -8876,7 +8806,7 @@ function buildDailyConfirmSection(s) {
 
   let html = '<div class="card mb-3 confirm-box" style="border-left:4px solid ' + border + ';">' +
     '<div class="group-header d-flex justify-content-between align-items-center" style="background:transparent;border-bottom:1px solid var(--border-color);">' +
-      '<span><i class="bi bi-patch-check me-2 text-info"></i>ការបញ្ជាក់ · Confirmation</span>' +
+      '<span><i class="bi bi-patch-check me-2 text-info"></i>ការបញ្ជាក់</span>' +
       '<span class="status-badge status-' + stageCls + '">' + esc(stageLabel) + '</span>' +
     '</div><div class="card-body">' +
     statusLines;
