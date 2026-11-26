@@ -7077,6 +7077,30 @@ window.toggleItemPhotos = function(ev, btn){
   $btn.toggleClass('is-open', open);
 };
 
+/* Read-only daily item units behave like the Monthly checklist items: one item
+   per row, and a tap anywhere on the card reveals that item's thumbnails.
+   Returns the extra class / click attribute for the item card wrapper. */
+function dailyItemPhotoReveal(photos){
+  const has = (Array.isArray(photos) ? photos : []).some(p => p && p.fileId);
+  return {
+    has: has,
+    cls: has ? ' is-tappable' : '',
+    attrs: has ? ' onclick="toggleDailyItemPhotos(event, this)"' : ''
+  };
+}
+
+window.toggleDailyItemPhotos = function(ev, el){
+  const $card = $(el);
+  const $gallery = $card.find('.photo-gallery').first();
+  if (!$gallery.length) return;
+  const $target = (ev && ev.target) ? $(ev.target) : $();
+  // The chip / thumbnails / remove button keep their own action
+  if ($target.closest('.photo-chip, .photo-tile, .photo-remove-btn, .photo-add-tile').length) return;
+  const open = $gallery.hasClass('is-collapsed');
+  $gallery.toggleClass('is-collapsed', !open);
+  $card.find('.photo-chip').toggleClass('is-open', open);
+};
+
 function dailyFinishChecksHtml(s){
   const list = Array.isArray(s && s.finishChecks) ? s.finishChecks : [];
   if (!list.length) return '';
@@ -7085,7 +7109,8 @@ function dailyFinishChecksHtml(s){
     const cls  = c.status === 'ok' ? 'ok' : c.status === 'nok' ? 'nok' : 'na';
     const icon = c.status === 'ok' ? 'check-circle' : c.status === 'nok' ? 'x-circle' : 'dash-circle';
     const name = c.itemKhmer || c.itemEng || c.itemId;
-    return '<div class="check-item '+cls+'">' +
+    const rv   = dailyItemPhotoReveal(c.photos);
+    return '<div class="check-item '+cls+rv.cls+'"'+rv.attrs+'>' +
       '<div class="d-flex justify-content-between align-items-center">' +
         '<div><span class="item-num">'+(i+1)+'.</span><span class="item-name-kh">'+esc(name)+'</span>' +
         (c.itemEng && c.itemKhmer ? '<div class="item-name-en">'+esc(c.itemEng)+'</div>' : '') + '</div>' +
@@ -7096,7 +7121,7 @@ function dailyFinishChecksHtml(s){
     '</div>';
   }).join('');
   return '<div class="card mb-3"><div class="group-header"><i class="bi bi-flag me-2 text-danger"></i>ការត្រួតពិនិត្យក្រោយប្រតិបត្តិការ</div>' +
-    '<div class="card-body p-2"><div class="check-grid">' + rows + '</div></div></div>';
+    '<div class="card-body p-2"><div class="check-grid is-single">' + rows + '</div></div></div>';
 }
 
 
@@ -7411,13 +7436,14 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
     issuesHtml =
       '<div class="card mb-3"><div class="group-header" style="background:#f8d7da;color:#721c24;">' +
         '<i class="bi bi-exclamation-triangle-fill me-2"></i>Issues Reported ('+nokItems.length+')</div>' +
-        '<div class="card-body p-2"><div class="check-grid">' +
-          nokItems.map(c =>
-            '<div class="check-item nok"><div><strong>'+esc(c.itemKhmer)+'</strong><div class="item-name-en">'+esc(c.itemEng)+'</div></div>' +
+        '<div class="card-body p-2"><div class="check-grid is-single">' +
+          nokItems.map(c => {
+            const rv = dailyItemPhotoReveal(c.photos);
+            return '<div class="check-item nok'+rv.cls+'"'+rv.attrs+'><div><strong>'+esc(c.itemKhmer)+'</strong><div class="item-name-en">'+esc(c.itemEng)+'</div></div>' +
             (c.note ? '<div class="small text-danger mt-1"><i class="bi bi-chat-left-text me-1"></i>'+esc(c.note)+'</div>' : '') +
             dailyPhotoIdsHtml(c.photos) +
-            '</div>'
-          ).join('') +
+            '</div>';
+          }).join('') +
         '</div></div>' +
       '</div>';
   }
@@ -8686,7 +8712,8 @@ function dailyMissionCardHtml(m, isAdmin, isManager){
   if (items.length) {
     html += '<div class="mt-2">' + items.map(it => {
       const name = it.itemKhmer || it.itemEng || it.itemId || '';
-      return '<div class="msn-item"><div><div>' + esc(name) + '</div>' +
+      const rv   = dailyItemPhotoReveal(it.photos);
+      return '<div class="msn-item'+rv.cls+'"'+rv.attrs+'><div><div>' + esc(name) + '</div>' +
         (it.note ? '<div class="small text-danger"><i class="bi bi-chat-left-text me-1"></i>' + esc(it.note) + '</div>' : '') +
         dailyPhotoIdsHtml(it.photos) + '</div>' +
         dailyMissionItemStatusBadge(it.status) + '</div>';
@@ -9116,12 +9143,13 @@ function renderDailyDetailModal(s) {
           '<small class="text-muted"><span id="detailItemCount">'+enriched.length+' shown</span>' + (naCount ? ' · ' + naCount + ' N/A' : '') + '</small>' +
         '</div>' +
     
-        '<div class="card-body p-2" id="dailyDetailItemsList"><div class="check-grid">' +
+        '<div class="card-body p-2" id="dailyDetailItemsList"><div class="check-grid is-single">' +
           enriched.map((c, i) => {
             const cls   = c.status === 'ok' ? 'ok' : c.status === 'nok' ? 'nok' : 'na';
             const lbl   = c.status === 'ok' ? 'OK' : c.status === 'nok' ? 'NOT OK' : (c.status === 'na' ? 'N/A' : '—');
             const badge = c.status === 'ok' ? 'status-ok' : c.status === 'nok' ? 'status-nok' : 'status-pending';
-            return '<div class="check-item '+cls+'" data-status="'+escAttr(c.status)+'">' +
+            const rv    = dailyItemPhotoReveal(c.photos);
+            return '<div class="check-item '+cls+rv.cls+'" data-status="'+escAttr(c.status)+'"'+rv.attrs+'>' +
               '<div class="d-flex justify-content-between align-items-start gap-2">' +
                 '<div class="label-part"><span class="item-num">'+(i+1)+'.</span><div class="item-text">' +
                   '<span class="item-name-kh">'+esc(c.itemKhmer)+'</span>' +
