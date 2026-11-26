@@ -213,6 +213,9 @@ body.dark-mode .msn-badge.msn-confirmed { background:#1e3f2e; color:#8bc34a; }
 .msn-card:last-child { margin-bottom:0; }
 .msn-item { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:3px 0; border-bottom:1px dashed var(--border-color); font-size:.8rem; }
 .msn-item:last-child { border-bottom:none; }
+.msn-item.is-tappable { cursor:pointer; }
+.msn-item.is-tappable:hover { background: rgba(13,110,253,.05); }
+body.dark-mode .msn-item.is-tappable:hover { background: rgba(13,110,253,.16); }
 .msn-stamp { font-size:.72rem; color:var(--tab-text); opacity:.85; }
 
 .op-kv { display:flex; justify-content:space-between; align-items:baseline; gap:8px; padding:4px 0; border-bottom:1px dashed var(--border-color); font-size:.82rem; }
@@ -904,6 +907,11 @@ body.dark-mode .daily-info-card .form-control { background: #101722; color: #e9e
 .check-grid.is-single .photo-tile { height: 66px; }
 .check-grid.is-single .photo-tile.photo-add-tile,
 .check-grid.is-single .photo-tile.photo-loading { width: 66px; }
+
+/* Read-only item units (daily detail / finished form / handover / mission):
+   the whole card can be tapped to reveal that item's photos */
+.check-item.is-tappable { cursor: pointer; }
+.check-item.is-tappable:hover { border-color: var(--tab-active); }
 
 /* Equipment + Trailer cards sit side by side; the trailer list is searchable */
 .daily-info-card.daily-trailer-card { padding: .6rem .65rem !important; }
