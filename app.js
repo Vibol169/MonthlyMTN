@@ -7153,28 +7153,49 @@ function dailyFinishChecksHtml(s){
 function dailyFinishExtraHtml(s){
   const fx = (s && s.finishExtra) || {};
   const txt = v => (v === '' || v == null) ? '—' : dailyNumText(v);
+  // The photo bags are stored under the input key (dailyEndOdo / dailyEndHour)
+  // while the shift row keeps the actual numbers in endOdo / endHour.
   const defs = [
-    { key: 'endOdo',    label: 'គីឡូម៉ែត្រចុងក្រោយ',                    en: 'End Odometer', value: s ? s.endOdo  : '' },
-    { key: 'endHour',   label: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ',                en: 'End OPHour',   value: s ? s.endHour : '' },
-    { key: 'fuelLevel', label: 'កម្រិតប្រេងម៉ាស៊ូត',                    en: 'Diesel level' },
-    { key: 'fuelAdded', label: 'បរិមាណប្រេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', en: 'Fuel added' }
+    { key: 'dailyEndOdo',  valueKey: 'endOdo',  icon: 'bi-speedometer2',     label: 'គីឡូម៉ែត្រចុងក្រោយ',                    en: 'End Odometer' },
+    { key: 'dailyEndHour', valueKey: 'endHour', icon: 'bi-hourglass-split',  label: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ',                en: 'End OPHour' },
+    { key: 'fuelLevel',    valueKey: '',        icon: 'bi-fuel-pump',        label: 'កម្រិតប្រេងម៉ាស៊ូត',                    en: 'Diesel level' },
+    { key: 'fuelAdded',    valueKey: '',        icon: 'bi-droplet-half',     label: 'បរិមាណប្រេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', en: 'Fuel added' }
   ];
-  const tiles = defs.map(d => {
-    const v = fx[d.key] || {};
-    const value = (d.value !== undefined) ? d.value : v.value;
-    const photos = Array.isArray(v.photos) ? v.photos : [];
-    const has = (value !== '' && value != null) || photos.length > 0;
-    if (!has) return '';
+  const rows = defs.map(d => {
+    const bag = fx[d.key] || {};
+    // Older rows may have saved odometer/hour photos under endOdo / endHour.
+    const legacy = (d.key === 'dailyEndOdo') ? fx.endOdo
+                 : (d.key === 'dailyEndHour') ? fx.endHour : null;
+    const rawValue = (d.valueKey && s) ? s[d.valueKey] : '';
+    // Prefer the meter's own sheet column, but fall back to the value kept in
+    // the photo bag for older/incomplete rows.
+    const value = (rawValue !== '' && rawValue != null) ? rawValue : bag.value;
+    const photos = Array.isArray(bag.photos) ? bag.photos
+                 : (legacy && Array.isArray(legacy.photos) ? legacy.photos : []);
+    return { d, value, photos, hasValue: (value !== '' && value != null) };
+  });
+  // Once a shift is finished its block keeps all four tiles, so a blank
+  // odometer reads as "—" instead of disappearing from the 4-field block.
+  const showEmpty = !!(s && s.finishedAt);
+  if (!showEmpty && !rows.some(r => r.hasValue || r.photos.length)) return '';
+  const tiles = rows.map(r => {
+    if (!r.hasValue && !r.photos.length && !showEmpty) return '';
     return '<div class="finish-tile">' +
-      '<div class="small text-muted">' + esc(d.label) + ' <span class="fw-normal">(' + esc(d.en) + ')</span></div>' +
-      '<div class="finish-val">' + esc(txt(value)) + '</div>' +
-      dailyPhotoIdsHtml(photos) +
+      '<div class="finish-tile-top">' +
+        '<span class="finish-tile-ico"><i class="bi ' + r.d.icon + '"></i></span>' +
+        '<div class="finish-tile-label">' +
+          '<div class="finish-tile-kh">' + esc(r.d.label) + '</div>' +
+          '<div class="finish-tile-en">' + esc(r.d.en) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="finish-val">' + esc(txt(r.value)) + '</div>' +
+      dailyPhotoIdsHtml(r.photos) +
     '</div>';
   }).join('');
   if (!tiles) return '';
   return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
       '<span><i class="bi bi-clipboard2-data me-2"></i>ទិន្នន័យបញ្ចប់ប្រតិបត្តិការ</span>' +
-      '<small class="text-muted">4 fields</small>' +
+      '<small class="text-muted">៤ ចំណុច</small>' +
     '</div><div class="card-body p-2"><div class="finish-grid">' + tiles + '</div></div></div>';
 }
 
@@ -7187,14 +7208,19 @@ function dailyOpSectionHtml(s){
   // An active mission locks the shift actions until the driver is back on site
   const activeMission = (s.missions || []).find(dailyMissionIsActive);
 
-  // Calculate Nets (Difference between Start and End)
-  const startOdo  = parseFloat(s.startOdo) || 0;
-  const endOdo    = parseFloat(s.endOdo) || 0;
-  const startHour = parseFloat(s.startHour) || 0;
-  const endHour   = parseFloat(s.endHour) || 0;
+  // Blank meters must stay blank in the read-only table (not become 0).
+  const numOrNull = v => {
+    if (v === '' || v == null) return null;
+    const n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  };
+  const startOdo  = numOrNull(s.startOdo);
+  const endOdo    = numOrNull(s.endOdo);
+  const startHour = numOrNull(s.startHour);
+  const endHour   = numOrNull(s.endHour);
 
-  const netOdo  = (s.startOdo !== '' && s.endOdo !== '' && endOdo >= startOdo) ? (endOdo - startOdo) : null;
-  const netHour = (s.startHour !== '' && s.endHour !== '' && endHour >= startHour) ? (endHour - startHour) : null;
+  const netOdo  = (startOdo != null && endOdo != null && endOdo >= startOdo) ? (endOdo - startOdo) : null;
+  const netHour = (startHour != null && endHour != null && endHour >= startHour) ? (endHour - startHour) : null;
 
   // Helper to format numbers (removes trailing .0 if integer)
   const fmt = (val, isNet) => {
@@ -7953,8 +7979,9 @@ window.toggleDailyAgreement = function(checked) {
 };
 
 /* ---------- Daily item photos (same camera / gallery UX as the monthly form) ----------
-   Every daily checklist item, every Finished Form item and the two extra fuel
-   fields keep their own photo bag: { status, note, photos:[{fileId, thumb, …}] }. */
+   Every daily checklist item, every Finished Form item and the four Finished
+   Form inputs (End Odometer / End OPHour / Diesel level / Fuel added) keep
+   their own photo bag: { status, note, photos:[{fileId, thumb, …}] }. */
 const DAILY_PHOTO_MAX = 10;
 
 function dailyPhotoBag(key){
@@ -8390,20 +8417,28 @@ window.openDailyFinishForm = function(checkId){
     '</div>';
 
   const numField = (opts) => {
-    // Determine a unique key for photos (extraKey for fuel, or inputId for odometer)
+    // The photo bag key is the same as the input key so each field keeps its
+    // own camera / gallery row (dailyEndOdo, dailyEndHour, fuelLevel, fuelAdded).
     const photoKey = opts.extraKey || opts.inputId;
     const inputId = opts.inputId || (opts.extraKey ? 'daily_' + opts.extraKey : '');
 
     return '<div class="finish-field">' +
-      '<label class="form-label small fw-bold mb-1"' + (inputId ? ' for="' + inputId + '"' : '') + '>' +
-        esc(opts.labelKh) + ' <span class="text-muted fw-normal">(' + esc(opts.labelEn) + ')</span></label>' +
-      '<input type="number" step="0.1" min="0" class="form-control form-control-sm"' +
+      '<div class="finish-field-top">' +
+        '<span class="finish-field-ico"><i class="bi ' + (opts.icon || 'bi-123') + '"></i></span>' +
+        '<label class="form-label small fw-bold mb-0"' + (inputId ? ' for="' + inputId + '"' : '') + '>' +
+          '<span class="finish-field-kh">' + esc(opts.labelKh) +
+            (opts.optional ? '<span class="finish-opt">Optional</span>' : '') +
+          '</span>' +
+          '<span class="finish-field-en text-muted fw-normal">' + esc(opts.labelEn) + '</span>' +
+        '</label>' +
+      '</div>' +
+      '<input type="number" inputmode="decimal" step="0.1" min="0" autocomplete="off" class="form-control form-control-sm finish-input"' +
         (inputId ? ' id="' + inputId + '"' : '') +
-        ' placeholder="0.0" value="' + escAttr(opts.value == null ? '' : opts.value) + '"' +
+        ' placeholder="' + escAttr(opts.placeholder || '0.0') + '" value="' + escAttr(opts.value == null ? '' : opts.value) + '"' +
         (opts.extraKey ? ' oninput="setDailyFinishExtraValue(\'' + opts.extraKey + '\', this.value)"' : '') + '>' +
-      (opts.hint ? '<div class="small text-muted mt-1">' + opts.hint + '</div>' : '') +
-      // Renders photos for ALL 4 fields using the photoKey
-      (photoKey ? dailyPhotoGalleryHtml(photoKey, opts.photos || []) : '') +
+      (opts.hint ? '<div class="finish-hint small text-muted">' + opts.hint + '</div>' : '') +
+      '<div class="finish-photo-head"><i class="bi bi-camera"></i><span>ភ្ជាប់រូបថត</span><span class="finish-photo-en">(Photo)</span></div>' +
+      dailyPhotoGalleryHtml(photoKey, opts.photos || [], true) +
     '</div>';
   };
 
@@ -8416,14 +8451,20 @@ window.openDailyFinishForm = function(checkId){
       '<div class="card-body p-2"><div class="finish-grid">' +
         numField({
           inputId: 'dailyEndOdo',
+          extraKey: 'dailyEndOdo',
+          icon: 'bi-speedometer2',
           labelKh: 'គីឡូម៉ែត្រចុងក្រោយ',
           labelEn: 'End Odometer',
           value: (s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo,
+          optional: true,
+          placeholder: 'Optional',
           hint: '<i class="bi bi-arrow-right-short"></i> Start: ' + esc(startOdo || '—'),
           photos: extras.dailyEndOdo.photos
         }) +
         numField({
           inputId: 'dailyEndHour',
+          extraKey: 'dailyEndHour',
+          icon: 'bi-hourglass-split',
           labelKh: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ',
           labelEn: 'End OPHour',
           value: (s.endHour === '' || s.endHour == null) ? '' : s.endHour,
@@ -8432,19 +8473,25 @@ window.openDailyFinishForm = function(checkId){
         }) +
         numField({
           extraKey: 'fuelLevel',
+          icon: 'bi-fuel-pump',
           labelKh: 'កម្រិតប្រេងម៉ាស៊ូត',
           labelEn: 'Diesel level',
           value: extras.fuelLevel.value,
+          optional: true,
           photos: extras.fuelLevel.photos
         }) +
         numField({
           extraKey: 'fuelAdded',
+          icon: 'bi-droplet-half',
           labelKh: 'បរិមាណប្រេងបានចាក់',
           labelEn: 'Fuel added',
           value: extras.fuelAdded.value,
+          optional: true,
           photos: extras.fuelAdded.photos
         }) +
-      '</div></div>' +
+      '</div>' +
+      '<div class="finish-note"><i class="bi bi-info-circle me-1"></i>អូដូម៉ែត្រអាចទុកទទេបាន — សូមបំពេញម៉ោងប្រតិបត្តិការ ឬភ្ជាប់រូបថតកុងទ័រ។ <span class="text-muted">End Odometer is optional.</span></div>' +
+      '</div>' +
     '</div>';
 
   $('#app').html(
@@ -8482,16 +8529,35 @@ window.submitDailyFinishForm = function(checkId){
   const s = (APP.dailySubmissions || []).find(x => x.checkId === checkId);
   if (!s) return;
 
+  // Local form state (items + the four extras, including their photos)
+  const st = dailyFinishState || { items: [], answers: {}, extras: {} };
+
   const odoRaw  = String($('#dailyEndOdo').val() || '').trim();
   const hourRaw = String($('#dailyEndHour').val() || '').trim();
   const remark  = $('#dailyEndRemark').val() || '';
 
-  if (!odoRaw && !hourRaw) { showAlert('សូមបំពេញអូដូម៉ែត្រចុងក្រោយ ឬម៉ោងប្រតិបត្តិការចុងក្រោយ (Please fill the End Odometer or the End OPHour)', 'warning'); return; }
+  // End Odometer may stay blank. When both meter numbers are blank a meter
+  // photo (odometer / hour clock) is accepted as the evidence instead.
+  const meterPhotoCount = ['dailyEndOdo', 'dailyEndHour'].reduce((n, k) => {
+    const bag = st.extras && st.extras[k];
+    // Count placeholders too — a still-uploading photo is checked right below
+    // by dailyHasPendingUploads instead of showing a misleading "attach one".
+    return n + (Array.isArray(bag && bag.photos) ? bag.photos.length : 0);
+  }, 0);
+  if (!odoRaw && !hourRaw && !meterPhotoCount) {
+    showAlert('សូមបំពេញម៉ោងប្រតិបត្តិការចុងក្រោយ ឬភ្ជាប់រូបថតកុងទ័រ (End Odometer is optional — fill the End OPHour or attach a meter photo)', 'warning');
+    return;
+  }
 
   const odo  = odoRaw  === '' ? null : parseFloat(odoRaw);
   const hour = hourRaw === '' ? null : parseFloat(hourRaw);
   if (odo !== null && (isNaN(odo) || odo < 0))    { showAlert('អូដូម៉ែត្រចុងក្រោយត្រូវតែជាលេខវិជ្ជមាន (End Odometer must be a positive number)', 'warning'); return; }
   if (hour !== null && (isNaN(hour) || hour < 0)) { showAlert('ម៉ោងប្រតិបត្តិការចុងក្រោយត្រូវតែជាលេខវិជ្ជមាន (End OPHour must be a positive number)', 'warning'); return; }
+
+  // Keep the two meter photo bags in sync with what is actually in the inputs
+  // (also covers a value that was prefilled without an oninput event).
+  if (st.extras && st.extras.dailyEndOdo)  st.extras.dailyEndOdo.value  = odoRaw;
+  if (st.extras && st.extras.dailyEndHour) st.extras.dailyEndHour.value = hourRaw;
 
   const startOdo  = (s.startOdo === '' || s.startOdo == null) ? null : parseFloat(s.startOdo);
   const startHour = (s.startHour === '' || s.startHour == null) ? null : parseFloat(s.startHour);
@@ -8503,7 +8569,6 @@ window.submitDailyFinishForm = function(checkId){
   }
 
   // Every configured Finished Form item must be answered (OK / NOT OK / N/A)
-  const st = dailyFinishState || { items: [], answers: {}, extras: {} };
   const unanswered = (st.items || []).filter(it => {
     const a = st.answers[it.itemId];
     return !a || ['ok', 'nok', 'na'].indexOf(a.status) === -1;
