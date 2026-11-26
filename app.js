@@ -7649,7 +7649,7 @@ function renderDailyChecklistForm(){
       /* Footer */
       '<div class="px-3 py-2 text-muted d-flex align-items-center gap-2" style="background: var(--header-bg); border-top: 1px solid var(--border-color); font-size: .7rem; border-radius: 0 0 12px 12px;">' +
         '<i class="bi bi-info-circle"></i>' +
-        '<span>រក្សាទុកជាមួយបញ្ជីត្រួតពិនិត្យនេះ (កំណត់ពេលវេលា)។</span>' +
+        '<span> សុវត្ថិភាពជាចម្បង Safty First </span>' +
       '</div>' +
       
     '</div>';
