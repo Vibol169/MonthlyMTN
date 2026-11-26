@@ -7375,7 +7375,6 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
     '<div class="container-fluid px-0">' +
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyChecklist()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
       dailyFinishSummaryHtml(prev) +
-      dailyFinishChecksHtml(prev) +
       '<div class="card mb-3 confirm-box confirm-pending"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-arrow-left-right me-2"></i>Handover Confirmation</span>' +
         '<span class="status-badge status-pending">Required</span>' +
@@ -7397,6 +7396,17 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
         '</div>' +
       '</div></div>' +
 
+          dailyFinishChecksHtml(prev) +
+
+          // ── Start Form — Checklist header ──
+      '<div class="card mb-3 border-0 shadow-sm">' +
+        '<div class="group-header d-flex justify-content-between align-items-center px-3 py-2" ' +
+             'style="background:transparent;border-bottom:1px solid var(--border-color);">' +
+          '<span class="fw-semibold"><i class="bi bi-play-circle me-2 text-primary"></i>Start Form — Checklist</span>' +
+          '<small class="text-muted">' + enriched.length + ' items</small>' +
+        '</div>' +
+      '</div>' +
+    
       '<div class="row g-2 mb-3">' +
         dailyInfoCard('truck', esc(group || 'ឧបករណ៍'),
           '<div>' + esc(shortName) + '</div>' +
