@@ -7509,7 +7509,7 @@ function dailyTrailerHintHtml(filter, selectedId){
   const n = dailyTrailerMatch(all, filter).length;
   if (!n) return '<i class="bi bi-exclamation-circle me-1 text-warning"></i>រកមិនឃើញរ៉ឺម៉ក · No match';
   if (selectedId && n === all.length) {
-    return '<i class="bi bi-check-circle me-1 text-success"></i>រ៉ឺម៉កបានជ្រើសរើស · Trailer selected';
+    return '';
   }
   return '<i class="bi bi-info-circle me-1"></i>' + n + ' រ៉ឺម៉ក' +
     (String(filter || '').trim() ? ' · filtered' : ' · available');
@@ -7673,7 +7673,7 @@ function renderDailyChecklistForm(){
     ? '<div class="col-6"><div class="p-3 border rounded-3 bg-white h-100 shadow-sm daily-info-card daily-trailer-card">' +
         '<div class="d-flex align-items-center mb-2">' +
           '<i class="bi bi-link text-secondary me-2" style="font-size:1.1rem;"></i>' +
-          '<span class="text-muted small" style="letter-spacing:.5px;font-family:\'Battambang\',\'Kantumruy Pro\',sans-serif;font-weight:400;">រ៉ឺម៉ក · Trailer</span>' +
+          '<span class="text-muted small" style="letter-spacing:.5px;font-family:\'Battambang\',\'Kantumruy Pro\',sans-serif;font-weight:400;">រ៉ឺម៉ក</span>' +
         '</div>' +
         
         /* 👇 NEW CUSTOM DROPDOWN HTML 👇 */
