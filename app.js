@@ -7375,14 +7375,23 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
     '<div class="container-fluid px-0">' +
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyChecklist()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
       dailyFinishSummaryHtml(prev) +
-      '<div class="card mb-3 confirm-box confirm-pending"><div class="group-header d-flex justify-content-between align-items-center">' +
-        '<span><i class="bi bi-arrow-left-right me-2"></i>Handover Confirmation</span>' +
-        '<span class="status-badge status-pending">Required</span>' +
-        '<div class="d-grid gap-2">' +
-          '<button class="btn btn-primary" onclick="confirmDailyHandover(\''+escAttr(equipmentId)+'\',\''+escAttr(group)+'\',\''+escAttr(shortName)+'\',\''+escAttr(prev.checkId)+'\')"><i class="bi bi-shield-check me-1"></i>Verify &amp; Accept Handover</button>' +
-          '<button class="btn btn-outline-primary" onclick="viewDailyCheck(\''+escAttr(prev.checkId)+'\')"><i class="bi bi-eye me-1"></i>View Full Details</button>' +
+      
+      '<div class="card mb-3 confirm-box confirm-pending">' +
+        /* Header */
+        '<div class="group-header d-flex justify-content-between align-items-center">' +
+          '<span><i class="bi bi-arrow-left-right me-2"></i>Handover Confirmation</span>' +
+          '<span class="status-badge status-pending">Required</span>' +
         '</div>' +
-      '</div></div>' +
+        
+        /* Body */
+        '<div class="card-body">' +
+          '<div class="d-grid gap-2">' +
+            '<button class="btn btn-primary" onclick="confirmDailyHandover(\''+escAttr(equipmentId)+'\',\''+escAttr(group)+'\',\''+escAttr(shortName)+'\',\''+escAttr(prev.checkId)+'\')"><i class="bi bi-shield-check me-1"></i>Verify &amp; Accept Handover</button>' +
+            '<button class="btn btn-outline-primary" onclick="viewDailyCheck(\''+escAttr(prev.checkId)+'\')"><i class="bi bi-eye me-1"></i>View Full Details</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>'  
 
       '<div class="row g-2 mb-3">' +
         dailyInfoCard('truck', esc(group || 'ឧបករណ៍'),
