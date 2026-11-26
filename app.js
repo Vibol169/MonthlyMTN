@@ -7615,7 +7615,7 @@ function renderDailyChecklistForm(){
     '</div>';
   }).join('');
 
-    // Agreement gate — monthly-style confirmation block
+  // Agreement gate — monthly-style confirmation block
   const agreementHtml =
     '<div class="card mb-3 confirm-box ' + (c.agreed ? '' : 'confirm-pending') + '" id="dailyAgreementBox" style="border-left: 4px solid ' + (c.agreed ? 'var(--status-ok-text)' : 'var(--status-pending-text)') + '; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.04);">' +
       
@@ -7710,7 +7710,7 @@ function renderDailyChecklistForm(){
       trailerCard +
       dailyInfoCard('person-badge', 'អ្នកបើកបរ', esc(currentDriverName), 'info') +
       dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(dmyToday()) + ' ' + esc(nowTimeStr()), 'warning') +
-    '</div>' +
+    '</div>';
 
   $('#app').html(
     '<div class="container-fluid px-0 daily-form-page">' +
