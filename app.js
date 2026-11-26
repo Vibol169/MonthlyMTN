@@ -7375,15 +7375,14 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
     '<div class="container-fluid px-0">' +
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyChecklist()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
       dailyFinishSummaryHtml(prev) +
-      
-      // ── Handover Confirmation ──
+      dailyFinishChecksHtml(prev) +
+            // ── Handover Confirmation ──
       '<div class="card mb-3 confirm-box confirm-pending">' +
         '<div class="group-header d-flex justify-content-between align-items-center">' +
           '<span><i class="bi bi-arrow-left-right me-2"></i>Handover Confirmation</span>' +
           '<span class="status-badge status-pending">Required</span>' +
         '</div>' +
-        
-        '<div class="card-body">' +
+      '<div class="card-body">' +
           startsLine +
           '<div class="d-grid gap-2 mt-3">' +
             '<button class="btn btn-primary" onclick="confirmDailyHandover(\''+escAttr(equipmentId)+'\',\''+escAttr(group)+'\',\''+escAttr(shortName)+'\',\''+escAttr(prev.checkId)+'\')"><i class="bi bi-shield-check me-1"></i>Verify &amp; Accept Handover</button>' +
@@ -7391,34 +7390,6 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
           '</div>' +
         '</div>' +
       '</div>' +
-
-      // ── Info Cards ──
-      '<div class="row g-2 mb-3">' +
-        dailyInfoCard('truck', esc(group || 'ឧបករណ៍'),
-          '<div>' + esc(shortName) + '</div>' +
-          '<div class="small text-muted fw-normal mt-1">' + esc(prev.equipmentId) + '</div>', 'primary') +
-        dailyInfoCard('person', 'អ្នកបើកបរ', dailyInfoCardName(prev.driverName, ''), 'success') +
-        dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', 
-          esc(prev.date) + ' ' + esc(prev.time) + 
-          '<div class="mt-1"><span class="badge ' + (overallCls === 'nok' ? 'bg-danger' : 'bg-success') + '">' + overallLbl + '</span></div>', 
-          'warning') +
-      '</div>' +
-    
-      dailyFinishChecksHtml(prev) +
-
-      // ── Start Form — Checklist header ──
-      '<div class="card mb-3 border-0 shadow-sm">' +
-        '<div class="group-header d-flex justify-content-between align-items-center px-3 py-2" ' +
-             'style="background:transparent;border-bottom:1px solid var(--border-color);">' +
-          '<span class="fw-semibold"><i class="bi bi-play-circle me-2 text-primary"></i>ការត្រួតពិនិត្យមុនប្រតិបត្តិការ</span>' +
-          '<small class="text-muted">' + enriched.length + ' items</small>' +
-        '</div>' +
-      '</div>' +
-    
-      dailyCountCards(okCount, nokCount, 'handover') +
-      '<div class="small text-muted mb-3"><i class="bi bi-dash-circle me-1"></i>' + naCount + ' N/A items in this checklist</div>' +
-      issuesHtml +
-      (prev.remark ? '<div class="card mb-3"><div class="card-body"><div class="small text-muted">Remark</div><div>'+esc(prev.remark)+'</div></div></div>' : '') +
     '</div>'
   );
 }
