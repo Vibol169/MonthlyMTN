@@ -7396,6 +7396,16 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
         '</div>' +
       '</div></div>' +
 
+      '<div class="row g-2 mb-3">' +
+        dailyInfoCard('truck', esc(group || 'ឧបករណ៍'),
+          '<div>' + esc(shortName) + '</div>' +
+          '<div class="small text-muted fw-normal mt-1">' + esc(prev.equipmentId) + '</div>', 'primary') +
+        dailyInfoCard('person', 'អ្នកបើកបរ', dailyInfoCardName(prev.driverName, ''), 'success') +
+        dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(prev.date) + ' ' + esc(prev.time), 'warning') +
+        dailyInfoCard('clipboard-check', 'លទ្ធផល',
+          '<span class="status-badge status-'+overallCls+'" style="min-width:auto;">'+overallLbl+'</span>', 'info') +
+      '</div>' +
+    
           dailyFinishChecksHtml(prev) +
 
           // ── Start Form — Checklist header ──
@@ -7407,16 +7417,6 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
         '</div>' +
       '</div>' +
     
-      '<div class="row g-2 mb-3">' +
-        dailyInfoCard('truck', esc(group || 'ឧបករណ៍'),
-          '<div>' + esc(shortName) + '</div>' +
-          '<div class="small text-muted fw-normal mt-1">' + esc(prev.equipmentId) + '</div>', 'primary') +
-        dailyInfoCard('person', 'អ្នកបើកបរ', dailyInfoCardName(prev.driverName, ''), 'success') +
-        dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(prev.date) + ' ' + esc(prev.time), 'warning') +
-        dailyInfoCard('clipboard-check', 'លទ្ធផល',
-          '<span class="status-badge status-'+overallCls+'" style="min-width:auto;">'+overallLbl+'</span>', 'info') +
-      '</div>' +
-
       dailyCountCards(okCount, nokCount, 'handover') +
       '<div class="small text-muted mb-3"><i class="bi bi-dash-circle me-1"></i>' + naCount + ' N/A items in this checklist</div>' +
       issuesHtml +
@@ -7639,11 +7639,13 @@ function renderDailyChecklistForm(){
         '<span class="item-name-kh">'+esc(it.itemKhmer)+'</span>' +
         (it.itemEng ? '<span class="item-name-en">'+esc(it.itemEng)+'</span>' : '') +
       '</div></div></div>' +
-      '<div class="check-actions">' +
-        '<button type="button" class="check-btn '+(st==='ok'?'selected-ok':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'ok\')"><i class="bi bi-check-circle me-1"></i>OK</button>' +
-        '<button type="button" class="check-btn '+(st==='nok'?'selected-nok':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'nok\')"><i class="bi bi-x-circle me-1"></i>NOT OK</button>' +
-        '<button type="button" class="check-btn '+(st==='na'?'selected-na':'')+'" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
+      // 👇 BUTTONS MADE SMALLER HERE 👇
+      '<div class="check-actions" style="gap: 4px; margin-top: 6px;">' +
+        '<button type="button" class="check-btn '+(st==='ok'?'selected-ok':'')+'" style="padding: 4px 2px; font-size: .68rem; border-radius: 12px;" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'ok\')"><i class="bi bi-check-circle me-1"></i>OK</button>' +
+        '<button type="button" class="check-btn '+(st==='nok'?'selected-nok':'')+'" style="padding: 4px 2px; font-size: .68rem; border-radius: 12px;" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'nok\')"><i class="bi bi-x-circle me-1"></i>NOT OK</button>' +
+        '<button type="button" class="check-btn '+(st==='na'?'selected-na':'')+'" style="padding: 4px 2px; font-size: .68rem; border-radius: 12px;" onclick="setDailyCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
       '</div>' +
+      // 👆 END OF SMALLER BUTTONS 👆
       '<div class="nok-note '+(st==='nok'?'visible':'')+'"><input type="text" class="form-control form-control-sm js-nok-note" placeholder="សូមបញ្ជាក់បញ្ហា / ចំណាំ..." value="'+esc(sel.note)+'" oninput="setDailyNokNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
       dailyPhotoGalleryHtml(it.itemId, sel.photos || [], st === 'nok') +
     '</div>';
