@@ -7080,7 +7080,7 @@ function dailyFinishChecksHtml(s){
       dailyPhotoIdsHtml(c.photos) +
     '</div>';
   }).join('');
-  return '<div class="card mb-3"><div class="group-header"><i class="bi bi-flag me-2 text-danger"></i>Finished Form</div>' +
+  return '<div class="card mb-3"><div class="group-header"><i class="bi bi-flag me-2 text-danger"></i>ការត្រួតពិនិត្យក្រោយប្រតិបត្តិការ</div>' +
     '<div class="card-body p-2"><div class="check-grid">' + rows + '</div></div></div>';
 }
 
@@ -7402,7 +7402,7 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
       '<div class="card mb-3 border-0 shadow-sm">' +
         '<div class="group-header d-flex justify-content-between align-items-center px-3 py-2" ' +
              'style="background:transparent;border-bottom:1px solid var(--border-color);">' +
-          '<span class="fw-semibold"><i class="bi bi-play-circle me-2 text-primary"></i>Start Form — Checklist</span>' +
+          '<span class="fw-semibold"><i class="bi bi-play-circle me-2 text-primary"></i>ការត្រួតពិនិត្យក្រោយប្រតិបត្តិការ</span>' +
           '<small class="text-muted">' + enriched.length + ' items</small>' +
         '</div>' +
       '</div>' +
@@ -8709,7 +8709,7 @@ function renderDailyDetailModal(s) {
       '<div class="card mb-3 border-0 shadow-sm">' +
         '<div class="group-header d-flex justify-content-between align-items-center px-3 py-2" ' +
              'style="background:transparent;border-bottom:1px solid var(--border-color);">' +
-          '<span class="fw-semibold"><i class="bi bi-play-circle me-2 text-primary"></i>Start Form — Checklist</span>' +
+          '<span class="fw-semibold"><i class="bi bi-play-circle me-2 text-primary"></i>ការត្រួតពិនិត្យមុនប្រតិបត្តិការ</span>' +
           '<small class="text-muted">' + enriched.length + ' items</small>' +
         '</div>' +
       '</div>' +
