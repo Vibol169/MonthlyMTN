@@ -7327,18 +7327,41 @@ function dailyMissionSigned(username, at){
   return esc(dailyUserLabel(username) || username) + (at ? ' · ' + esc(at) : '');
 }
 
-/* Mission start/end -> duration. A mission that ends after midnight wraps. */
-function dailyMissionDurationMins(m){
+/* Mission duration is counted by CALENDAR DAY.
+   Same day out and back = 1 day; back the next day = 2 days, etc.
+   Older rows have no End-Date, so a clock that runs backwards means the
+   driver came back after midnight and the end belongs to the next day. */
+function dailyMissionClockMins(v){
+  const m = String(v || '').match(/(\d{1,2}):(\d{2})/);
   if (!m) return null;
-  const start = String(m.startTime || m.time || '').trim();
-  const end   = String(m.endTime || '').trim();
+  return (+m[1]) * 60 + (+m[2]);
+}
+
+function dailyMissionEndDate(m){
+  if (!m) return '';
+  const explicit = String(m.endDate || '').trim();
+  if (explicit) return explicit;
+  const startDate = String(m.date || '').trim();
+  const endTime   = String(m.endTime || '').trim();
+  if (!startDate || !endTime) return '';
+  const s = dailyMissionClockMins(m.startTime || m.time);
+  const e = dailyMissionClockMins(endTime);
+  if (s != null && e != null && e < s) {
+    const d = dailyParseDmy(startDate);
+    if (d) { d.setDate(d.getDate() + 1); return dailyFmtDmy(d.getTime()); }
+  }
+  return startDate;
+}
+
+function dailyMissionDays(m){
+  if (!m) return null;
+  const start = String(m.date || '').trim();
+  const end   = dailyMissionEndDate(m);
   if (!start || !end) return null;
-  const sm = start.match(/(\d{1,2}):(\d{2})/);
-  const em = end.match(/(\d{1,2}):(\d{2})/);
-  if (!sm || !em) return null;
-  let mins = (+em[1] * 60 + +em[2]) - (+sm[1] * 60 + +sm[2]);
-  if (mins < 0) mins += 24 * 60;
-  return mins;
+  const sMs = parseDmyToMs(start);
+  const eMs = parseDmyToMs(end);
+  if (!sMs || !eMs) return null;
+  return Math.max(1, Math.round((eMs - sMs) / 86400000) + 1);
 }
 
 function dailyMinutesText(mins){
@@ -7350,7 +7373,9 @@ function dailyMinutesText(mins){
 }
 
 function dailyMissionDurationLabel(m){
-  return dailyMinutesText(dailyMissionDurationMins(m));
+  const days = dailyMissionDays(m);
+  if (days == null) return '';
+  return days + (days === 1 ? ' day' : ' days');
 }
 
 function dailyMissionElapsedMins(m){
@@ -8835,13 +8860,14 @@ function dailyMissionCardHtml(m, isAdmin, isManager){
   const sub         = (APP.dailySubmissions || []).find(x => x.checkId === m.checkId) || null;
   const isOwner     = !!sub && sub.username === (currentUser && currentUser.username);
   const canFinish   = active && isOwner && !!sub && dailyIsOpenOp(dailyNormOp(sub.opStatus));
+  const endDate     = dailyMissionEndDate(m);
   const duration    = dailyMissionDurationLabel(m);
 
   let html = '<div class="msn-card"' + (active ? ' style="border-left:3px solid #6f42c1;"' : '') + '>' +
     '<div class="d-flex justify-content-between align-items-start gap-2 mb-1">' +
       '<div><div class="fw-bold"><i class="bi bi-geo-alt me-1"></i>' + esc(m.destination || '—') + '</div>' +
         '<div class="msn-stamp">' + esc(m.missionId) + ' · ' + esc(m.date) + ' ' + esc(m.startTime || m.time) +
-          (m.endTime ? ' → ' + esc(m.endTime) : '') + '</div></div>' +
+          (m.endTime ? ' → ' + (endDate && endDate !== m.date ? esc(endDate) + ' ' : '') + esc(m.endTime) : '') + '</div></div>' +
       '<div class="d-flex align-items-center gap-1 flex-wrap justify-content-end">' +
         (active ? '<span class="op-badge" style="background:#6f42c1;color:#fff;"><i class="bi bi-broadcast me-1"></i>Active</span>' : '') +
         dailyMissionBadge(m.status) +
@@ -8862,11 +8888,12 @@ function dailyMissionCardHtml(m, isAdmin, isManager){
   if (m.remark) html += '<div class="small mt-2"><span class="msn-stamp">Remark</span><div>' + esc(m.remark) + '</div></div>';
   if (photos.length) html += dailyPhotoIdsHtml(photos);
 
-  /* --- Duration row (Start → End, day) once the driver is back --- */
+  /* --- Duration row: Start Date+Time → End Date+Time (calendar days) --- */
   if (m.endTime) {
     html += '<div class="small mt-2"><span class="msn-stamp"><i class="bi bi-clock-history me-1"></i>Duration</span> ' +
-      '<strong>' + esc(m.startTime || m.time) + ' → ' + esc(m.endTime) + '</strong>' +
-      ' <span class="text-muted">(' + esc(m.date) + (duration ? ' · ' + esc(duration) : '') + ')</span></div>';
+      '<strong>' + esc(m.date) + ' ' + esc(m.startTime || m.time) + ' → ' +
+        esc(endDate || m.date) + ' ' + esc(m.endTime) + '</strong>' +
+      (duration ? ' <span class="text-muted">(' + esc(duration) + ')</span>' : '') + '</div>';
   }
 
   /* --- The driver of the active mission closes it (shift → Stand By) --- */
@@ -9796,7 +9823,12 @@ function renderDailyMissionDashboard(subTabBar){
   const todayPairs  = pairs.filter(p => isToday(p.m.date));
   const activePairs = pairs.filter(p => dailyMissionIsActive(p.m));
   const pendingPairs = pairs.filter(p => dailyMissionNormStatus(p.m.status) !== DAILY_MISSION_CONFIRMED);
-  const todayDone    = todayPairs.filter(p => !dailyMissionIsActive(p.m));
+  // A mission that left yesterday and came back today counts as finished today
+  const todayDone    = pairs.filter(p => {
+    if (dailyMissionIsActive(p.m)) return false;
+    const end = dailyMissionEndDate(p.m);
+    return isToday(end || p.m.date);
+  });
 
   const header = '<div class="d-flex justify-content-between align-items-center mb-3">' +
       '<div><h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Daily Dashboard</h5>' +
@@ -9933,11 +9965,13 @@ function renderDailyMissionDashboard(subTabBar){
       '<small class="text-muted">' + pairs.length + ' total</small></div><div class="card-body p-0">' +
       pairs.slice(0, 15).map(p => {
         const m = p.m, s = p.s;
+        const endDate  = dailyMissionEndDate(m);
         const duration = dailyMissionDurationLabel(m);
         return '<div class="activity-row" onclick="viewDailyCheck(\'' + escAttr(s.checkId) + '\')">' +
           '<span class="dot" style="background:' + (dailyMissionIsActive(m) ? '#6f42c1' : '#6c757d') + ';"></span>' +
           '<div class="info"><strong>' + esc(m.destination || '—') + '</strong> · ' + esc(eqShort(s.equipmentId)) +
-            '<small>' + esc(m.date) + ' ' + esc(m.startTime || m.time) + ' → ' + esc(m.endTime || 'active') +
+            '<small>' + esc(m.date) + ' ' + esc(m.startTime || m.time) + ' → ' +
+            (m.endTime ? esc(endDate || m.date) + ' ' + esc(m.endTime) : 'active') +
             (duration ? ' · ' + esc(duration) : '') + ' · ' + esc(dailyMissionDriverName(m)) + '</small></div>' +
           '<span class="time">' + dailyMissionBadge(m.status) + '</span></div>';
       }).join('') + '</div></div>';
