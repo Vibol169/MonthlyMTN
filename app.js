@@ -8268,7 +8268,7 @@ window.openDailyFinishForm = function(checkId){
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-clipboard2-check me-2"></i>ការត្រួតពិនិត្យក្រោយប្រតិបត្តិការ</span>' +
         '<small class="text-muted">' + dailyItemWord(items.length) + ' · <span id="dailyFinishNaCount">' + weekCounts.na + ' N/A</span></small>' +
-      '</div><div class="card-body p-2"><div class="check-grid">' + itemsHtml + '</div></div></div>' +
+      '</div><div class="card-body p-2"><div class="check-grid is-single">' + itemsHtml + '</div></div></div>' +
       '<div class="card mb-3"><div class="card-body">' +
         '<label class="form-label fw-bold">កំណត់សម្គាល់ (Remark)</label>' +
         '<textarea class="form-control form-control-sm" id="dailyEndRemark" rows="3" placeholder="Optional...">' + esc(s.endRemark || '') + '</textarea>' +
