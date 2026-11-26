@@ -179,16 +179,18 @@ body.dark-mode .status-badge.status-Ad { background:#1e3a5f; color:#8bb9fe; }
 body.dark-mode .status-badge.status-T  { background:#3d2a5e; color:#c7b0ff; }
 
 /* =========================================================
-   DAILY OPERATIONAL FLOW (Operating / Stand By / Handover)
+   DAILY OPERATIONAL FLOW (Operating / Stand By / Mission-Outside / Handover)
    ========================================================= */
 .op-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:999px; font-size:.72rem; font-weight:700; white-space:nowrap; }
 .op-badge.op-operating { background:#d4edda; color:#155724; }
 .op-badge.op-standby   { background:#fff3cd; color:#856404; }
+.op-badge.op-mission   { background:#e7d9ff; color:#59359a; }
 .op-badge.op-waiting   { background:#cfe2ff; color:#084298; }
 .op-badge.op-handover  { background:#e2e3e5; color:#383d41; }
 .op-badge.op-none      { background:#e2e3e5; color:#383d41; }
 body.dark-mode .op-badge.op-operating { background:#1e3f2e; color:#8bc34a; }
 body.dark-mode .op-badge.op-standby   { background:#5e4b3c; color:#ffc107; }
+body.dark-mode .op-badge.op-mission   { background:#382a55; color:#c9a7ff; }
 body.dark-mode .op-badge.op-waiting   { background:#1e3a5f; color:#8bb9fe; }
 body.dark-mode .op-badge.op-handover  { background:#3a3f44; color:#adb5bd; }
 body.dark-mode .op-badge.op-none      { background:#3a3f44; color:#adb5bd; }
@@ -196,8 +198,22 @@ body.dark-mode .op-badge.op-none      { background:#3a3f44; color:#adb5bd; }
 .session-card { border-left: 4px solid var(--tab-active); }
 .session-card.op-operating { border-left-color:#198754; }
 .session-card.op-standby   { border-left-color:#ffc107; }
+.session-card.op-mission   { border-left-color:#6f42c1; }
 .session-card.op-waiting   { border-left-color:#0d6efd; }
 .session-card.op-handover  { border-left-color:#6c757d; }
+
+/* ---- Mission / Outside cards (own Admin + Manager confirmation) ---- */
+.msn-badge.msn-pending   { background:#fff3cd; color:#856404; }
+.msn-badge.msn-partial   { background:#cfe2ff; color:#084298; }
+.msn-badge.msn-confirmed { background:#d4edda; color:#155724; }
+body.dark-mode .msn-badge.msn-pending   { background:#5e4b3c; color:#ffc107; }
+body.dark-mode .msn-badge.msn-partial   { background:#1e3a5f; color:#8bb9fe; }
+body.dark-mode .msn-badge.msn-confirmed { background:#1e3f2e; color:#8bc34a; }
+.msn-card { border:1px solid var(--border-color); border-radius:10px; padding:8px 10px; margin-bottom:8px; background:var(--bg-color); }
+.msn-card:last-child { margin-bottom:0; }
+.msn-item { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:3px 0; border-bottom:1px dashed var(--border-color); font-size:.8rem; }
+.msn-item:last-child { border-bottom:none; }
+.msn-stamp { font-size:.72rem; color:var(--tab-text); opacity:.85; }
 
 .op-kv { display:flex; justify-content:space-between; align-items:baseline; gap:8px; padding:4px 0; border-bottom:1px dashed var(--border-color); font-size:.82rem; }
 .op-kv:last-child { border-bottom:none; }
