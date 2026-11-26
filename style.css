@@ -960,4 +960,7 @@ body.dark-mode .finish-field,
 body.dark-mode .finish-tile { background: #101722; border-color: #33415c; }
 body.dark-mode .finish-tile .finish-val { color: #e9eef7; }
 body.dark-mode .photo-chip { background: #101722; border-color: #33415c; color: #9fb0c7; }
+.item-hover:hover {
+  background-color: var(--bg-color);
+}
 
