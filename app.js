@@ -7615,17 +7615,6 @@ function renderDailyChecklistForm(){
     '</div>';
   }).join('');
 
-  const handoverChip = c.handoverCheckId
-    ? '<div class="small text-primary mt-2"><i class="bi bi-shield-check me-1"></i>Handover verified: <strong>'+esc(c.handoverCheckId)+'</strong>' +
-      (c.prevDriverName ? ' · previous driver <strong>'+esc(c.prevDriverName)+'</strong>' : '') +
-      (c.handoverRemark ? '<div class="text-muted mt-1">Remark left: <em>'+esc(c.handoverRemark)+'</em></div>' : '') + '</div>'
-    : '';
-
-  const startLine = (!isWeekly && (c.startOdo !== '' || c.startHour !== ''))
-    ? '<div class="op-inherit mt-2"><i class="bi bi-arrow-repeat me-1"></i>Shift start — <strong>Odometer '+esc(c.startOdo === '' ? '—' : c.startOdo)+'</strong> · <strong>OPHour '+esc(c.startHour === '' ? '—' : c.startHour)+'</strong>' +
-      (c.prevDriverName ? ' <span class="text-muted">(from '+esc(c.prevDriverName)+')</span>' : '') + '</div>'
-    : '';
-
     // Agreement gate — monthly-style confirmation block
   const agreementHtml =
     '<div class="card mb-3 confirm-box ' + (c.agreed ? '' : 'confirm-pending') + '" id="dailyAgreementBox" style="border-left: 4px solid ' + (c.agreed ? 'var(--status-ok-text)' : 'var(--status-pending-text)') + '; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.04);">' +
@@ -7669,10 +7658,7 @@ function renderDailyChecklistForm(){
     '<div class="card mb-3 legend-card">' +
       '<div class="legend-title">' + (isWeekly ? 'WEEKLY CHECK' : 'DAILY CHECK') + '</div>' +
       '<div class="legend-body text-center">' +
-        '<div class="lbl-en"><span class="acronym">OK</span>=Normal &nbsp; ' +
-          '<span class="acronym">NOT OK</span>=Problem found (add a note) &nbsp; ' +
-          '<span class="acronym">N/A</span>=Not applicable</div>' +
-        '<div class="lbl-kh"><span class="acronym">OK</span>=ធម្មតា &nbsp; <span class="acronym">NOT OK</span>=មានបញ្ហា (សូមចំណាំ) &nbsp; <span class="acronym">N/A</span>=មិនពាក់ព័ន្ធ</div>' +
+        '<div class="lbl-kh"><span class="acronym">OK</span>=ធម្មតា &nbsp; <span class="acronym">NOT OK</span>=មានបញ្ហា &nbsp; <span class="acronym">N/A</span>=N/A</div>' +
       '</div>' +
     '</div>';
 
@@ -7725,7 +7711,6 @@ function renderDailyChecklistForm(){
       dailyInfoCard('person-badge', 'អ្នកបើកបរ', esc(currentDriverName), 'info') +
       dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(dmyToday()) + ' ' + esc(nowTimeStr()), 'warning') +
     '</div>' +
-    ((startLine || handoverChip) ? '<div class="mb-3">' + startLine + handoverChip + '</div>' : '');
 
   $('#app').html(
     '<div class="container-fluid px-0 daily-form-page">' +
