@@ -3210,8 +3210,9 @@ window.handlePhotoSourceSelection = function(inputEl, itemId) {
   if (itemId === 'DAILY') {
     nokPhotos = Array.from(inputEl.files || []);
     renderCheckPhotos();
-  } else if ($('.daily-form-page').length && dailyPhotoBag(itemId)) {
-    // Daily checklist / Finished Form item (or one of the extra fuel fields)
+  } else if (dailyPhotoBag(itemId)) {
+    // Daily checklist / Finished Form / Mission popup item (or a fuel field).
+    // The Mission popup is a modal, so it must NOT depend on .daily-form-page.
     onDailyItemPhotoPick(itemId, inputEl);
   } else {
     onItemPhotoPick(itemId, inputEl);
@@ -6763,7 +6764,7 @@ let needAttentionViewAllDaily = false;
 let topIssuesViewAllDaily = false;
 
 let dailyListFilters = {
-  status: 'all', checkType: 'all', confirmStatus: 'all', opStatus: 'all',
+  status: 'all', checkType: 'all', confirmStatus: 'all', opStatus: 'all', handedType: 'all',
   group: 'all', equipmentId: 'all', driver: 'all',
   dateFrom: '', dateTo: '', search: '', nokItemIds: [], nokItemLabel: ''
 };
@@ -6773,7 +6774,7 @@ let dailyListFilters = {
    ========================================================= */
 window.drillToDaily = function(params) {
   dailyListFilters = {
-    status: 'all', checkType: 'all', confirmStatus: 'all', opStatus: 'all',
+    status: 'all', checkType: 'all', confirmStatus: 'all', opStatus: 'all', handedType: 'all',
     group: 'all', equipmentId: 'all', driver: 'all',
     dateFrom: '', dateTo: '', search: '', nokItemIds: [], nokItemLabel: ''
   };
@@ -7023,10 +7024,29 @@ function dailySessionCard(s){
     ? '<div class="small text-muted mt-1"><i class="bi bi-speedometer2 me-1"></i>Start Odometer ' + esc(starts.odo || '—') + ' · OPHour ' + esc(starts.hour || '—') + '</div>'
     : '';
   const missions = Array.isArray(s.missions) ? s.missions : [];
+  const activeMission = missions.find(dailyMissionIsActive) || null;
   const msnPending = missions.filter(m => dailyMissionNormStatus(m.status) !== DAILY_MISSION_CONFIRMED).length;
   const missionLine = missions.length
     ? '<div class="msn-stamp mt-1"><i class="bi bi-signpost-split me-1"></i>' + missions.length + ' mission' + (missions.length === 1 ? '' : 's') +
       (msnPending ? ' · ' + msnPending + ' waiting for confirmation' : ' · all confirmed') + '</div>'
+    : '';
+  const onMission = !!activeMission;
+  const amId = onMission ? escAttr(activeMission.missionId) : '';
+  const activeMissionBox = onMission
+    ? '<div class="mt-2 p-2" style="background:var(--bg-color);border-left:3px solid #6f42c1;border-radius:8px;">' +
+        '<div class="d-flex justify-content-between align-items-start gap-2">' +
+          '<div><div class="small fw-semibold"><i class="bi bi-geo-alt me-1" style="color:#6f42c1;"></i>' + esc(activeMission.destination || 'Mission/Outside') + '</div>' +
+            '<div class="msn-stamp"><i class="bi bi-clock me-1"></i>Start ' + esc(activeMission.date) + ' ' + esc(activeMission.startTime || activeMission.time) + '</div></div>' +
+          dailyMissionBadge(activeMission.status) +
+        '</div>' +
+        '<div class="d-none mt-2" id="msnFinish-' + amId + '">' +
+          '<textarea class="form-control form-control-sm mb-2" id="msnFinishRemark-' + amId + '" rows="2" placeholder="Remark when back (optional)..."></textarea>' +
+          '<div class="d-flex gap-2">' +
+            '<button class="btn btn-sm btn-warning flex-fill" onclick="event.stopPropagation();saveDailyMissionFinish(\'' + amId + '\')"><i class="bi bi-flag me-1"></i>Finish</button>' +
+            '<button class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation();dailyMissionFinishToggle(\'' + amId + '\')">Cancel</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
     : '';
   return '<div class="card session-card mb-2 ' + info.cls + '">' +
     '<div class="card-body py-2">' +
@@ -7036,13 +7056,15 @@ function dailySessionCard(s){
         dailyOpBadge(s.opStatus) +
       '</div>' +
       '<div class="small text-muted">' + esc(info.hint) + '</div>' +
-      startLine +
+      startLine + missionLine + activeMissionBox +
       '<div class="d-flex gap-2 flex-wrap mt-2">' +
-        (info.status === DAILY_OP_OPERATING
+        (onMission ? '' : (info.status === DAILY_OP_OPERATING
           ? '<button class="btn btn-sm btn-outline-warning" onclick="event.stopPropagation();setDailyOpStatus(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_STANDBY + '\')"><i class="bi bi-pause-circle me-1"></i>Stand By</button>'
-          : '<button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation();setDailyOpStatus(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>') +
-        '<button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation();openDailyMissionForm(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-signpost-split me-1"></i>Mission/Outside</button>' +
-        '<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();openDailyFinishForm(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>' +
+          : '<button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation();setDailyOpStatus(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>')) +
+        (onMission
+          ? '<button class="btn btn-sm btn-warning" onclick="event.stopPropagation();dailyMissionFinishToggle(\'' + amId + '\')"><i class="bi bi-flag me-1"></i>Finish Mission</button>'
+          : '<button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation();openDailyMissionForm(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-signpost-split me-1"></i>Mission/Outside</button>') +
+        (onMission ? '' : '<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();openDailyFinishForm(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>') +
         '<button class="btn btn-sm btn-outline-primary ms-auto" onclick="event.stopPropagation();viewDailyCheck(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-eye"></i></button>' +
       '</div>' +
     '</div></div>';
@@ -7162,6 +7184,8 @@ function dailyOpSectionHtml(s){
   if (!info.status) return '';
   const isOwner = s.username === (currentUser && currentUser.username);
   const active = dailyIsOpenOp(info.status);
+  // An active mission locks the shift actions until the driver is back on site
+  const activeMission = (s.missions || []).find(dailyMissionIsActive);
 
   // Calculate Nets (Difference between Start and End)
   const startOdo  = parseFloat(s.startOdo) || 0;
@@ -7232,13 +7256,18 @@ function dailyOpSectionHtml(s){
   }
   
   if (isOwner && active) {
-    html += '<div class="d-flex gap-2 flex-wrap mt-3 pt-3 border-top" style="border-color:var(--border-color) !important;">' +
-      (info.status === DAILY_OP_OPERATING
-        ? '<button class="btn btn-sm btn-outline-warning flex-fill" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_STANDBY + '\')"><i class="bi bi-pause-circle me-1"></i>Stand By</button>'
-        : '<button class="btn btn-sm btn-outline-success flex-fill" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>') +
-      '<button class="btn btn-sm btn-outline-primary flex-fill" onclick="dailyDetailMission(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-signpost-split me-1"></i>Mission/Outside</button>' +
-      '<button class="btn btn-sm btn-danger flex-fill" onclick="dailyDetailFinish(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>' +
-    '</div>';
+    html += activeMission
+      ? '<div class="small text-muted mt-3 pt-3 border-top" style="border-color:var(--border-color) !important;">' +
+          '<i class="bi bi-signpost-split me-1" style="color:#6f42c1;"></i>On a mission (' +
+          esc(activeMission.destination || 'Mission/Outside') + ') — finish it in the Mission block below to return to Stand By.' +
+        '</div>'
+      : '<div class="d-flex gap-2 flex-wrap mt-3 pt-3 border-top" style="border-color:var(--border-color) !important;">' +
+          (info.status === DAILY_OP_OPERATING
+            ? '<button class="btn btn-sm btn-outline-warning flex-fill" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_STANDBY + '\')"><i class="bi bi-pause-circle me-1"></i>Stand By</button>'
+            : '<button class="btn btn-sm btn-outline-success flex-fill" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>') +
+          '<button class="btn btn-sm btn-outline-primary flex-fill" onclick="dailyDetailMission(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-signpost-split me-1"></i>Mission/Outside</button>' +
+          '<button class="btn btn-sm btn-danger flex-fill" onclick="dailyDetailFinish(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>' +
+        '</div>';
   }
   html += '</div></div>';
   return html;
@@ -7296,6 +7325,44 @@ function dailyMissionBadge(status){
 function dailyMissionSigned(username, at){
   if (!username && !at) return '';
   return esc(dailyUserLabel(username) || username) + (at ? ' · ' + esc(at) : '');
+}
+
+/* Mission start/end -> duration. A mission that ends after midnight wraps. */
+function dailyMissionDurationMins(m){
+  if (!m) return null;
+  const start = String(m.startTime || m.time || '').trim();
+  const end   = String(m.endTime || '').trim();
+  if (!start || !end) return null;
+  const sm = start.match(/(\d{1,2}):(\d{2})/);
+  const em = end.match(/(\d{1,2}):(\d{2})/);
+  if (!sm || !em) return null;
+  let mins = (+em[1] * 60 + +em[2]) - (+sm[1] * 60 + +sm[2]);
+  if (mins < 0) mins += 24 * 60;
+  return mins;
+}
+
+function dailyMinutesText(mins){
+  if (mins == null || isNaN(mins) || mins < 0) return '';
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  if (!h) return m + 'm';
+  return h + 'h' + (m ? ' ' + m + 'm' : '');
+}
+
+function dailyMissionDurationLabel(m){
+  return dailyMinutesText(dailyMissionDurationMins(m));
+}
+
+function dailyMissionElapsedMins(m){
+  if (!m) return null;
+  const start = String(m.startTime || m.time || '').trim();
+  const sm = start.match(/(\d{1,2}):(\d{2})/);
+  if (!sm) return null;
+  const now = new Date();
+  const startMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), +sm[1], +sm[2], 0, 0).getTime();
+  let mins = Math.round((now.getTime() - startMs) / 60000);
+  if (mins < 0) mins += 24 * 60;
+  return Math.max(0, mins);
 }
 
 /* =========================================================
@@ -8181,6 +8248,11 @@ window.setDailyOpStatus = function(checkId, status){
   const next = dailyNormOp(status);
   if (!dailyIsOpenOp(next)) return;
   if (next === dailyNormOp(s.opStatus)) return;
+  const activeMsn = (s.missions || []).find(dailyMissionIsActive);
+  if (activeMsn) {
+    showAlert('អ្នកនៅលើ Mission (' + (activeMsn.destination || 'Mission/Outside') + ') — សូមបញ្ចប់ជាមុន (finish the active mission first)', 'warning');
+    return;
+  }
 
   showLoading('កំពុងរក្សាទុក...');
   google.script.run
@@ -8228,6 +8300,11 @@ window.setDailyFinishExtraValue = function(key, val){
 window.openDailyFinishForm = function(checkId){
   const s = (APP.dailySubmissions || []).find(x => x.checkId === checkId);
   if (!s) return;
+  const activeMsn = (s.missions || []).find(dailyMissionIsActive);
+  if (activeMsn) {
+    showAlert('សូមបញ្ចប់ Mission សកម្មជាមុន (finish the active mission before the Finished Form)', 'warning');
+    return;
+  }
   const eq = APP.equipmentMap[s.equipmentId] || {};
   const startOdo  = (s.startOdo === '' || s.startOdo == null) ? '' : dailyNumText(s.startOdo);
   const startHour = (s.startHour === '' || s.startHour == null) ? '' : dailyNumText(s.startHour);
@@ -8513,9 +8590,8 @@ window.setDailyMissionCheck = function(itemId, status){
   $item.removeClass('ok nok na').addClass(status).attr('data-status', status);
   $item.find('.check-btn').removeClass('selected-ok selected-nok selected-na');
   $item.find('.check-btn').eq(status === 'ok' ? 0 : status === 'nok' ? 1 : 2).addClass('selected-' + status);
-  const isNok = (status === 'nok');
-  $item.find('.nok-note').toggleClass('visible', isNok);
-  $item.find('.js-photo-row').css('display', isNok ? 'flex' : 'none');
+  // Note belongs to NOT OK, photos are always allowed (attach evidence anytime)
+  $item.find('.nok-note').toggleClass('visible', status === 'nok');
 };
 
 window.setDailyMissionNote = function(itemId, val){
@@ -8528,6 +8604,48 @@ window.setDailyMissionField = function(key, val){
   dailyMissionState[key] = String(val == null ? '' : val);
 };
 
+/* Mission destinations come from the Settings sheet (Key = MissionLocations,
+   comma / newline separated). An empty value turns the dropdown back into a
+   free-text field. */
+function dailyMissionLocations(){
+  const raw = String(dailySetting('missionLocations', '') || '');
+  const out = [];
+  raw.split(/[\n\r,;|]+/).forEach(x => {
+    const v = String(x || '').trim();
+    if (!v) return;
+    if (out.some(y => y.toLowerCase() === v.toLowerCase())) return;
+    out.push(v);
+  });
+  return out;
+}
+
+function dailyMissionDestinationValue(){
+  const $field = $('#dailyMissionDestination');
+  if (!$field.length) return String((dailyMissionState && dailyMissionState.destination) || '').trim();
+  const v = String($field.val() || '').trim();
+  if (v === '__other__') return String($('#dailyMissionDestinationOther').val() || '').trim();
+  return v;
+}
+
+window.setDailyMissionDestination = function(val){
+  if (!dailyMissionState) return;
+  const v = String(val == null ? '' : val);
+  const $other = $('#dailyMissionDestinationOther');
+  if (v === '__other__') {
+    dailyMissionState.destination = '';
+    $other.removeClass('d-none').val('');
+    setTimeout(() => { try { $('#dailyMissionDestinationOther').trigger('focus'); } catch (e) {} }, 0);
+  } else {
+    dailyMissionState.destination = v;
+    $other.addClass('d-none').val('');
+  }
+};
+
+// Active = left on the mission, End-Time still empty
+function dailyMissionIsActive(m){
+  return !!m && !String(m.endTime || '').trim();
+}
+
 window.openDailyMissionForm = function(checkId){
   const s = (APP.dailySubmissions || []).find(x => x.checkId === checkId);
   if (!s) { showAlert('រកមិនឃើញ (Checklist not found)', 'warning'); return; }
@@ -8538,6 +8656,11 @@ window.openDailyMissionForm = function(checkId){
   }
   if (s.username !== (currentUser && currentUser.username)) {
     showAlert('Only the driver of this shift can start a mission.', 'warning');
+    return;
+  }
+  const activeMsn = (s.missions || []).find(dailyMissionIsActive);
+  if (activeMsn) {
+    showAlert('អ្នកនៅលើ Mission មួយសកម្ម (' + (activeMsn.destination || 'Mission/Outside') + ') — សូមបញ្ចប់ជាមុន (finish the active mission first)', 'warning');
     return;
   }
 
@@ -8565,7 +8688,8 @@ window.openDailyMissionForm = function(checkId){
             '<button type="button" class="check-btn '+(st==='na'?'selected-na':'')+'" onclick="setDailyMissionCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
           '</div>' +
           '<div class="nok-note '+(st==='nok'?'visible':'')+'"><input type="text" class="form-control form-control-sm" placeholder="ចំណាំ / បញ្ហា..." value="'+esc(a.note)+'" oninput="setDailyMissionNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
-          dailyPhotoGalleryHtml(it.itemId, a.photos || [], st === 'nok') +
+          // Photos are always available in the mission form (not only for NOT OK)
+          dailyPhotoGalleryHtml(it.itemId, a.photos || [], true) +
         '</div>';
       }).join('')
     : '<div class="text-muted small text-center py-3">មិនមានទម្រង់ Mission សម្រាប់ក្រុមនេះទេ (No Mission/Outside items configured — add rows with Frequency = Mission in Checklist_Template).</div>';
@@ -8576,6 +8700,15 @@ window.openDailyMissionForm = function(checkId){
 /* Popup body: destination + items + remark + photos */
 function dailyMissionRenderModal(s, items, itemsHtml){
   const eq = APP.equipmentMap[s.equipmentId] || {};
+  const locs = dailyMissionLocations();
+  const destField = locs.length
+    ? '<select class="form-select form-select-sm" id="dailyMissionDestination" onchange="setDailyMissionDestination(this.value)">' +
+        '<option value="">— ជ្រើសរើសទីតាំង / Select location —</option>' +
+        locs.map(l => '<option value="' + escAttr(l) + '">' + esc(l) + '</option>').join('') +
+        '<option value="__other__">ផ្សេងៗ / Other…</option>' +
+      '</select>' +
+      '<input type="text" class="form-control form-control-sm mt-2 d-none" id="dailyMissionDestinationOther" placeholder="វាយទីតាំង / Type the location..." oninput="setDailyMissionField(\'destination\', this.value)">'
+    : '<input type="text" class="form-control form-control-sm" id="dailyMissionDestination" placeholder="ទីតាំង / ការងារដែលត្រូវទៅ..." oninput="setDailyMissionField(\'destination\', this.value)">';
   const body =
     '<div class="row g-2 mb-3">' +
       dailyInfoCard('truck', esc(s.group || 'ឧបករណ៍'),
@@ -8583,9 +8716,7 @@ function dailyMissionRenderModal(s, items, itemsHtml){
       dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(s.date) + ' ' + esc(s.time), 'warning') +
     '</div>' +
     '<div class="card mb-3"><div class="group-header"><span><i class="bi bi-signpost-split me-2"></i>គោលដៅ / ការងារ (Destination / Purpose)</span></div>' +
-      '<div class="card-body p-2">' +
-        '<input type="text" class="form-control form-control-sm" id="dailyMissionDestination" placeholder="ទីតាំង / ការងារដែលត្រូវទៅ..." oninput="setDailyMissionField(\'destination\', this.value)">' +
-      '</div></div>' +
+      '<div class="card-body p-2">' + destField + '</div></div>' +
     '<div class="card mb-3 legend-card"><div class="legend-body text-center">' +
       '<div class="lbl-kh"><span class="acronym">OK</span>=ធម្មតា &nbsp; <span class="acronym">NOT OK</span>=មានបញ្ហា &nbsp; <span class="acronym">N/A</span>=N/A</div>' +
     '</div></div>' +
@@ -8617,7 +8748,7 @@ window.submitDailyMissionForm = function(){
   const checkId = String(st.checkId || '');
   if (!checkId) return;
 
-  const destination = String($('#dailyMissionDestination').val() || '').trim();
+  const destination = dailyMissionDestinationValue() || String(st.destination || '').trim();
   if (!destination) {
     showAlert('សូមបំពេញគោលដៅ / ការងារ (Please fill the mission destination / purpose)', 'warning');
     return;
@@ -8700,13 +8831,21 @@ function dailyMissionCardHtml(m, isAdmin, isManager){
   const photos = (Array.isArray(m.photoIds) ? m.photoIds : []).map(idv => ({ fileId: idv }));
   const adminDone   = String(m.adminStatus || '').toLowerCase() === 'confirmed';
   const managerDone = String(m.managerStatus || '').toLowerCase() === 'confirmed';
+  const active      = dailyMissionIsActive(m);
+  const sub         = (APP.dailySubmissions || []).find(x => x.checkId === m.checkId) || null;
+  const isOwner     = !!sub && sub.username === (currentUser && currentUser.username);
+  const canFinish   = active && isOwner && !!sub && dailyIsOpenOp(dailyNormOp(sub.opStatus));
+  const duration    = dailyMissionDurationLabel(m);
 
-  let html = '<div class="msn-card">' +
+  let html = '<div class="msn-card"' + (active ? ' style="border-left:3px solid #6f42c1;"' : '') + '>' +
     '<div class="d-flex justify-content-between align-items-start gap-2 mb-1">' +
       '<div><div class="fw-bold"><i class="bi bi-geo-alt me-1"></i>' + esc(m.destination || '—') + '</div>' +
         '<div class="msn-stamp">' + esc(m.missionId) + ' · ' + esc(m.date) + ' ' + esc(m.startTime || m.time) +
           (m.endTime ? ' → ' + esc(m.endTime) : '') + '</div></div>' +
-      dailyMissionBadge(m.status) +
+      '<div class="d-flex align-items-center gap-1 flex-wrap justify-content-end">' +
+        (active ? '<span class="op-badge" style="background:#6f42c1;color:#fff;"><i class="bi bi-broadcast me-1"></i>Active</span>' : '') +
+        dailyMissionBadge(m.status) +
+      '</div>' +
     '</div>';
 
   if (items.length) {
@@ -8722,6 +8861,26 @@ function dailyMissionCardHtml(m, isAdmin, isManager){
 
   if (m.remark) html += '<div class="small mt-2"><span class="msn-stamp">Remark</span><div>' + esc(m.remark) + '</div></div>';
   if (photos.length) html += dailyPhotoIdsHtml(photos);
+
+  /* --- Duration row (Start → End, day) once the driver is back --- */
+  if (m.endTime) {
+    html += '<div class="small mt-2"><span class="msn-stamp"><i class="bi bi-clock-history me-1"></i>Duration</span> ' +
+      '<strong>' + esc(m.startTime || m.time) + ' → ' + esc(m.endTime) + '</strong>' +
+      ' <span class="text-muted">(' + esc(m.date) + (duration ? ' · ' + esc(duration) : '') + ')</span></div>';
+  }
+
+  /* --- The driver of the active mission closes it (shift → Stand By) --- */
+  if (canFinish) {
+    html += '<button class="btn btn-sm btn-warning w-100 mt-2" onclick="dailyMissionFinishToggle(\'' + id + '\')">' +
+      '<i class="bi bi-flag me-1"></i>Finish Mission</button>' +
+      '<div class="d-none mt-2" id="msnFinish-' + id + '">' +
+        '<textarea class="form-control form-control-sm mb-2" id="msnFinishRemark-' + id + '" rows="2" placeholder="Remark when back (optional)..."></textarea>' +
+        '<div class="d-flex gap-2">' +
+          '<button class="btn btn-sm btn-warning flex-fill" onclick="saveDailyMissionFinish(\'' + id + '\')"><i class="bi bi-flag me-1"></i>Finish</button>' +
+          '<button class="btn btn-sm btn-outline-secondary" onclick="dailyMissionFinishToggle(\'' + id + '\')">Cancel</button>' +
+        '</div>' +
+      '</div>';
+  }
 
   html += '<div class="d-flex flex-wrap gap-3 mt-2">' +
     '<div class="small"><i class="bi bi-person-check me-1"></i>Admin: ' +
@@ -8761,20 +8920,13 @@ function dailyMissionCardHtml(m, isAdmin, isManager){
 
 function dailyMissionSectionHtml(s){
   const list = Array.isArray(s.missions) ? s.missions : [];
+  // No mission on this checklist → no Mission block at all
+  if (!list.length) return '';
   const isAdmin   = currentUser.role === 'admin';
   const isManager = currentUser.role === 'manager';
-  const open = dailyIsOpenOp(dailyNormOp(s.opStatus));
 
   let body = '';
-  if (!list.length) {
-    body = '<div class="small text-muted text-center py-2">No Mission/Outside recorded for this shift.</div>';
-    if (open && s.username === (currentUser && currentUser.username)) {
-      body += '<button class="btn btn-sm btn-outline-primary w-100 mt-1" onclick="dailyDetailMission(\'' + escAttr(s.checkId) + '\')">' +
-        '<i class="bi bi-signpost-split me-1"></i>Start a Mission/Outside</button>';
-    }
-  } else {
-    list.slice().reverse().forEach(m => { body += dailyMissionCardHtml(m, isAdmin, isManager); });
-  }
+  list.slice().reverse().forEach(m => { body += dailyMissionCardHtml(m, isAdmin, isManager); });
 
   return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
     '<span><i class="bi bi-signpost-split me-2"></i>Mission / Outside</span>' +
@@ -8811,6 +8963,44 @@ window.saveDailyMissionConfirm = function(missionId){
     })
     .withFailureHandler(err => { hideLoading(); handleError(err); })
     .confirmDailyMission({ missionId: missionId, remark: remark });
+};
+
+/* Finish (end) the active mission: End-Time is stamped, shift → Stand By */
+window.dailyMissionFinishToggle = function(missionId){
+  $('#msnFinish-' + missionId).toggleClass('d-none');
+};
+
+window.saveDailyMissionFinish = function(missionId){
+  const remark = String($('#msnFinishRemark-' + missionId).val() || '');
+  showLoading('កំពុងបញ្ចប់ Mission...');
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoading();
+      if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); return; }
+
+      const m = res.mission || {};
+      let sub = null;
+      (APP.dailySubmissions || []).forEach(s => {
+        const cur = (s.missions || []).find(x => x.missionId === missionId);
+        if (!cur) return;
+        Object.keys(m).forEach(k => { cur[k] = m[k]; });
+        sub = s;
+      });
+      if (sub && res.opStatus) {
+        sub.opStatus = res.opStatus;
+        sub.opAt = res.opAt || (dmyToday() + ' ' + nowTimeStr());
+        sub.opBy = res.opBy || currentUser.username;
+      }
+
+      showAlert('បានបញ្ចប់ Mission — ស្ថានភាពត្រឡប់ទៅ ' + dailyOpInfo(res.opStatus).label, 'success');
+      // Only repaint the detail modal when it is the open screen
+      const det = document.getElementById('detailModal');
+      if (sub && det && det.classList.contains('show')) renderDailyDetailModal(sub);
+      refreshCurrentPage();
+      dailySyncNow();
+    })
+    .withFailureHandler(err => { hideLoading(); handleError(err); })
+    .finishDailyMission({ missionId: missionId, remark: remark });
 };
 
 /* =========================================================
@@ -8867,6 +9057,15 @@ window.renderDailyList = function() {
     { value: DAILY_OP_HANDED,    label: 'Handed Over' }
   ], dailyListFilters.opStatus);
 
+  // Handed Over → All / Mission / In Terminal (no mission checklist)
+  if (dailyListFilters.opStatus === DAILY_OP_HANDED) {
+    shell += dailyListTabBar('dailyHandedTabBar', 'handedType', [
+      { value: 'all',      label: 'ទាំងអស់ (All)' },
+      { value: 'mission',  label: 'Mission' },
+      { value: 'terminal', label: 'In Terminal (No mission)' }
+    ], dailyListFilters.handedType || 'all');
+  }
+
   if (groups.length > 1 && !isDriver) {
     shell += '<div class="tab-bar mb-1"><div class="tab list-tab '+(dailyListFilters.group==='all'?'active':'')+'" data-key="group" data-value="all" onclick="setDailyListFilter(\'group\',\'all\')">ក្រុមទាំងអស់</div>';
     groups.forEach(g => { shell += '<div class="tab list-tab '+(dailyListFilters.group===g?'active':'')+'" data-key="group" data-value="'+escAttr(g)+'" onclick="setDailyListFilter(\'group\',\''+escAttr(g)+'\')">'+esc(g)+'</div>'; });
@@ -8917,6 +9116,16 @@ function applyDailyListFilters(list) {
     else out = out.filter(s => dailyNormOp(s.opStatus) === dailyListFilters.opStatus);
   }
 
+  // Handed Over sub-filter: shifts with a mission vs. back-in-terminal shifts
+  if (dailyListFilters.opStatus === DAILY_OP_HANDED &&
+      dailyListFilters.handedType && dailyListFilters.handedType !== 'all') {
+    const wantMission = dailyListFilters.handedType === 'mission';
+    out = out.filter(s => {
+      const hasMission = (Array.isArray(s.missions) ? s.missions : []).length > 0;
+      return wantMission ? hasMission : !hasMission;
+    });
+  }
+
   if (dailyListFilters.group !== 'all')  out = out.filter(s => s.group === dailyListFilters.group);
   if (dailyListFilters.equipmentId !== 'all') out = out.filter(s => s.equipmentId === dailyListFilters.equipmentId);
   if (dailyListFilters.driver !== 'all') out = out.filter(s => s.username === dailyListFilters.driver);
@@ -8932,10 +9141,13 @@ function applyDailyListFilters(list) {
     const q = dailyListFilters.search.toLowerCase();
     out = out.filter(s => {
       const shortName = String(eqShort(s.equipmentId) || '').toLowerCase();
+      const missionText = (Array.isArray(s.missions) ? s.missions : [])
+        .map(m => String(m.destination || '') + ' ' + String(m.missionId || '')).join(' ').toLowerCase();
       return String(s.equipmentId).toLowerCase().includes(q) ||
         shortName.includes(q) ||
         String(s.driverName).toLowerCase().includes(q) ||
-        String(s.checkId).toLowerCase().includes(q);
+        String(s.checkId).toLowerCase().includes(q) ||
+        missionText.includes(q);
     });
   }
   if (dailyListFilters.nokItemIds && dailyListFilters.nokItemIds.length > 0) {
@@ -9001,8 +9213,11 @@ window.setDailyListFilter = function(key, value) {
       dailyListFilters.checkType = 'all';
       dailyListFilters.confirmStatus = 'all';
       dailyListFilters.opStatus = 'all';
+      dailyListFilters.handedType = 'all';
     }
   }
+  // The handed-over sub-filter only makes sense while Handed Over is selected
+  if (key === 'opStatus' && value !== DAILY_OP_HANDED) dailyListFilters.handedType = 'all';
   renderDailyList();
 };
 
@@ -9059,7 +9274,7 @@ function applyDailyDatePresetActive(explicit) {
 
 window.clearDailyListFilters = function() {
   dailyListFilters = {
-    status:'all', checkType:'all', confirmStatus:'all', opStatus:'all',
+    status:'all', checkType:'all', confirmStatus:'all', opStatus:'all', handedType:'all',
     group:'all', equipmentId:'all', driver:'all',
     dateFrom:'', dateTo:'', search:'', nokItemIds: [], nokItemLabel: ''
   };
@@ -9326,9 +9541,14 @@ window.renderDailyDashboard = function() {
   if (!APP.loaded) { bootLoad(); return; }
   if (currentUser.role === 'driver') { showPage('home'); return; }
 
-  const subTabBar = '<div class="tab-bar mb-3" style="border-radius:10px;"><div class="tab ' + (dailyDashboardSubTab === 'overview' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setDailyDashboardSubTab(\'overview\')"><i class="bi bi-bar-chart me-1"></i>Dashboard</div><div class="tab ' + (dailyDashboardSubTab === 'mtn' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setDailyDashboardSubTab(\'mtn\')"><i class="bi bi-wrench-adjustable me-1"></i>Daily Management</div></div>';
+  const subTabBar = '<div class="tab-bar mb-3" style="border-radius:10px;">' +
+    '<div class="tab ' + (dailyDashboardSubTab === 'overview' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setDailyDashboardSubTab(\'overview\')"><i class="bi bi-bar-chart me-1"></i>Dashboard</div>' +
+    '<div class="tab ' + (dailyDashboardSubTab === 'mtn' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setDailyDashboardSubTab(\'mtn\')"><i class="bi bi-wrench-adjustable me-1"></i>Daily Management</div>' +
+    '<div class="tab ' + (dailyDashboardSubTab === 'mission' ? 'active' : '') + '" style="flex:1;text-align:center;" onclick="setDailyDashboardSubTab(\'mission\')"><i class="bi bi-signpost-split me-1"></i>Mission</div>' +
+  '</div>';
   
   if (dailyDashboardSubTab === 'mtn') { renderDailyManagement(subTabBar); return; }
+  if (dailyDashboardSubTab === 'mission') { renderDailyMissionDashboard(subTabBar); return; }
 
   const subs = APP.dailySubmissions || [];
   const todaySubs = subs.filter(s => isToday(s.date));
@@ -9548,6 +9768,183 @@ window.renderDailyDashboard = function() {
 
   $('#app').html('<div class="container-fluid px-0"><div class="d-flex justify-content-between align-items-center mb-3"><div><h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Daily Dashboard</h5><small class="text-muted">'+esc(currentUser.group === 'ALL' ? 'All groups' : currentUser.group)+'</small></div><button class="btn btn-sm btn-outline-secondary" onclick="reloadAll(\'dashboard\')"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px; margin-left: 4px;">--:--:--</span></button></div>' + subTabBar + summaryHtml + opsHtml + weeklyHtml + needAttentionHtml + topIssuesHtml + timelineHtml + groupHtml + recentHtml + '</div>');
 };
+
+/* =========================================================
+   DAILY DASHBOARD — MISSION SUB-TAB
+   Missions live on their own sheet but arrive attached to their shift.
+   ========================================================= */
+function dailyMissionAllPairs(){
+  const out = [];
+  (APP.dailySubmissions || []).forEach(s => {
+    (Array.isArray(s.missions) ? s.missions : []).forEach(m => { out.push({ m: m, s: s }); });
+  });
+  out.sort((a, b) => {
+    const ta = parseDmyToMs(a.m.date) + timeToMs(a.m.startTime || a.m.time);
+    const tb = parseDmyToMs(b.m.date) + timeToMs(b.m.startTime || b.m.time);
+    return tb - ta;
+  });
+  return out;
+}
+
+function dailyMissionDriverName(m){
+  const u = String((m && (m.driverName || m.username)) || '').trim();
+  return u || '—';
+}
+
+function renderDailyMissionDashboard(subTabBar){
+  const pairs = dailyMissionAllPairs();
+  const todayPairs  = pairs.filter(p => isToday(p.m.date));
+  const activePairs = pairs.filter(p => dailyMissionIsActive(p.m));
+  const pendingPairs = pairs.filter(p => dailyMissionNormStatus(p.m.status) !== DAILY_MISSION_CONFIRMED);
+  const todayDone    = todayPairs.filter(p => !dailyMissionIsActive(p.m));
+
+  const header = '<div class="d-flex justify-content-between align-items-center mb-3">' +
+      '<div><h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Daily Dashboard</h5>' +
+      '<small class="text-muted">' + esc(currentUser.group === 'ALL' ? 'All groups' : currentUser.group) + '</small></div>' +
+      '<button class="btn btn-sm btn-outline-secondary" onclick="reloadAll(\'dashboard\')"><i class="bi bi-arrow-repeat"></i><span class="last-sync-text" style="font-size: 0.75rem; min-width: 55px; margin-left: 4px;">--:--:--</span></button>' +
+    '</div>';
+
+  if (!pairs.length) {
+    $('#app').html('<div class="container-fluid px-0">' + header + subTabBar +
+      '<div class="card"><div class="card-body text-center py-5">' +
+        '<div class="text-muted mb-2"><i class="bi bi-signpost-split fs-3"></i></div>' +
+        '<div class="fw-semibold">No missions recorded yet</div>' +
+        '<div class="small text-muted mt-1">A driver starts one from the shift card (Mission/Outside).</div>' +
+      '</div></div></div>');
+    return;
+  }
+
+  const tile = (n, color, label) =>
+    '<div class="col-6 col-md-3"><div class="stat-card" style="cursor:default;">' +
+      '<div class="num text-' + color + '">' + n + '</div><div class="lbl">' + label + '</div></div></div>';
+  const summary = '<div class="row g-2 mb-3">' +
+    tile(todayPairs.length, 'primary', 'Missions today') +
+    tile(activePairs.length, 'warning', 'Active now') +
+    tile(todayDone.length, 'success', 'Completed today') +
+    tile(pendingPairs.length, 'info', 'Pending confirm') +
+  '</div>';
+
+  /* --- Active missions (still outside) --- */
+  let activeHtml = '';
+  if (activePairs.length) {
+    const rows = activePairs.map(p => {
+      const m = p.m, s = p.s;
+      const mins = dailyMissionElapsedMins(m);
+      return '<div class="issue-row" onclick="viewDailyCheck(\'' + escAttr(s.checkId) + '\')" style="background:var(--bg-color);border-left:3px solid #6f42c1;">' +
+        '<span class="rank" style="color:#6f42c1;"><i class="bi bi-geo-alt-fill"></i></span>' +
+        '<div class="name">' + esc(m.destination || '—') +
+          '<small>' + esc(eqShort(s.equipmentId)) + ' · ' + esc(dailyMissionDriverName(m)) + ' · ' + esc(s.group) + '</small>' +
+          '<small><i class="bi bi-clock me-1"></i>' + esc(m.date) + ' ' + esc(m.startTime || m.time) +
+            (mins != null ? ' · ' + esc(dailyMinutesText(mins)) + ' so far' : '') + '</small></div>' +
+        dailyMissionBadge(m.status) +
+      '</div>';
+    }).join('');
+    activeHtml = '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
+      '<span><i class="bi bi-broadcast me-2" style="color:#6f42c1;"></i>Active Missions</span>' +
+      '<span class="badge" style="background:#6f42c1;">' + activePairs.length + '</span></div>' +
+      '<div class="card-body p-2">' + rows + '</div></div>';
+  }
+
+  /* --- Waiting for Admin / Manager confirmation --- */
+  let pendingHtml = '';
+  if (pendingPairs.length) {
+    const rows = pendingPairs.slice(0, 10).map(p => {
+      const m = p.m, s = p.s;
+      return '<div class="activity-row" onclick="viewDailyCheck(\'' + escAttr(s.checkId) + '\')">' +
+        '<span class="dot" style="background:#0dcaf0;"></span>' +
+        '<div class="info"><strong>' + esc(m.destination || '—') + '</strong> · ' + esc(eqShort(s.equipmentId)) +
+          '<small>' + esc(m.date) + ' ' + esc(m.startTime || m.time) + ' · ' + esc(dailyMissionDriverName(m)) + ' · ' + esc(m.missionId) + '</small></div>' +
+        '<span class="time">' + dailyMissionBadge(m.status) + '</span></div>';
+    }).join('');
+    pendingHtml = '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
+      '<span><i class="bi bi-hourglass-split me-2 text-info"></i>Waiting for Confirmation</span>' +
+      '<span class="badge bg-info text-dark">' + pendingPairs.length + '</span></div>' +
+      '<div class="card-body p-0">' + rows + '</div></div>';
+  }
+
+  /* --- Destination breakdown --- */
+  const destMap = {};
+  pairs.forEach(p => {
+    const label = String(p.m.destination || '').trim();
+    if (!label) return;
+    const key = label.toLowerCase();
+    if (!destMap[key]) destMap[key] = { label: label, count: 0 };
+    destMap[key].count++;
+  });
+  const dests = Object.keys(destMap).map(k => destMap[k]).sort((a, b) => b.count - a.count).slice(0, 10);
+  const maxDest = Math.max(1, ...dests.map(x => x.count));
+  const destHtml = dests.length
+    ? '<div class="card mb-3"><div class="group-header"><i class="bi bi-geo-alt me-2" style="color:#6f42c1;"></i>Destinations</div>' +
+      '<div class="card-body p-2">' + dests.map(d => {
+        const pct = Math.round(d.count / maxDest * 100);
+        return '<div class="dash-bar clickable-card" onclick="drillToDaily({search:\'' + escAttr(d.label) + '\',status:\'all\',opStatus:\'all\',confirmStatus:\'all\',checkType:\'all\',dateFrom:\'\',dateTo:\'\'})">' +
+          '<span class="lbl" title="' + escAttr(d.label) + '">' + esc(d.label) + '</span>' +
+          '<div class="track"><div class="fill" style="width:' + pct + '%;background:#6f42c1;"></div></div>' +
+          '<span class="val">' + d.count + '</span></div>';
+      }).join('') + '</div></div>'
+    : '';
+
+  /* --- Last 7 days --- */
+  const last7 = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now); d.setDate(now.getDate() - i);
+    const dStr = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+    const dLabel = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+    last7.push({ label: dLabel, total: pairs.filter(p => p.m.date === dStr).length, isoDate: isoDate(d) });
+  }
+  const maxDay = Math.max(1, ...last7.map(x => x.total));
+  const trendHtml = '<div class="card mb-3"><div class="group-header"><i class="bi bi-calendar-week me-2" style="color:#6f42c1;"></i>Last 7 Days</div>' +
+    '<div class="card-body p-2">' + last7.map(x => {
+      const pct = Math.round(x.total / maxDay * 100);
+      return '<div class="dash-bar clickable-card" onclick="drillToDaily({dateFrom:\'' + x.isoDate + '\',dateTo:\'' + x.isoDate + '\',status:\'all\',opStatus:\'all\',confirmStatus:\'all\',checkType:\'all\'})">' +
+        '<span class="lbl">' + esc(x.label) + '</span>' +
+        '<div class="track"><div class="fill" style="width:' + pct + '%;background:#6f42c1;"></div></div>' +
+        '<span class="val">' + x.total + '</span></div>';
+    }).join('') + '</div></div>';
+
+  /* --- Items reported NOT OK during missions --- */
+  const issueMap = {};
+  pairs.forEach(p => {
+    (Array.isArray(p.m.items) ? p.m.items : []).forEach(it => {
+      if (String(it.status || '').toLowerCase() !== 'nok') return;
+      const label = it.itemKhmer || it.itemEng || it.itemId || 'Issue';
+      const key = String(label).toLowerCase();
+      if (!issueMap[key]) issueMap[key] = { label: label, count: 0, checkId: p.s.checkId, note: String(it.note || '') };
+      issueMap[key].count++;
+      if (!issueMap[key].note && it.note) issueMap[key].note = String(it.note);
+    });
+  });
+  const missionIssues = Object.keys(issueMap).map(k => issueMap[k]).sort((a, b) => b.count - a.count).slice(0, 10);
+  const issueHtml = missionIssues.length
+    ? '<div class="card mb-3 border-danger" style="border-width:2px;"><div class="group-header bg-danger text-white d-flex justify-content-between align-items-center">' +
+        '<span><i class="bi bi-exclamation-octagon-fill me-2"></i>Mission Issues</span>' +
+        '<span class="badge bg-white text-danger">' + missionIssues.length + ' items</span></div>' +
+        '<div class="card-body p-2">' + missionIssues.map(it =>
+          '<div class="issue-row" onclick="viewDailyCheck(\'' + escAttr(it.checkId) + '\')">' +
+            '<span class="rank text-danger"><i class="bi bi-x-circle"></i></span>' +
+            '<div class="name">' + esc(it.label) + (it.note ? '<small>' + esc(it.note) + '</small>' : '') + '</div><span class="count">' + it.count + '×</span></div>'
+        ).join('') + '</div></div>'
+    : '';
+
+  /* --- Recent missions --- */
+  const recentHtml = '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
+      '<span><i class="bi bi-clock-history me-2"></i>Recent Missions</span>' +
+      '<small class="text-muted">' + pairs.length + ' total</small></div><div class="card-body p-0">' +
+      pairs.slice(0, 15).map(p => {
+        const m = p.m, s = p.s;
+        const duration = dailyMissionDurationLabel(m);
+        return '<div class="activity-row" onclick="viewDailyCheck(\'' + escAttr(s.checkId) + '\')">' +
+          '<span class="dot" style="background:' + (dailyMissionIsActive(m) ? '#6f42c1' : '#6c757d') + ';"></span>' +
+          '<div class="info"><strong>' + esc(m.destination || '—') + '</strong> · ' + esc(eqShort(s.equipmentId)) +
+            '<small>' + esc(m.date) + ' ' + esc(m.startTime || m.time) + ' → ' + esc(m.endTime || 'active') +
+            (duration ? ' · ' + esc(duration) : '') + ' · ' + esc(dailyMissionDriverName(m)) + '</small></div>' +
+          '<span class="time">' + dailyMissionBadge(m.status) + '</span></div>';
+      }).join('') + '</div></div>';
+
+  $('#app').html('<div class="container-fluid px-0">' + header + subTabBar + summary +
+    activeHtml + pendingHtml + destHtml + trendHtml + issueHtml + recentHtml + '</div>');
+}
 
 window.setDailyDashboardSubTab = function(tab){ 
   dailyDashboardSubTab = tab; 
