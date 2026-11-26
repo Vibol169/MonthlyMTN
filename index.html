@@ -995,26 +995,135 @@ body.dark-mode .daily-info-card .form-control { background: #101722; color: #e9e
 .finish-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 .finish-field,
 .finish-tile {
   min-width: 0;
-  padding: 8px;
-  border-radius: 10px;
+  padding: 10px;
+  border-radius: 12px;
   border: 1px solid var(--border-color);
   background: var(--card-bg);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
 }
-.finish-field .form-label { line-height: 1.25; min-height: 2.4em; }
-.finish-field .photo-gallery { margin-top: 6px; gap: 6px; }
-.finish-tile .finish-val { margin-top: 2px; font-weight: 800; font-size: 1rem; color: var(--text-color); }
-.finish-field .photo-tile { height: 62px; }
+.finish-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.finish-field:focus-within {
+  border-color: var(--tab-active);
+  box-shadow: 0 0 0 3px rgba(13, 110, 253, .12);
+}
+.finish-field-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.finish-field-ico,
+.finish-tile-ico {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 110, 253, .10);
+  color: var(--tab-active);
+  font-size: .9rem;
+}
+.finish-field .form-label {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  line-height: 1.2;
+}
+.finish-field-kh { display: block; font-size: .8rem; color: var(--text-color); }
+.finish-field-en { display: block; font-size: .66rem; line-height: 1.25; }
+.finish-opt {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(108, 117, 125, .12);
+  color: #6c757d;
+  font-size: .58rem;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.finish-field .finish-input {
+  height: 38px;
+  font-size: .95rem;
+  font-weight: 700;
+  border-radius: 9px;
+  /* Number inputs must be clearable — no up/down spinner arrows */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.finish-field .finish-input::-webkit-outer-spin-button,
+.finish-field .finish-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+  margin: 0;
+}
+.finish-hint { font-size: .66rem; line-height: 1.25; }
+.finish-photo-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 1px;
+  color: #6c757d;
+  font-size: .64rem;
+  font-weight: 600;
+}
+.finish-photo-head i { color: var(--tab-active); }
+.finish-photo-en { font-weight: 400; opacity: .8; }
+.finish-field .photo-gallery { margin-top: 0; gap: 6px; }
+.finish-field .photo-tile { height: 58px; }
 .finish-field .photo-tile.photo-add-tile,
-.finish-field .photo-tile.photo-loading { width: 62px; font-size: 18px; }
+.finish-field .photo-tile.photo-loading { width: 58px; font-size: 18px; }
+.finish-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.finish-tile-top { display: flex; align-items: center; gap: 8px; }
+.finish-tile-label { min-width: 0; }
+.finish-tile-kh { font-size: .76rem; font-weight: 700; line-height: 1.2; color: var(--text-color); }
+.finish-tile-en { font-size: .64rem; line-height: 1.2; color: #6c757d; }
+.finish-tile .finish-val { margin-top: 0; font-weight: 800; font-size: 1.08rem; color: var(--text-color); }
+.finish-tile .view-photo-wrap { margin-top: 0; }
+.finish-tile .photo-chip { font-size: .66rem; padding: 2px 8px; }
+.finish-note {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(13, 110, 253, .06);
+  color: var(--text-color);
+  font-size: .68rem;
+  line-height: 1.35;
+}
+.finish-note i { color: var(--tab-active); }
 body.dark-mode .finish-field,
 body.dark-mode .finish-tile { background: #101722; border-color: #33415c; }
+body.dark-mode .finish-field-ico,
+body.dark-mode .finish-tile-ico { background: rgba(13, 110, 253, .2); }
 body.dark-mode .finish-tile .finish-val { color: #e9eef7; }
+body.dark-mode .finish-tile-kh { color: #e9eef7; }
+body.dark-mode .finish-tile-en,
+body.dark-mode .finish-field-en,
+body.dark-mode .finish-hint,
+body.dark-mode .finish-opt,
+body.dark-mode .finish-photo-head { color: #9fb0c7 !important; }
+body.dark-mode .finish-note { background: rgba(13, 110, 253, .14); color: #c7d2e0; }
+body.dark-mode .finish-note .text-muted { color: #9fb0c7 !important; }
 body.dark-mode .photo-chip { background: #101722; border-color: #33415c; color: #9fb0c7; }
+@media (max-width: 480px) {
+  .finish-grid { grid-template-columns: minmax(0, 1fr); }
+}
 .item-hover:hover {
   background-color: var(--bg-color);
 }
@@ -1022,7 +1131,7 @@ body.dark-mode .photo-chip { background: #101722; border-color: #33415c; color: 
 </style>
 <!-- NOTE: the file on disk is named syles.css (historic typo) — keep the two in sync if you rename it -->
 <!-- The ?v= stamp busts the browser/CDN cache whenever the stylesheet changes -->
-<link rel="stylesheet" href="syles.css?v=20261126b">
+<link rel="stylesheet" href="syles.css?v=20261126e">
 </head>
 <body class="font-medium">
 
