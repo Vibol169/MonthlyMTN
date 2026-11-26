@@ -6793,6 +6793,7 @@ window.drillToDailyIssue = function(itemIdsCsv, label) {
    ========================================================= */
 const DAILY_OP_OPERATING = 'Operating';
 const DAILY_OP_STANDBY   = 'Stand By';
+const DAILY_OP_MISSION   = 'Mission/Outside';
 const DAILY_OP_WAITING   = 'Waiting Handover';
 const DAILY_OP_HANDED    = 'Handed Over';
 
@@ -6802,18 +6803,22 @@ function dailyNormOp(v){
   if (!k) return '';
   if (k === 'operating' || k === 'operate' || k === 'active' || k === 'running') return DAILY_OP_OPERATING;
   if (k === 'stand by' || k === 'standby' || k === 'pause' || k === 'paused' || k === 'break') return DAILY_OP_STANDBY;
+  if (k === 'mission/outside' || k === 'mission/out side' || k === 'mission' ||
+      k === 'mission outside' || k === 'out side' || k === 'outside') return DAILY_OP_MISSION;
   if (k === 'finished' || k === 'finish') return DAILY_OP_WAITING;
   if (k === 'waiting handover' || k === 'waiting for handover' || k === 'awaiting handover') return DAILY_OP_WAITING;
   if (k === 'handed over' || k === 'handedover' || k === 'handover done' || k === 'completed') return DAILY_OP_HANDED;
   return s;
 }
 
-function dailyIsOpenOp(op){ return op === DAILY_OP_OPERATING || op === DAILY_OP_STANDBY; }
+// Mission/Outside keeps the shift open — the equipment is still this driver's
+function dailyIsOpenOp(op){ return op === DAILY_OP_OPERATING || op === DAILY_OP_STANDBY || op === DAILY_OP_MISSION; }
 
 function dailyOpInfo(status){
   const st = dailyNormOp(status);
   if (st === DAILY_OP_OPERATING) return { status: st, label: 'Operating', icon: 'bi-play-circle-fill', cls: 'op-operating', hint: 'Active work — the equipment is running.' };
   if (st === DAILY_OP_STANDBY)   return { status: st, label: 'Stand By', icon: 'bi-pause-circle-fill', cls: 'op-standby', hint: 'Taking a break — switch back to Operating anytime.' };
+  if (st === DAILY_OP_MISSION)   return { status: st, label: 'Mission/Outside', icon: 'bi-signpost-split-fill', cls: 'op-mission', hint: 'On a mission outside the site — back to Operating when you return.' };
   if (st === DAILY_OP_WAITING)   return { status: st, label: 'Waiting Handover', icon: 'bi-hourglass-split', cls: 'op-waiting', hint: 'Finished form sent — the next driver must verify the handover.' };
   if (st === DAILY_OP_HANDED)    return { status: st, label: 'Handed Over', icon: 'bi-check2-circle', cls: 'op-handover', hint: 'Verified by the next driver — this shift is locked.' };
   return { status: '', label: 'Not started', icon: 'bi-dash-circle', cls: 'op-none', hint: '' };
@@ -6898,12 +6903,15 @@ function dailyShiftStartValues(prev){
 const DAILY_FREQ_DAILY  = 'Daily';
 const DAILY_FREQ_WEEKLY = 'Weekly';
 const DAILY_FREQ_FINISH = 'Finish';
+const DAILY_FREQ_MISSION = 'Mission';
 
 function dailyNormFreq(v){
   const k = String(v == null ? '' : v).trim().toLowerCase().replace(/[\s_-]+/g, ' ');
   if (!k) return DAILY_FREQ_DAILY;
   if (k === 'weekly' || k === 'week' || k === '7d' || k === '7 day' || k === '7 days' || k === 'every 7 days') return DAILY_FREQ_WEEKLY;
   if (k === 'finish' || k === 'finished' || k === 'finished form' || k === 'finish form' || k === 'end' || k === 'end of shift') return DAILY_FREQ_FINISH;
+  if (k === 'mission' || k === 'mission outside' || k === 'mission/outside' || k === 'mission/out side' ||
+      k === 'mission form' || k === 'outside' || k === 'out side') return DAILY_FREQ_MISSION;
   return DAILY_FREQ_DAILY;
 }
 
@@ -7014,6 +7022,12 @@ function dailySessionCard(s){
   const startLine = (starts.odo !== '' || starts.hour !== '')
     ? '<div class="small text-muted mt-1"><i class="bi bi-speedometer2 me-1"></i>Start Odometer ' + esc(starts.odo || '—') + ' · OPHour ' + esc(starts.hour || '—') + '</div>'
     : '';
+  const missions = Array.isArray(s.missions) ? s.missions : [];
+  const msnPending = missions.filter(m => dailyMissionNormStatus(m.status) !== DAILY_MISSION_CONFIRMED).length;
+  const missionLine = missions.length
+    ? '<div class="msn-stamp mt-1"><i class="bi bi-signpost-split me-1"></i>' + missions.length + ' mission' + (missions.length === 1 ? '' : 's') +
+      (msnPending ? ' · ' + msnPending + ' waiting for confirmation' : ' · all confirmed') + '</div>'
+    : '';
   return '<div class="card session-card mb-2 ' + info.cls + '">' +
     '<div class="card-body py-2">' +
       '<div class="d-flex justify-content-between align-items-start mb-1">' +
@@ -7027,6 +7041,7 @@ function dailySessionCard(s){
         (info.status === DAILY_OP_OPERATING
           ? '<button class="btn btn-sm btn-outline-warning" onclick="event.stopPropagation();setDailyOpStatus(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_STANDBY + '\')"><i class="bi bi-pause-circle me-1"></i>Stand By</button>'
           : '<button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation();setDailyOpStatus(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>') +
+        '<button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation();openDailyMissionForm(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-signpost-split me-1"></i>Mission/Outside</button>' +
         '<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();openDailyFinishForm(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>' +
         '<button class="btn btn-sm btn-outline-primary ms-auto" onclick="event.stopPropagation();viewDailyCheck(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-eye"></i></button>' +
       '</div>' +
@@ -7196,6 +7211,7 @@ function dailyOpSectionHtml(s){
       (info.status === DAILY_OP_OPERATING
         ? '<button class="btn btn-sm btn-outline-warning flex-fill" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_STANDBY + '\')"><i class="bi bi-pause-circle me-1"></i>Stand By</button>'
         : '<button class="btn btn-sm btn-outline-success flex-fill" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>') +
+      '<button class="btn btn-sm btn-outline-primary flex-fill" onclick="dailyDetailMission(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-signpost-split me-1"></i>Mission/Outside</button>' +
       '<button class="btn btn-sm btn-danger flex-fill" onclick="dailyDetailFinish(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>' +
     '</div>';
   }
@@ -7216,6 +7232,46 @@ window.dailyDetailFinish = function(checkId){
   if (m) m.hide();
   openDailyFinishForm(checkId);
 };
+
+window.dailyDetailMission = function(checkId){
+  const el = document.getElementById('detailModal');
+  const m = el ? bootstrap.Modal.getInstance(el) : null;
+  if (m) m.hide();
+  openDailyMissionForm(checkId);
+};
+
+/* =========================================================
+   MISSION / OUTSIDE — one popup form per trip
+   Items come from Checklist_Template (Frequency = Mission).
+   The shift becomes Mission/Outside and STAYS OPEN; the mission
+   itself needs an Admin AND a Manager confirmation.
+   ========================================================= */
+const DAILY_MISSION_PENDING   = 'Pending';
+const DAILY_MISSION_PARTIAL   = 'Partial';
+const DAILY_MISSION_CONFIRMED = 'Confirmed';
+
+let dailyMissionState = { checkId: '', items: [], answers: {}, remarkPhotos: [] };
+
+function dailyMissionNormStatus(v){
+  const k = String(v == null ? '' : v).trim().toLowerCase();
+  if (k === 'confirmed') return DAILY_MISSION_CONFIRMED;
+  if (k === 'partial')   return DAILY_MISSION_PARTIAL;
+  return DAILY_MISSION_PENDING;
+}
+
+function dailyMissionBadge(status){
+  const st = dailyMissionNormStatus(status);
+  const cls = st === DAILY_MISSION_CONFIRMED ? 'msn-confirmed'
+            : st === DAILY_MISSION_PARTIAL   ? 'msn-partial' : 'msn-pending';
+  const icon = st === DAILY_MISSION_CONFIRMED ? 'bi-check2-circle'
+             : st === DAILY_MISSION_PARTIAL   ? 'bi-hourglass-split' : 'bi-clock';
+  return '<span class="op-badge msn-badge ' + cls + '"><i class="bi ' + icon + ' me-1"></i>' + esc(st) + '</span>';
+}
+
+function dailyMissionSigned(username, at){
+  if (!username && !at) return '';
+  return esc(dailyUserLabel(username) || username) + (at ? ' · ' + esc(at) : '');
+}
 
 /* =========================================================
    START & HANDOVER
@@ -7786,6 +7842,14 @@ const DAILY_PHOTO_MAX = 10;
 function dailyPhotoBag(key){
   key = String(key || '');
   if (!key) return null;
+  // The Mission/Outside popup owns the page while it is open
+  if (dailyMissionState && dailyMissionState.checkId) {
+    if (key === 'missionRemark') {
+      if (!dailyMissionState.remarkPhotos) dailyMissionState.remarkPhotos = [];
+      return { photos: dailyMissionState.remarkPhotos };
+    }
+    if (dailyMissionState.answers && dailyMissionState.answers[key]) return dailyMissionState.answers[key];
+  }
   // The Finished Form owns the page while it is open (answers + the two extra fields)
   if (dailyFinishState && dailyFinishState.checkId) {
     if (dailyFinishState.extras && dailyFinishState.extras[key]) return dailyFinishState.extras[key];
@@ -7802,6 +7866,7 @@ function dailyPhotoBag(key){
 }
 
 function dailyPhotoCheckId(){
+  if (dailyMissionState && dailyMissionState.checkId) return dailyMissionState.checkId;
   if (dailyFinishState && dailyFinishState.checkId) return dailyFinishState.checkId;
   return 'NEW';
 }
@@ -8413,9 +8478,317 @@ window.submitDailyFinishForm = function(checkId){
 };
 
 /* =========================================================
+   MISSION / OUTSIDE POPUP FORM
+   ========================================================= */
+window.setDailyMissionCheck = function(itemId, status){
+  if (!dailyMissionState || !dailyMissionState.answers[itemId]) return;
+  dailyMissionState.answers[itemId].status = status;
+  const $item = $('.check-item[data-msn="' + itemId + '"]');
+  $item.removeClass('ok nok na').addClass(status).attr('data-status', status);
+  $item.find('.check-btn').removeClass('selected-ok selected-nok selected-na');
+  $item.find('.check-btn').eq(status === 'ok' ? 0 : status === 'nok' ? 1 : 2).addClass('selected-' + status);
+  const isNok = (status === 'nok');
+  $item.find('.nok-note').toggleClass('visible', isNok);
+  $item.find('.js-photo-row').css('display', isNok ? 'flex' : 'none');
+};
+
+window.setDailyMissionNote = function(itemId, val){
+  if (!dailyMissionState || !dailyMissionState.answers[itemId]) return;
+  dailyMissionState.answers[itemId].note = val;
+};
+
+window.setDailyMissionField = function(key, val){
+  if (!dailyMissionState) return;
+  dailyMissionState[key] = String(val == null ? '' : val);
+};
+
+window.openDailyMissionForm = function(checkId){
+  const s = (APP.dailySubmissions || []).find(x => x.checkId === checkId);
+  if (!s) { showAlert('រកមិនឃើញ (Checklist not found)', 'warning'); return; }
+  const op = dailyNormOp(s.opStatus);
+  if (!dailyIsOpenOp(op)) {
+    showAlert('This shift is already finished — a mission can only be added to an open shift.', 'warning');
+    return;
+  }
+  if (s.username !== (currentUser && currentUser.username)) {
+    showAlert('Only the driver of this shift can start a mission.', 'warning');
+    return;
+  }
+
+  const items = dailyTplItems(s.group, DAILY_FREQ_MISSION);
+  const answers = {};
+  items.forEach(it => { answers[it.itemId] = { status: 'ok', note: '', photos: [] }; });
+
+  dailyMissionState = {
+    checkId: checkId, items: items, answers: answers,
+    destination: '', remark: '', remarkPhotos: []
+  };
+
+  const itemsHtml = items.length
+    ? items.map((it, i) => {
+        const a = answers[it.itemId] || { status: 'ok', note: '', photos: [] };
+        const st = a.status || 'ok';
+        return '<div class="check-item '+st+'" data-msn="'+escAttr(it.itemId)+'" data-status="'+escAttr(st)+'">' +
+          '<div class="row-line"><div class="label-part"><span class="item-num">'+(i+1)+'.</span><div class="item-text">' +
+            '<span class="item-name-kh">'+esc(it.itemKhmer)+'</span>' +
+            (it.itemEng ? '<span class="item-name-en">'+esc(it.itemEng)+'</span>' : '') +
+          '</div></div></div>' +
+          '<div class="check-actions">' +
+            '<button type="button" class="check-btn '+(st==='ok'?'selected-ok':'')+'" onclick="setDailyMissionCheck(\''+escAttr(it.itemId)+'\',\'ok\')"><i class="bi bi-check-circle me-1"></i>OK</button>' +
+            '<button type="button" class="check-btn '+(st==='nok'?'selected-nok':'')+'" onclick="setDailyMissionCheck(\''+escAttr(it.itemId)+'\',\'nok\')"><i class="bi bi-x-circle me-1"></i>NOT OK</button>' +
+            '<button type="button" class="check-btn '+(st==='na'?'selected-na':'')+'" onclick="setDailyMissionCheck(\''+escAttr(it.itemId)+'\',\'na\')"><i class="bi bi-dash-circle me-1"></i>N/A</button>' +
+          '</div>' +
+          '<div class="nok-note '+(st==='nok'?'visible':'')+'"><input type="text" class="form-control form-control-sm" placeholder="ចំណាំ / បញ្ហា..." value="'+esc(a.note)+'" oninput="setDailyMissionNote(\''+escAttr(it.itemId)+'\', this.value)"></div>' +
+          dailyPhotoGalleryHtml(it.itemId, a.photos || [], st === 'nok') +
+        '</div>';
+      }).join('')
+    : '<div class="text-muted small text-center py-3">មិនមានទម្រង់ Mission សម្រាប់ក្រុមនេះទេ (No Mission/Outside items configured — add rows with Frequency = Mission in Checklist_Template).</div>';
+
+  dailyMissionRenderModal(s, items, itemsHtml);
+};
+
+/* Popup body: destination + items + remark + photos */
+function dailyMissionRenderModal(s, items, itemsHtml){
+  const eq = APP.equipmentMap[s.equipmentId] || {};
+  const body =
+    '<div class="row g-2 mb-3">' +
+      dailyInfoCard('truck', esc(s.group || 'ឧបករណ៍'),
+        '<div>' + esc(eq.shortName || s.equipmentId) + '<span class="badge bg-primary ms-2">Mission/Outside</span></div>', 'primary') +
+      dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(s.date) + ' ' + esc(s.time), 'warning') +
+    '</div>' +
+    '<div class="card mb-3"><div class="group-header"><span><i class="bi bi-signpost-split me-2"></i>គោលដៅ / ការងារ (Destination / Purpose)</span></div>' +
+      '<div class="card-body p-2">' +
+        '<input type="text" class="form-control form-control-sm" id="dailyMissionDestination" placeholder="ទីតាំង / ការងារដែលត្រូវទៅ..." oninput="setDailyMissionField(\'destination\', this.value)">' +
+      '</div></div>' +
+    '<div class="card mb-3 legend-card"><div class="legend-body text-center">' +
+      '<div class="lbl-kh"><span class="acronym">OK</span>=ធម្មតា &nbsp; <span class="acronym">NOT OK</span>=មានបញ្ហា &nbsp; <span class="acronym">N/A</span>=N/A</div>' +
+    '</div></div>' +
+    '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
+      '<span><i class="bi bi-list-check me-2"></i>ការត្រួតពិនិត្យមុនចេញ Mission</span>' +
+      '<small class="text-muted">' + dailyItemWord(items.length) + '</small>' +
+    '</div><div class="card-body p-2"><div class="check-grid is-single">' + itemsHtml + '</div></div></div>' +
+    '<div class="card mb-0"><div class="card-body">' +
+      '<label class="form-label fw-bold">កំណត់សម្គាល់ (Remark)</label>' +
+      '<textarea class="form-control form-control-sm" id="dailyMissionRemark" rows="3" placeholder="Optional..." oninput="setDailyMissionField(\'remark\', this.value)"></textarea>' +
+      '<div class="small text-muted mt-2 mb-1"><i class="bi bi-camera me-1"></i>រូបថតបន្ថែម (optional photos)</div>' +
+      dailyPhotoGalleryHtml('missionRemark', [], true) +
+    '</div></div>';
+
+  const footer =
+    '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="cancelDailyMissionForm()">បោះបង់</button>' +
+    '<button type="button" class="btn btn-sm btn-primary" onclick="submitDailyMissionForm()"><i class="bi bi-send me-1"></i>ចាកចេញ Mission</button>';
+
+  showDailyFlowModal('<i class="bi bi-signpost-split me-2"></i>Mission / Outside', body, footer, 'modal-lg');
+}
+
+window.cancelDailyMissionForm = function(){
+  dailyMissionState = { checkId: '', items: [], answers: {}, remarkPhotos: [] };
+  hideDailyFlowModal();
+};
+
+window.submitDailyMissionForm = function(){
+  const st = dailyMissionState || { checkId: '', items: [], answers: {}, remarkPhotos: [] };
+  const checkId = String(st.checkId || '');
+  if (!checkId) return;
+
+  const destination = String($('#dailyMissionDestination').val() || '').trim();
+  if (!destination) {
+    showAlert('សូមបំពេញគោលដៅ / ការងារ (Please fill the mission destination / purpose)', 'warning');
+    return;
+  }
+
+  const unanswered = (st.items || []).filter(it => {
+    const a = st.answers[it.itemId];
+    return !a || ['ok', 'nok', 'na'].indexOf(a.status) === -1;
+  });
+  if (unanswered.length) {
+    showAlert('សូមឆ្លើយរាល់ចំណុច (Please answer every Mission/Outside item - ' + unanswered.length + ' left)', 'warning');
+    return;
+  }
+  if (dailyHasPendingUploads({ answers: st.answers, remarkPhotos: st.remarkPhotos })) {
+    showAlert('រូបថតកំពុងផ្ទុកឡើង — សូមរង់ចាំបន្តិច (photos still uploading)', 'warning');
+    return;
+  }
+
+  const items = (st.items || []).map(it => {
+    const a = st.answers[it.itemId] || {};
+    const entry = {
+      itemId: it.itemId,
+      itemKhmer: it.itemKhmer || '',
+      itemEng: it.itemEng || '',
+      status: a.status,
+      note: a.note || ''
+    };
+    const photos = dailyPhotosPayload(a.photos);
+    if (photos.length) entry.photos = photos;
+    return entry;
+  });
+  const photoIds = dailyPhotosPayload(st.remarkPhotos).map(p => p.fileId);
+
+  showLoading('កំពុងបញ្ជូន...');
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoading();
+      if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); return; }
+
+      const s = (APP.dailySubmissions || []).find(x => x.checkId === checkId);
+      if (s) {
+        s.opStatus = res.opStatus || DAILY_OP_MISSION;
+        s.opAt     = res.opAt || (dmyToday() + ' ' + nowTimeStr());
+        s.opBy     = res.opBy || currentUser.username;
+        if (!Array.isArray(s.missions)) s.missions = [];
+        if (res.mission) s.missions.push(res.mission);
+      }
+
+      dailyMissionState = { checkId: '', items: [], answers: {}, remarkPhotos: [] };
+      hideDailyFlowModal();
+      showAlert('បានចាកចេញ Mission — ឧបករណ៍នៅក្រោមអ្នកបើកបរដដែល (Mission/Outside saved — waiting for Admin & Manager)', 'success');
+      refreshCurrentPage();
+      dailySyncNow();
+    })
+    .withFailureHandler(err => { hideLoading(); handleError(err); })
+    .submitDailyMission({
+      checkId: checkId,
+      destination: destination,
+      remark: String($('#dailyMissionRemark').val() || ''),
+      items: items,
+      photoIds: photoIds
+    });
+};
+
+/* =========================================================
+   MISSION / OUTSIDE — detail card + Admin / Manager confirmation
+   Each role confirms on its own row in Checklist_Missions; the mission
+   is Pending → Partial (one side) → Confirmed (both sides).
+   ========================================================= */
+function dailyMissionItemStatusBadge(status){
+  const st = String(status || '').toLowerCase();
+  const cls   = st === 'ok' ? 'status-ok' : st === 'nok' ? 'status-nok' : 'status-pending';
+  const label = st === 'ok' ? 'OK' : st === 'nok' ? 'NOT OK' : st === 'na' ? 'N/A' : '—';
+  return '<span class="status-badge ' + cls + '" style="min-width:auto;padding:2px 8px;font-size:.62rem;">' + label + '</span>';
+}
+
+function dailyMissionCardHtml(m, isAdmin, isManager){
+  const id = escAttr(m.missionId);
+  const items = Array.isArray(m.items) ? m.items : [];
+  const photos = (Array.isArray(m.photoIds) ? m.photoIds : []).map(idv => ({ fileId: idv }));
+  const adminDone   = String(m.adminStatus || '').toLowerCase() === 'confirmed';
+  const managerDone = String(m.managerStatus || '').toLowerCase() === 'confirmed';
+
+  let html = '<div class="msn-card">' +
+    '<div class="d-flex justify-content-between align-items-start gap-2 mb-1">' +
+      '<div><div class="fw-bold"><i class="bi bi-geo-alt me-1"></i>' + esc(m.destination || '—') + '</div>' +
+        '<div class="msn-stamp">' + esc(m.missionId) + ' · ' + esc(m.date) + ' ' + esc(m.startTime || m.time) +
+          (m.endTime ? ' → ' + esc(m.endTime) : '') + '</div></div>' +
+      dailyMissionBadge(m.status) +
+    '</div>';
+
+  if (items.length) {
+    html += '<div class="mt-2">' + items.map(it => {
+      const name = it.itemKhmer || it.itemEng || it.itemId || '';
+      return '<div class="msn-item"><div><div>' + esc(name) + '</div>' +
+        (it.note ? '<div class="small text-danger"><i class="bi bi-chat-left-text me-1"></i>' + esc(it.note) + '</div>' : '') +
+        dailyPhotoIdsHtml(it.photos) + '</div>' +
+        dailyMissionItemStatusBadge(it.status) + '</div>';
+    }).join('') + '</div>';
+  }
+
+  if (m.remark) html += '<div class="small mt-2"><span class="msn-stamp">Remark</span><div>' + esc(m.remark) + '</div></div>';
+  if (photos.length) html += dailyPhotoIdsHtml(photos);
+
+  html += '<div class="d-flex flex-wrap gap-3 mt-2">' +
+    '<div class="small"><i class="bi bi-person-check me-1"></i>Admin: ' +
+      (adminDone ? '<strong class="text-success">Confirmed</strong>' : '<span class="text-muted">Pending</span>') +
+      (adminDone ? '<div class="msn-stamp">' + dailyMissionSigned(m.adminBy, m.adminAt) + '</div>' : '') +
+      (m.adminRemark ? '<div class="small text-muted">' + esc(m.adminRemark) + '</div>' : '') +
+    '</div>' +
+    '<div class="small"><i class="bi bi-patch-check me-1"></i>Manager: ' +
+      (managerDone ? '<strong class="text-success">Confirmed</strong>' : '<span class="text-muted">Pending</span>') +
+      (managerDone ? '<div class="msn-stamp">' + dailyMissionSigned(m.managerBy, m.managerAt) + '</div>' : '') +
+      (m.managerRemark ? '<div class="small text-muted">' + esc(m.managerRemark) + '</div>' : '') +
+    '</div>' +
+  '</div>';
+
+  // Admin and Manager confirm independently — no order, no waiting for the other side
+  if (isAdmin && !adminDone) {
+    html += '<button class="btn btn-sm btn-outline-primary w-100 mt-2" onclick="dailyMissionConfirmToggle(\'' + id + '\')">' +
+      '<i class="bi bi-pencil-square me-1"></i>Admin Confirm</button>';
+  }
+  if (isManager && !managerDone) {
+    html += '<button class="btn btn-sm btn-success w-100 mt-2" onclick="dailyMissionConfirmToggle(\'' + id + '\')">' +
+      '<i class="bi bi-check-circle me-1"></i>Manager Confirm</button>';
+  }
+
+  if ((isAdmin && !adminDone) || (isManager && !managerDone)) {
+    html += '<div class="d-none mt-2" id="msnConfirm-' + id + '">' +
+      '<textarea class="form-control form-control-sm mb-2" id="msnRemark-' + id + '" rows="2" placeholder="Remark (optional)..."></textarea>' +
+      '<div class="d-flex gap-2">' +
+        '<button class="btn btn-sm btn-success flex-fill" onclick="saveDailyMissionConfirm(\'' + id + '\')"><i class="bi bi-check-circle me-1"></i>Confirm</button>' +
+        '<button class="btn btn-sm btn-outline-secondary" onclick="dailyMissionConfirmToggle(\'' + id + '\')">Cancel</button>' +
+      '</div></div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function dailyMissionSectionHtml(s){
+  const list = Array.isArray(s.missions) ? s.missions : [];
+  const isAdmin   = currentUser.role === 'admin';
+  const isManager = currentUser.role === 'manager';
+  const open = dailyIsOpenOp(dailyNormOp(s.opStatus));
+
+  let body = '';
+  if (!list.length) {
+    body = '<div class="small text-muted text-center py-2">No Mission/Outside recorded for this shift.</div>';
+    if (open && s.username === (currentUser && currentUser.username)) {
+      body += '<button class="btn btn-sm btn-outline-primary w-100 mt-1" onclick="dailyDetailMission(\'' + escAttr(s.checkId) + '\')">' +
+        '<i class="bi bi-signpost-split me-1"></i>Start a Mission/Outside</button>';
+    }
+  } else {
+    list.slice().reverse().forEach(m => { body += dailyMissionCardHtml(m, isAdmin, isManager); });
+  }
+
+  return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
+    '<span><i class="bi bi-signpost-split me-2"></i>Mission / Outside</span>' +
+    '<small class="text-muted">' + list.length + ' record' + (list.length === 1 ? '' : 's') + '</small>' +
+  '</div><div class="card-body p-2">' + body + '</div></div>';
+}
+
+// Toggle the small confirm box (remark + Confirm) for one mission row
+window.dailyMissionConfirmToggle = function(missionId){
+  $('#msnConfirm-' + missionId).toggleClass('d-none');
+};
+
+window.saveDailyMissionConfirm = function(missionId){
+  const remark = String($('#msnRemark-' + missionId).val() || '');
+  showLoading('កំពុងរក្សាទុក...');
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoading();
+      if (!res || !res.success) { showAlert((res && res.message) || 'Error', 'danger'); return; }
+
+      // Merge the server answer into the local copy so the modal repaints instantly
+      const m = res.mission || {};
+      (APP.dailySubmissions || []).forEach(s => {
+        if (!Array.isArray(s.missions)) return;
+        const cur = s.missions.find(x => x.missionId === missionId);
+        if (!cur) return;
+        Object.keys(m).forEach(k => { cur[k] = m[k]; });
+      });
+
+      showAlert('បានបញ្ជាក់ Mission (' + (m.status || 'Confirmed') + ')', 'success');
+      const cur = (APP.dailySubmissions || []).find(x => (x.missions || []).some(mm => mm.missionId === missionId));
+      if (cur) renderDailyDetailModal(cur);
+      refreshCurrentPage();
+    })
+    .withFailureHandler(err => { hideLoading(); handleError(err); })
+    .confirmDailyMission({ missionId: missionId, remark: remark });
+};
+
+/* =========================================================
    DAILY LIST VIEW
    ========================================================= */
-/* One horizontally scrollable filter tab bar (same look as the Monthly list). */
 function dailyListTabBar(id, key, items, current) {
   let h = '<div class="tab-bar mb-1" id="' + id + '" style="display: flex; overflow-x: auto; white-space: nowrap; -ms-overflow-style: none; scrollbar-width: none; border: none; background: transparent; padding-bottom: 2px;">';
   items.forEach(it => {
@@ -8462,6 +8835,7 @@ window.renderDailyList = function() {
     { value: 'all',              label: 'ទាំងអស់' },
     { value: DAILY_OP_OPERATING, label: 'Operating' },
     { value: DAILY_OP_STANDBY,   label: 'Stand By' },
+    { value: DAILY_OP_MISSION,   label: 'Mission/Outside' },
     { value: DAILY_OP_WAITING,   label: 'Waiting Handover' },
     { value: DAILY_OP_HANDED,    label: 'Handed Over' }
   ], dailyListFilters.opStatus);
@@ -8716,6 +9090,7 @@ function renderDailyDetailModal(s) {
       '</div>' +
       
       dailyOpSectionHtml(s) +
+      dailyMissionSectionHtml(s) +
       buildDailyConfirmSection(s) +
       dailyFinishExtraHtml(s) +
       dailyFinishChecksHtml(s) +    
@@ -9078,21 +9453,27 @@ window.renderDailyDashboard = function() {
     const cur = latestByEq[s.equipmentId];
     if (!cur || subMs(s) > subMs(cur)) latestByEq[s.equipmentId] = s;
   });
-  const opCount = { operating: 0, standby: 0, waiting: 0, handed: 0, none: 0 };
+  const opCount = { operating: 0, standby: 0, mission: 0, waiting: 0, handed: 0, none: 0 };
   (APP.equipment || []).forEach(e => {
     const s = latestByEq[e.equipmentId];
     if (!s) { opCount.none++; return; }
     const op = dailyNormOp(s.opStatus);
     if (op === DAILY_OP_OPERATING) opCount.operating++;
     else if (op === DAILY_OP_STANDBY) opCount.standby++;
+    else if (op === DAILY_OP_MISSION) opCount.mission++;
     else if (op === DAILY_OP_WAITING) opCount.waiting++;
     else if (op === DAILY_OP_HANDED) opCount.handed++;
     else opCount.none++;
   });
+  // Missions waiting for Admin / Manager sign-off (all shifts, not just the latest)
+  const missionList = [];
+  shiftSubs.forEach(s => { (s.missions || []).forEach(m => missionList.push(m)); });
+  const missionPending = missionList.filter(m => dailyMissionNormStatus(m.status) !== DAILY_MISSION_CONFIRMED).length;
   const totalUnits = Math.max(1, (APP.equipment || []).length);
   const opsRows = [
     { label: 'Operating',        icon: 'bi-play-circle-fill',  color: '#198754', count: opCount.operating },
     { label: 'Stand By',         icon: 'bi-pause-circle-fill', color: '#ffc107', count: opCount.standby },
+    { label: 'Mission/Outside',  icon: 'bi-signpost-split-fill', color: '#6f42c1', count: opCount.mission },
     { label: 'Waiting Handover', icon: 'bi-hourglass-split',   color: '#0d6efd', count: opCount.waiting },
     { label: 'Handed Over',      icon: 'bi-check2-circle',     color: '#6c757d', count: opCount.handed },
     { label: 'Not started',      icon: 'bi-dash-circle',       color: '#adb5bd', count: opCount.none }
@@ -9102,7 +9483,11 @@ window.renderDailyDashboard = function() {
     return '<div class="dash-bar mb-2 clickable-card" onclick="' + drill + '"><span class="lbl"><i class="bi ' + r.icon + ' me-1" style="color:' + r.color + ';"></i>' + r.label + '</span>' +
       '<div class="track"><div class="fill" style="width:' + pct + '%;background:' + r.color + ';"></div></div>' +
       '<span class="val">' + r.count + '</span></div>';
-  }).join('');
+  }).join('') +
+    (missionList.length
+      ? '<div class="msn-stamp mt-2"><i class="bi bi-signpost-split me-1"></i>' + missionList.length + ' mission record' +
+        (missionList.length === 1 ? '' : 's') + ' · ' + missionPending + ' waiting for confirmation</div>'
+      : '');
   const opsHtml = '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
       '<span><i class="bi bi-activity me-2"></i>Shift Status</span>' +
       '<span class="badge bg-primary">' + (APP.equipment || []).length + ' units</span></div>' +
