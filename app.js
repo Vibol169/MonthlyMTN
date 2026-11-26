@@ -7368,7 +7368,7 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
 
   const starts = dailyShiftStartValues(prev);
   const startsLine = (starts.odo !== '' || starts.hour !== '')
-    ? '<div class="op-inherit mt-2"><i class="bi bi-arrow-repeat me-1"></i>Your checklist will start from <strong>Odometer ' + esc(starts.odo || '—') + '</strong> · <strong>OPHour ' + esc(starts.hour || '—') + '</strong></div>'
+    ? '<div class="op-inherit mt-3"><i class="bi bi-arrow-repeat me-1"></i>បញ្ជីត្រួតពិនិត្យរបស់អ្នកនឹងចាប់ផ្តើមពី <strong>Odometer ' + esc(starts.odo || '—') + '</strong> · <strong>OPHour ' + esc(starts.hour || '—') + '</strong></div>'
     : '';
 
   $('#app').html(
@@ -7376,34 +7376,37 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyChecklist()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
       dailyFinishSummaryHtml(prev) +
       
+      // ── Handover Confirmation ──
       '<div class="card mb-3 confirm-box confirm-pending">' +
-        /* Header */
         '<div class="group-header d-flex justify-content-between align-items-center">' +
           '<span><i class="bi bi-arrow-left-right me-2"></i>Handover Confirmation</span>' +
           '<span class="status-badge status-pending">Required</span>' +
         '</div>' +
         
-        /* Body */
         '<div class="card-body">' +
-          '<div class="d-grid gap-2">' +
+          startsLine +
+          '<div class="d-grid gap-2 mt-3">' +
             '<button class="btn btn-primary" onclick="confirmDailyHandover(\''+escAttr(equipmentId)+'\',\''+escAttr(group)+'\',\''+escAttr(shortName)+'\',\''+escAttr(prev.checkId)+'\')"><i class="bi bi-shield-check me-1"></i>Verify &amp; Accept Handover</button>' +
             '<button class="btn btn-outline-primary" onclick="viewDailyCheck(\''+escAttr(prev.checkId)+'\')"><i class="bi bi-eye me-1"></i>View Full Details</button>' +
           '</div>' +
         '</div>' +
       '</div>' +
 
+      // ── Info Cards ──
       '<div class="row g-2 mb-3">' +
         dailyInfoCard('truck', esc(group || 'ឧបករណ៍'),
           '<div>' + esc(shortName) + '</div>' +
           '<div class="small text-muted fw-normal mt-1">' + esc(prev.equipmentId) + '</div>', 'primary') +
         dailyInfoCard('person', 'អ្នកបើកបរ', dailyInfoCardName(prev.driverName, ''), 'success') +
-        dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(prev.date) + ' ' + esc(prev.time), 'warning') +
-          '<span class="status-badge status-'+overallCls+'" style="min-width:auto;">'+overallLbl+'</span>', 'info') +
+        dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', 
+          esc(prev.date) + ' ' + esc(prev.time) + 
+          '<div class="mt-1"><span class="badge ' + (overallCls === 'nok' ? 'bg-danger' : 'bg-success') + '">' + overallLbl + '</span></div>', 
+          'warning') +
       '</div>' +
     
-          dailyFinishChecksHtml(prev) +
+      dailyFinishChecksHtml(prev) +
 
-          // ── Start Form — Checklist header ──
+      // ── Start Form — Checklist header ──
       '<div class="card mb-3 border-0 shadow-sm">' +
         '<div class="group-header d-flex justify-content-between align-items-center px-3 py-2" ' +
              'style="background:transparent;border-bottom:1px solid var(--border-color);">' +
