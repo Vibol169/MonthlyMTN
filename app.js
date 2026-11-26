@@ -7663,6 +7663,7 @@ function renderDailyChecklistForm(){
   const myPhone = (currentUser && currentUser.phone) ? currentUser.phone : '';
   const trailerId = String(c.trailerId || '');
   const trailerChoices = (APP.trailers || []).filter(t => t && t.trailerId);
+  
   /* Trailer picker: the two cards sit side by side, and the trailer list is
      searchable (the search box rebuilds the <select> options). */
   const trailerCard = (!isWeekly && trailerChoices.length)
@@ -7671,23 +7672,32 @@ function renderDailyChecklistForm(){
           '<i class="bi bi-link text-secondary me-2" style="font-size:1.1rem;"></i>' +
           '<span class="text-muted small" style="letter-spacing:.5px;font-family:\'Battambang\',\'Kantumruy Pro\',sans-serif;font-weight:400;">រ៉ឺម៉ក · Trailer</span>' +
         '</div>' +
-        '<input type="search" class="form-control form-control-sm trailer-search mb-1" id="dailyTrailerSearch" autocomplete="off" ' +
-          'placeholder="ស្វែងរករ៉ឺម៉ក · Search..." oninput="filterDailyTrailers(this.value)">' +
-        '<select class="form-select form-select-sm" id="dailyTrailerSelect" onchange="setDailyTrailer(this.value)">' +
-          dailyTrailerOptionsHtml('', trailerId) +
-        '</select>' +
+        
+        /* COMBINED SEARCH & SELECT FIELD */
+        '<div class="input-group input-group-sm mb-1">' +
+          '<span class="input-group-text bg-white px-2" style="border-color: var(--input-border);"><i class="bi bi-search text-muted" style="font-size: .75rem;"></i></span>' +
+          '<input type="search" class="form-control form-control-sm" id="dailyTrailerSearch" autocomplete="off" ' +
+            'placeholder="ស្វែងរករ៉ឺម៉ក..." oninput="filterDailyTrailers(this.value)" style="border-color: var(--input-border);">' +
+          '<select class="form-select form-select-sm fw-bold" id="dailyTrailerSelect" onchange="setDailyTrailer(this.value)" style="max-width: 130px; border-color: var(--input-border); cursor: pointer; background-color: var(--bg-color);">' +
+            dailyTrailerOptionsHtml('', trailerId) +
+          '</select>' +
+        '</div>' +
+
         '<div class="small text-muted mt-1" id="dailyTrailerHint">' +
           dailyTrailerHintHtml('', trailerId) +
         '</div>' +
       '</div></div>'
     : '';
 
+  // 👇 UPDATED TO SHOW CURRENT DRIVER 👇
+  const currentDriverName = c.driverName || (currentUser && (currentUser.fullName || currentUser.username)) || '';
+  
   const headerCard =
     '<div class="row g-2 mb-3">' +
       dailyInfoCard('truck', esc(c.group || 'ឧបករណ៍'),
         '<div>' + esc(c.shortName || c.equipmentId) + typeBadge + '</div>', 'primary') +
       trailerCard +
-      (c.prevDriverName ? dailyInfoCard('person-badge', 'អ្នកបើកបរ', esc(c.prevDriverName), 'info') : '') +
+      dailyInfoCard('person-badge', 'អ្នកបើកបរ', esc(currentDriverName), 'info') +
       dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(dmyToday()) + ' ' + esc(nowTimeStr()), 'warning') +
     '</div>' +
     ((startLine || handoverChip) ? '<div class="mb-3">' + startLine + handoverChip + '</div>' : '');
