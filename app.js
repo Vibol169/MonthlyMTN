@@ -7367,10 +7367,6 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
   }
 
   const starts = dailyShiftStartValues(prev);
-  const startsLine = (starts.odo !== '' || starts.hour !== '')
-    ? '<div class="op-inherit mt-3"><i class="bi bi-arrow-repeat me-1"></i>បញ្ជីត្រួតពិនិត្យរបស់អ្នកនឹងចាប់ផ្តើមពី <strong>Odometer ' + esc(starts.odo || '—') + '</strong> · <strong>OPHour ' + esc(starts.hour || '—') + '</strong></div>'
-    : '';
-
   $('#app').html(
     '<div class="container-fluid px-0">' +
       '<button class="btn btn-sm btn-outline-secondary mb-3" onclick="cancelDailyChecklist()"><i class="bi bi-arrow-left"></i> ត្រឡប់</button>' +
@@ -7383,7 +7379,6 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
           '<span class="status-badge status-pending">Required</span>' +
         '</div>' +
       '<div class="card-body">' +
-          startsLine +
           '<div class="d-grid gap-2 mt-3">' +
             '<button class="btn btn-primary" onclick="confirmDailyHandover(\''+escAttr(equipmentId)+'\',\''+escAttr(group)+'\',\''+escAttr(shortName)+'\',\''+escAttr(prev.checkId)+'\')"><i class="bi bi-shield-check me-1"></i>Verify &amp; Accept Handover</button>' +
             '<button class="btn btn-outline-primary" onclick="viewDailyCheck(\''+escAttr(prev.checkId)+'\')"><i class="bi bi-eye me-1"></i>View Full Details</button>' +
