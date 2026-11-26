@@ -7523,6 +7523,8 @@ function dailyItemWord(n){ return (n === 1) ? '1 item' : (n + ' items'); }
    The choices come from APP.trailers. The search box rebuilds the <select>
    so only matching trailers stay in the list; a trailer picked earlier is
    kept visible even when it no longer matches the filter. */
+/* ---------------- Trailer picker (searchable) ---------------- */
+
 function dailyTrailerList(){
   return (APP.trailers || []).filter(t => t && t.trailerId).map(t => {
     const id = String(t.trailerId);
@@ -7538,17 +7540,6 @@ function dailyTrailerMatch(list, filter){
     o.id.toLowerCase().indexOf(needle) !== -1);
 }
 
-function dailyTrailerOptionsHtml(filter, selectedId){
-  const sel = String(selectedId || '');
-  const all = dailyTrailerList();
-  const list = dailyTrailerMatch(all, filter);
-  const picked = all.filter(o => o.id === sel)[0];
-  if (picked && list.indexOf(picked) === -1) list.unshift(picked);
-  return '<option value="">— គ្មានរ៉ឺម៉ក / No trailer —</option>' +
-    list.map(o => '<option value="' + escAttr(o.id) + '"' + (o.id === sel ? ' selected' : '') + '>' +
-      esc(o.label) + '</option>').join('');
-}
-
 function dailyTrailerHintHtml(filter, selectedId){
   const all = dailyTrailerList();
   const n = dailyTrailerMatch(all, filter).length;
@@ -7560,15 +7551,75 @@ function dailyTrailerHintHtml(filter, selectedId){
     (String(filter || '').trim() ? ' · filtered' : ' · available');
 }
 
+/* Updated to render the custom floating HTML list instead of native options */
 window.filterDailyTrailers = function(q){
-  const sel = document.getElementById('dailyTrailerSelect');
-  if (!sel) return;
-  const keep = String(sel.value || '');
-  sel.innerHTML = dailyTrailerOptionsHtml(q, keep);
-  if (keep) sel.value = keep;
+  const listEl = document.getElementById('trailerDropdownList');
+  if (!listEl) return;
+
+  const all = dailyTrailerList();
+  const matches = dailyTrailerMatch(all, q);
+  const keep = String(document.getElementById('dailyTrailerSelect')?.value || '');
+
+  let html = '';
+
+  // "No trailer" option
+  if (!q || 'ទាំងអស់'.includes(q) || 'no trailer'.includes(q.toLowerCase())) {
+    html += '<div class="p-2 border-bottom text-primary fw-bold item-hover" style="cursor: pointer; font-size: .8rem;" onclick="selectTrailerItem(\'\', \'ទាំងអស់ / No trailer\')">' +
+      '<i class="bi bi-dash-circle me-1"></i>ទាំងអស់ / No trailer</div>';
+  }
+
+  if (matches.length === 0) {
+    html += '<div class="p-2 text-muted small text-center">រកមិនឃើញ (Not found)</div>';
+  } else {
+    matches.forEach(o => {
+      const isSelected = (o.id === keep);
+      const bg = isSelected ? 'background: var(--bg-color); font-weight: bold; color: var(--tab-active);' : '';
+      html += '<div class="p-2 border-bottom item-hover" style="cursor: pointer; font-size: .8rem; ' + bg + '" onclick="selectTrailerItem(\'' + escAttr(o.id) + '\', \'' + escAttr(o.label) + '\')">' +
+        '<i class="bi bi-link-45deg text-muted me-1"></i> ' + esc(o.label) + '</div>';
+    });
+  }
+
+  listEl.innerHTML = html;
+  listEl.style.display = 'block';
+
   const hint = document.getElementById('dailyTrailerHint');
   if (hint) hint.innerHTML = dailyTrailerHintHtml(q, keep);
 };
+
+window.showTrailerDropdown = function() {
+  const listEl = document.getElementById('trailerDropdownList');
+  if (listEl) {
+    filterDailyTrailers(document.getElementById('dailyTrailerSearch').value);
+  }
+};
+
+window.selectTrailerItem = function(id, label) {
+  // 1. Update the visible search box with the ShortName
+  const searchInput = document.getElementById('dailyTrailerSearch');
+  searchInput.value = id ? label.split(' · ')[0] : ''; 
+  
+  // 2. Update the hidden select (so your existing setDailyTrailer can read it)
+  const sel = document.getElementById('dailyTrailerSelect');
+  if (sel) sel.value = id;
+  
+  // 3. Hide the dropdown
+  const listEl = document.getElementById('trailerDropdownList');
+  if (listEl) listEl.style.display = 'none';
+
+  // 4. Trigger your existing save logic
+  if (typeof setDailyTrailer === 'function') {
+    setDailyTrailer(id);
+  }
+};
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+  const wrap = document.getElementById('trailerSearchWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    const listEl = document.getElementById('trailerDropdownList');
+    if (listEl) listEl.style.display = 'none';
+  }
+});
 
 function renderDailyChecklistForm(){
   const c = pendingDailyChecklist;
@@ -7673,15 +7724,23 @@ function renderDailyChecklistForm(){
           '<span class="text-muted small" style="letter-spacing:.5px;font-family:\'Battambang\',\'Kantumruy Pro\',sans-serif;font-weight:400;">រ៉ឺម៉ក · Trailer</span>' +
         '</div>' +
         
-        /* COMBINED SEARCH & SELECT FIELD */
-        '<div class="input-group input-group-sm mb-1">' +
-          '<span class="input-group-text bg-white px-2" style="border-color: var(--input-border);"><i class="bi bi-search text-muted" style="font-size: .75rem;"></i></span>' +
-          '<input type="search" class="form-control form-control-sm" id="dailyTrailerSearch" autocomplete="off" ' +
-            'placeholder="ស្វែងរករ៉ឺម៉ក..." oninput="filterDailyTrailers(this.value)" style="border-color: var(--input-border);">' +
-          '<select class="form-select form-select-sm fw-bold" id="dailyTrailerSelect" onchange="setDailyTrailer(this.value)" style="max-width: 130px; border-color: var(--input-border); cursor: pointer; background-color: var(--bg-color);">' +
-            dailyTrailerOptionsHtml('', trailerId) +
-          '</select>' +
+        /* 👇 NEW CUSTOM DROPDOWN HTML 👇 */
+        '<div style="position: relative;" id="trailerSearchWrap">' +
+          '<div class="input-group input-group-sm">' +
+            '<span class="input-group-text bg-white px-2" style="border-color: var(--input-border);"><i class="bi bi-search text-muted" style="font-size: .75rem;"></i></span>' +
+            '<input type="text" class="form-control form-control-sm" id="dailyTrailerSearch" autocomplete="off" ' +
+              'placeholder="ស្វែងរករ៉ឺម៉ក..." oninput="filterDailyTrailers(this.value)" onfocus="showTrailerDropdown()" ' +
+              'style="border-color: var(--input-border);">' +
+          '</div>' +
+          
+          /* Hidden select to keep backward compatibility with your existing setDailyTrailer function */
+          '<input type="hidden" id="dailyTrailerSelect" value="' + escAttr(trailerId) + '">' +
+          
+          /* Floating Dropdown Box */
+          '<div id="trailerDropdownList" class="shadow-sm" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 1050; max-height: 200px; overflow-y: auto; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; margin-top: 4px;">' +
+          '</div>' +
         '</div>' +
+        /* 👆 END CUSTOM DROPDOWN HTML 👆 */
 
         '<div class="small text-muted mt-1" id="dailyTrailerHint">' +
           dailyTrailerHintHtml('', trailerId) +
