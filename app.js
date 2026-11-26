@@ -8193,11 +8193,8 @@ window.openDailyFinishForm = function(checkId){
     '<div class="row g-2 mb-3">' +
       dailyInfoCard('truck', esc(s.group || 'ឧបករណ៍'),
         '<div>' + esc(eq.shortName || s.equipmentId) + '<span class="badge bg-danger ms-2">Finished Form</span></div>', 'primary') +
-      dailyInfoCard('person', 'អ្នកបើកបរ', dailyInfoCardName(s.driverName, ''), 'success') +
       dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(s.date) + ' ' + esc(s.time), 'warning') +
     '</div>' +
-    '<div class="op-finish-tip text-muted mb-3"><i class="bi bi-info-circle me-1"></i>បំពេញយ៉ាងហោចណាស់មួយក្នុងចំណោមម៉ែត្របញ្ចប់។ បន្ទាប់ពីដាក់ស្នើរួច ឧបករណ៍នឹងក្លាយទៅជា <strong>រង់ចាំប្រគល់ការងារ (Waiting Handover)</strong> ហើយវេនរបស់អ្នកនឹងបញ្ចប់។</div>' +
-    (weeklyItems.length ? '<div class="small text-muted mb-3"><i class="bi bi-calendar-week me-1"></i>' + weeklyItems.length + ' ចំណុចប្រចាំសប្តាហ៍គឺជាផ្នែកមួយនៃក្រុមនេះ (ការត្រួតពិនិត្យប្រចាំសប្តាហ៍នៅដាច់ដោយឡែក)។</div>' : '');
 
   const numField = (opts) => {
     // Determine a unique key for photos (extraKey for fuel, or inputId for odometer)
@@ -8226,7 +8223,7 @@ window.openDailyFinishForm = function(checkId){
       '<div class="card-body p-2"><div class="finish-grid">' +
         numField({ 
           inputId: 'dailyEndOdo', 
-          labelKh: 'អូដូម៉ែត្រចុងក្រោយ', 
+          labelKh: 'គីឡូម៉ែត្រចុងក្រោយ', 
           labelEn: 'End Odometer',
           value: (s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo,
           hint: '<i class="bi bi-arrow-right-short"></i> Start: ' + esc(startOdo || '—'),
@@ -8249,7 +8246,7 @@ window.openDailyFinishForm = function(checkId){
         }) +
         numField({ 
           extraKey: 'fuelAdded', 
-          labelKh: 'បរិមាណបេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', 
+          labelKh: 'បរិមាណប្រេងបានចាក់', 
           labelEn: 'Fuel added',
           value: extras.fuelAdded.value,
           photos: extras.fuelAdded.photos
@@ -8263,22 +8260,20 @@ window.openDailyFinishForm = function(checkId){
       infoGrid +
       inputsCard +
       '<div class="card mb-3 legend-card">' +
-        '<div class="legend-title">ទម្រង់បញ្ចប់ការងារ</div>' +
         '<div class="legend-body text-center">' +
-          '<div class="lbl-en"><span class="acronym">OK</span>=Normal &nbsp; <span class="acronym">NOT OK</span>=Problem found (add a note) &nbsp; <span class="acronym">N/A</span>=Not applicable</div>' +
-          '<div class="lbl-kh"><span class="acronym">OK</span>=ធម្មតា &nbsp; <span class="acronym">NOT OK</span>=មានបញ្ហា (សូមចំណាំ) &nbsp; <span class="acronym">N/A</span>=មិនពាក់ព័ន្ធ</div>' +
+          '<div class="lbl-kh"><span class="acronym">OK</span>=ធម្មតា &nbsp; <span class="acronym">NOT OK</span>=មានបញ្ហា &nbsp; <span class="acronym">N/A</span>=N/A</div>' +
         '</div>' +
       dailyCountCards(weekCounts.ok, weekCounts.nok, 'dailyFinish') +
       '</div>' +
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
-        '<span><i class="bi bi-clipboard2-check me-2"></i>បញ្ជីត្រួតពិនិត្យបញ្ចប់ការងារ</span>' +
+        '<span><i class="bi bi-clipboard2-check me-2"></i>ការត្រួតពិនិត្យក្រោយប្រតិបត្តិការ</span>' +
         '<small class="text-muted">' + dailyItemWord(items.length) + ' · <span id="dailyFinishNaCount">' + weekCounts.na + ' N/A</span></small>' +
       '</div><div class="card-body p-2"><div class="check-grid">' + itemsHtml + '</div></div></div>' +
       '<div class="card mb-3"><div class="card-body">' +
-        '<label class="form-label fw-bold">កំណត់សម្គាល់ចុងក្រោយ (Final Remark)</label>' +
-        '<textarea class="form-control form-control-sm" id="dailyEndRemark" rows="3" placeholder="សូមបញ្ជាក់ស្ថានភាពចុងក្រោយ...">' + esc(s.endRemark || '') + '</textarea>' +
+        '<label class="form-label fw-bold">កំណត់សម្គាល់ (Remark)</label>' +
+        '<textarea class="form-control form-control-sm" id="dailyEndRemark" rows="3" placeholder="Optional...">' + esc(s.endRemark || '') + '</textarea>' +
       '</div></div>' +
-      '<button class="btn btn-danger w-100" style="margin-bottom:100px !important;" onclick="submitDailyFinishForm(\'' + escAttr(checkId) + '\')"><i class="bi bi-check2-circle me-1"></i>បញ្ជូនទម្រង់បញ្ចប់ការងារ (Submit)</button>' +
+      '<button class="btn btn-danger w-100" style="margin-bottom:100px !important;" onclick="submitDailyFinishForm(\'' + escAttr(checkId) + '\')"><i class="bi bi-check2-circle me-1"></i>ដាក់បញ្ជូន</button>' +
     '</div>'
   );
   window.scrollTo(0, 0);
