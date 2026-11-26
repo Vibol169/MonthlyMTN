@@ -7391,7 +7391,6 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
           '</div>' +
         '</div>' +
       '</div>' +
-    '</div>'  
 
       '<div class="row g-2 mb-3">' +
         dailyInfoCard('truck', esc(group || 'ឧបករណ៍'),
