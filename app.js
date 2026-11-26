@@ -7378,18 +7378,6 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
       '<div class="card mb-3 confirm-box confirm-pending"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-arrow-left-right me-2"></i>Handover Confirmation</span>' +
         '<span class="status-badge status-pending">Required</span>' +
-      '</div><div class="card-body">' +
-        '<div class="small mb-3">Equipment <strong>'+esc(shortName)+'</strong> was finished by <strong>'+esc(prev.driverName)+'</strong>. Review the checklist and the Finished Form, then verify the handover to start your own.</div>' +
-        startsLine +
-        '<div class="mb-3">' +
-          '<label class="form-label small fw-bold mb-1"><i class="bi bi-chat-left-text me-1"></i>Handover remark for the previous shift (optional)</label>' +
-          '<textarea class="form-control form-control-sm" id="handoverRemark" rows="2" placeholder="បញ្ចូលកំណត់សម្គាល់...">'+esc(prev.reviewedRemark || '')+'</textarea>' +
-          (prev.reviewedBy
-            ? (prev.reviewedRemark
-                ? '<div class="small text-warning mt-1"><i class="bi bi-info-circle me-1"></i>Already <strong>modified</strong> by <strong>'+esc(prev.reviewedBy)+'</strong>: <em>'+esc(prev.reviewedRemark)+'</em></div>'
-                : '<div class="small text-primary mt-1"><i class="bi bi-info-circle me-1"></i>Already <strong>reviewed</strong> by <strong>'+esc(prev.reviewedBy)+'</strong></div>')
-            : '') +
-        '</div>' +
         '<div class="d-grid gap-2">' +
           '<button class="btn btn-primary" onclick="confirmDailyHandover(\''+escAttr(equipmentId)+'\',\''+escAttr(group)+'\',\''+escAttr(shortName)+'\',\''+escAttr(prev.checkId)+'\')"><i class="bi bi-shield-check me-1"></i>Verify &amp; Accept Handover</button>' +
           '<button class="btn btn-outline-primary" onclick="viewDailyCheck(\''+escAttr(prev.checkId)+'\')"><i class="bi bi-eye me-1"></i>View Full Details</button>' +
@@ -7402,7 +7390,6 @@ function renderDailyHandoverConfirmation(prev, equipmentId, group, shortName){
           '<div class="small text-muted fw-normal mt-1">' + esc(prev.equipmentId) + '</div>', 'primary') +
         dailyInfoCard('person', 'អ្នកបើកបរ', dailyInfoCardName(prev.driverName, ''), 'success') +
         dailyInfoCard('calendar', 'កាលបរិច្ឆេទ', esc(prev.date) + ' ' + esc(prev.time), 'warning') +
-        dailyInfoCard('clipboard-check', 'លទ្ធផល',
           '<span class="status-badge status-'+overallCls+'" style="min-width:auto;">'+overallLbl+'</span>', 'info') +
       '</div>' +
     
