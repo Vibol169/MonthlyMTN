@@ -7163,6 +7163,12 @@ const DAILY_FREQ_WEEKLY = 'Weekly';
 const DAILY_FREQ_FINISH = 'Finish';
 const DAILY_FREQ_MISSION = 'Mission';
 
+// Trailer, odometer and Mission/Outside are truck-only features. RTG,
+// គ្រឿងចក្រ and TCC&FCC keep the daily shift flow but without those fields.
+function dailyIsTruckGroup(group){
+  return String(group == null ? '' : group).trim() === 'រថយន្ត';
+}
+
 function dailyNormFreq(v){
   const k = String(v == null ? '' : v).trim().toLowerCase().replace(/[\s_-]+/g, ' ');
   if (!k) return DAILY_FREQ_DAILY;
@@ -7401,11 +7407,15 @@ function dailyKvRow(label, value){
 function dailySessionCard(s){
   const info = dailyOpInfo(s.opStatus);
   const eq = APP.equipmentMap[s.equipmentId] || {};
+  const isTruck = dailyIsTruckGroup(s.group);
   const starts = dailyShiftStartValues(s);
-  const startLine = (starts.odo !== '' || starts.hour !== '')
-    ? '<div class="small text-muted mt-1"><i class="bi bi-speedometer2 me-1"></i>Start Odometer ' + esc(starts.odo || '—') + ' · OPHour ' + esc(starts.hour || '—') + '</div>'
+  const meterBits = [];
+  if (isTruck && starts.odo !== '') meterBits.push('Start Odometer ' + esc(starts.odo));
+  if (starts.hour !== '') meterBits.push('OPHour ' + esc(starts.hour));
+  const startLine = meterBits.length
+    ? '<div class="small text-muted mt-1"><i class="bi bi-speedometer2 me-1"></i>' + meterBits.join(' · ') + '</div>'
     : '';
-  const missions = Array.isArray(s.missions) ? s.missions : [];
+  const missions = isTruck && Array.isArray(s.missions) ? s.missions : [];
   const activeMission = missions.find(dailyMissionIsActive) || null;
   const msnPending = missions.filter(m => dailyMissionNormStatus(m.status) !== DAILY_MISSION_CONFIRMED).length;
   const missionLine = missions.length
@@ -7413,7 +7423,6 @@ function dailySessionCard(s){
       (msnPending ? ' · ' + msnPending + ' waiting for confirmation' : ' · all confirmed') + '</div>'
     : '';
   const onMission = !!activeMission;
-  const amId = onMission ? escAttr(activeMission.missionId) : '';
   const activeMissionBox = onMission
     ? '<div class="mt-2 p-2" style="background:var(--bg-color);border-left:3px solid #6f42c1;border-radius:8px;">' +
         '<div class="d-flex justify-content-between align-items-start gap-2">' +
@@ -7421,13 +7430,7 @@ function dailySessionCard(s){
             '<div class="msn-stamp"><i class="bi bi-clock me-1"></i>Start ' + esc(activeMission.date) + ' ' + esc(activeMission.startTime || activeMission.time) + '</div></div>' +
           dailyMissionBadge(activeMission.status) +
         '</div>' +
-        '<div class="d-none mt-2" id="msnFinish-' + amId + '">' +
-          '<textarea class="form-control form-control-sm mb-2" id="msnFinishRemark-' + amId + '" rows="2" placeholder="Remark when back (optional)..."></textarea>' +
-          '<div class="d-flex gap-2">' +
-            '<button class="btn btn-sm btn-warning flex-fill" onclick="event.stopPropagation();saveDailyMissionFinish(\'' + amId + '\')"><i class="bi bi-flag me-1"></i>Finish</button>' +
-            '<button class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation();dailyMissionFinishToggle(\'' + amId + '\')">Cancel</button>' +
-          '</div>' +
-        '</div>' +
+        '<div class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Open the checklist to finish this mission.</div>' +
       '</div>'
     : '';
   return '<div class="card session-card mb-2 ' + info.cls + '">' +
@@ -7443,8 +7446,8 @@ function dailySessionCard(s){
         (onMission ? '' : (info.status === DAILY_OP_OPERATING
           ? '<button class="btn btn-sm btn-outline-warning" onclick="event.stopPropagation();setDailyOpStatus(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_STANDBY + '\')"><i class="bi bi-pause-circle me-1"></i>Stand By</button>'
           : '<button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation();setDailyOpStatus(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>')) +
-        (onMission
-          ? '<button class="btn btn-sm btn-warning" onclick="event.stopPropagation();dailyMissionFinishToggle(\'' + amId + '\')"><i class="bi bi-flag me-1"></i>Finish Mission</button>'
+        (!isTruck || onMission
+          ? ''
           : '<button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation();openDailyMissionForm(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-signpost-split me-1"></i>Mission/Outside</button>') +
         (onMission ? '' : '<button class="btn btn-sm btn-danger" onclick="event.stopPropagation();openDailyFinishForm(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>') +
         '<button class="btn btn-sm btn-outline-primary ms-auto" onclick="event.stopPropagation();viewDailyCheck(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-eye"></i></button>' +
@@ -7535,10 +7538,11 @@ function dailyFinishChecksHtml(s){
 function dailyFinishExtraHtml(s){
   const fx = (s && s.finishExtra) || {};
   const txt = v => (v === '' || v == null) ? '—' : dailyNumText(v);
+  const isTruck = dailyIsTruckGroup(s && s.group);
   // The photo bags are stored under the input key (dailyEndOdo / dailyEndHour)
   // while the shift row keeps the actual numbers in endOdo / endHour.
   const defs = [
-    { key: 'dailyEndOdo',  valueKey: 'endOdo',  icon: 'bi-speedometer2',     label: 'គីឡូម៉ែត្រចុងក្រោយ',                    en: 'End Odometer' },
+    ...(isTruck ? [{ key: 'dailyEndOdo', valueKey: 'endOdo', icon: 'bi-speedometer2', label: 'គីឡូម៉ែត្រចុងក្រោយ', en: 'End Odometer' }] : []),
     { key: 'dailyEndHour', valueKey: 'endHour', icon: 'bi-hourglass-split',  label: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ',                en: 'End OPHour' },
     { key: 'fuelLevel',    valueKey: '',        icon: 'bi-fuel-pump',        label: 'កម្រិតប្រេងម៉ាស៊ូត',                    en: 'Diesel level' },
     { key: 'fuelAdded',    valueKey: '',        icon: 'bi-droplet-half',     label: 'បរិមាណប្រេងបានចាក់អំឡុងពេលប្រតិបត្តិការ', en: 'Fuel added' }
@@ -7577,7 +7581,7 @@ function dailyFinishExtraHtml(s){
   if (!tiles) return '';
   return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
       '<span><i class="bi bi-clipboard2-data me-2"></i>ទិន្នន័យបញ្ចប់ប្រតិបត្តិការ</span>' +
-      '<small class="text-muted">៤ ចំណុច</small>' +
+      '<small class="text-muted">' + defs.length + ' fields</small>' +
     '</div><div class="card-body p-2"><div class="finish-grid">' + tiles + '</div></div></div>';
 }
 
@@ -7587,8 +7591,9 @@ function dailyOpSectionHtml(s){
   if (!info.status) return '';
   const isOwner = s.username === (currentUser && currentUser.username);
   const active = dailyIsOpenOp(info.status);
+  const isTruck = dailyIsTruckGroup(s.group);
   // An active mission locks the shift actions until the driver is back on site
-  const activeMission = (s.missions || []).find(dailyMissionIsActive);
+  const activeMission = isTruck ? (s.missions || []).find(dailyMissionIsActive) : null;
 
   // Blank meters must stay blank in the read-only table (not become 0).
   const numOrNull = v => {
@@ -7629,12 +7634,14 @@ function dailyOpSectionHtml(s){
       '<th style="' + thStyle + '">Net</th>' +
     '</tr></thead>' +
     '<tbody>' +
-      '<tr>' +
-        '<td style="' + tdStyle + ' text-align:left; padding-left:12px;"><i class="bi bi-speedometer2 me-1 text-muted"></i>កុងទ័រគីឡូម៉ែត្រ</td>' +
-        '<td style="' + tdStyle + '">' + fmt(startOdo) + '</td>' +
-        '<td style="' + tdStyle + '">' + fmt(endOdo) + '</td>' +
-        '<td style="' + tdNetStyle + '">' + fmt(netOdo, true) + '</td>' +
-      '</tr>' +
+      (isTruck
+        ? '<tr>' +
+            '<td style="' + tdStyle + ' text-align:left; padding-left:12px;"><i class="bi bi-speedometer2 me-1 text-muted"></i>កុងទ័រគីឡូម៉ែត្រ</td>' +
+            '<td style="' + tdStyle + '">' + fmt(startOdo) + '</td>' +
+            '<td style="' + tdStyle + '">' + fmt(endOdo) + '</td>' +
+            '<td style="' + tdNetStyle + '">' + fmt(netOdo, true) + '</td>' +
+          '</tr>'
+        : '') +
       '<tr>' +
         '<td style="' + tdStyle + ' text-align:left; padding-left:12px;"><i class="bi bi-hourglass-split me-1 text-muted"></i>កុងទ័រម៉ោង</td>' +
         '<td style="' + tdStyle + '">' + fmt(startHour) + '</td>' +
@@ -7673,7 +7680,7 @@ function dailyOpSectionHtml(s){
           (info.status === DAILY_OP_OPERATING
             ? '<button class="btn btn-sm btn-outline-warning flex-fill" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_STANDBY + '\')"><i class="bi bi-pause-circle me-1"></i>Stand By</button>'
             : '<button class="btn btn-sm btn-outline-success flex-fill" onclick="dailyDetailOp(\'' + escAttr(s.checkId) + '\',\'' + DAILY_OP_OPERATING + '\')"><i class="bi bi-play-circle me-1"></i>Operating</button>') +
-          '<button class="btn btn-sm btn-outline-primary flex-fill" onclick="dailyDetailMission(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-signpost-split me-1"></i>Mission/Outside</button>' +
+          (isTruck ? '<button class="btn btn-sm btn-outline-primary flex-fill" onclick="dailyDetailMission(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-signpost-split me-1"></i>Mission/Outside</button>' : '') +
           '<button class="btn btn-sm btn-danger flex-fill" onclick="dailyDetailFinish(\'' + escAttr(s.checkId) + '\')"><i class="bi bi-flag me-1"></i>Finished</button>' +
         '</div>';
   }
@@ -7870,11 +7877,14 @@ function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, hand
     });
     return;
   }
-  const starts = (type === DAILY_FREQ_DAILY) ? dailyShiftStartValues(prevSub) : { odo: '', hour: '' };
+  const isTruck = dailyIsTruckGroup(group);
+  const inheritedMeters = (type === DAILY_FREQ_DAILY) ? dailyShiftStartValues(prevSub) : { odo: '', hour: '' };
+  // Only trucks carry an odometer; other groups keep their operating-hour meter.
+  const starts = isTruck ? inheritedMeters : { odo: '', hour: inheritedMeters.hour };
   const eqInfo = APP.equipmentMap[equipmentId] || {};
   // Trailer: inherited from the previous shift when possible, else the default
-  // trailer of the equipment. Weekly checks have no trailer.
-  const trailerDefault = (type === DAILY_FREQ_DAILY)
+  // trailer of the equipment. Weekly checks and non-truck groups have no trailer.
+  const trailerDefault = (type === DAILY_FREQ_DAILY && isTruck)
     ? String((prevSub && prevSub.trailerId) || eqInfo.trailerId || '')
     : '';
 
@@ -7902,11 +7912,13 @@ function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, hand
 }
 
 function dailyFinishSummaryHtml(prev){
-  const hasEnd = (prev.endOdo !== '' && prev.endOdo != null) || (prev.endHour !== '' && prev.endHour != null) || !!prev.endRemark;
+  const isTruck = dailyIsTruckGroup(prev && prev.group);
+  const hasEnd = (isTruck && prev.endOdo !== '' && prev.endOdo != null) ||
+    (prev.endHour !== '' && prev.endHour != null) || !!prev.endRemark;
   if (!hasEnd) return '';
   return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center"><span><i class="bi bi-clipboard2-check me-2"></i>Finished Form — previous shift</span>' + dailyOpBadge(prev.opStatus) + '</div>' +
     '<div class="card-body py-2">' +
-      dailyKvRow('End Odometer', (prev.endOdo === '' || prev.endOdo == null) ? '' : dailyNumText(prev.endOdo)) +
+      (isTruck ? dailyKvRow('End Odometer', (prev.endOdo === '' || prev.endOdo == null) ? '' : dailyNumText(prev.endOdo)) : '') +
       dailyKvRow('End OPHour', (prev.endHour === '' || prev.endHour == null) ? '' : dailyNumText(prev.endHour)) +
       (prev.endRemark ? '<div class="small mt-2"><span class="text-muted">Final Remark</span><div>' + esc(prev.endRemark) + '</div></div>' : '') +
       (prev.finishedAt ? '<div class="small text-muted mt-2"><i class="bi bi-clock-history me-1"></i>' + esc(prev.driverName || dailyUserLabel(prev.finishedBy)) + ' · ' + esc(prev.finishedAt) + '</div>' : '') +
@@ -8250,12 +8262,13 @@ function renderDailyChecklistForm(){
 
   const counts = dailyAnswerCounts(c);
   const myPhone = (currentUser && currentUser.phone) ? currentUser.phone : '';
+  const isTruck = dailyIsTruckGroup(c.group);
   const trailerId = String(c.trailerId || '');
   const trailerChoices = (APP.trailers || []).filter(t => t && t.trailerId);
   
   /* Trailer picker: the two cards sit side by side, and the trailer list is
-     searchable (the search box rebuilds the <select> options). */
-  const trailerCard = (!isWeekly && trailerChoices.length)
+     searchable (the search box rebuilds the <select> options). Truck-only. */
+  const trailerCard = (isTruck && !isWeekly && trailerChoices.length)
     ? '<div class="col-6"><div class="p-3 border rounded-3 bg-white h-100 shadow-sm daily-info-card daily-trailer-card">' +
         '<div class="d-flex align-items-center mb-2">' +
           '<i class="bi bi-link text-secondary me-2" style="font-size:1.1rem;"></i>' +
@@ -8745,7 +8758,8 @@ window.openDailyFinishForm = function(checkId){
     return;
   }
   const eq = APP.equipmentMap[s.equipmentId] || {};
-  const startOdo  = (s.startOdo === '' || s.startOdo == null) ? '' : dailyNumText(s.startOdo);
+  const isTruck = dailyIsTruckGroup(s.group);
+  const startOdo  = (isTruck && s.startOdo !== '' && s.startOdo != null) ? dailyNumText(s.startOdo) : '';
   const startHour = (s.startHour === '' || s.startHour == null) ? '' : dailyNumText(s.startHour);
 
   const items = dailyTplItems(s.group, DAILY_FREQ_FINISH);
@@ -8833,55 +8847,62 @@ window.openDailyFinishForm = function(checkId){
     '</div>';
   };
 
+  const finishFields = [];
+  if (isTruck) {
+    finishFields.push(numField({
+      inputId: 'dailyEndOdo',
+      extraKey: 'dailyEndOdo',
+      icon: 'bi-speedometer2',
+      labelKh: 'គីឡូម៉ែត្រចុងក្រោយ',
+      labelEn: 'End Odometer',
+      value: (s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo,
+      optional: true,
+      placeholder: 'Optional',
+      hint: '<i class="bi bi-arrow-right-short"></i> Start: ' + esc(startOdo || '—'),
+      photos: extras.dailyEndOdo.photos
+    }));
+  }
+  finishFields.push(numField({
+    inputId: 'dailyEndHour',
+    extraKey: 'dailyEndHour',
+    icon: 'bi-hourglass-split',
+    labelKh: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ',
+    labelEn: 'End OPHour',
+    value: (s.endHour === '' || s.endHour == null) ? '' : s.endHour,
+    hint: '<i class="bi bi-arrow-right-short"></i> Start: ' + esc(startHour || '—'),
+    photos: extras.dailyEndHour.photos
+  }));
+  finishFields.push(numField({
+    extraKey: 'fuelLevel',
+    icon: 'bi-fuel-pump',
+    labelKh: 'កម្រិតប្រេងម៉ាស៊ូត',
+    labelEn: 'Diesel level',
+    value: extras.fuelLevel.value,
+    optional: true,
+    photos: extras.fuelLevel.photos
+  }));
+  finishFields.push(numField({
+    extraKey: 'fuelAdded',
+    icon: 'bi-droplet-half',
+    labelKh: 'បរិមាណប្រេងបានចាក់',
+    labelEn: 'Fuel added',
+    value: extras.fuelAdded.value,
+    optional: true,
+    photos: extras.fuelAdded.photos
+  }));
+
   const inputsCard =
     '<div class="card mb-3">' +
       '<div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-speedometer2 me-2"></i>បញ្ចូលព័ត៌មានបញ្ចប់ការងារ</span>' +
-        '<small class="text-muted">៤ ចំណុច</small>' +
+        '<small class="text-muted">' + finishFields.length + ' fields</small>' +
       '</div>' +
-      '<div class="card-body p-2"><div class="finish-grid">' +
-        numField({
-          inputId: 'dailyEndOdo',
-          extraKey: 'dailyEndOdo',
-          icon: 'bi-speedometer2',
-          labelKh: 'គីឡូម៉ែត្រចុងក្រោយ',
-          labelEn: 'End Odometer',
-          value: (s.endOdo === '' || s.endOdo == null) ? '' : s.endOdo,
-          optional: true,
-          placeholder: 'Optional',
-          hint: '<i class="bi bi-arrow-right-short"></i> Start: ' + esc(startOdo || '—'),
-          photos: extras.dailyEndOdo.photos
-        }) +
-        numField({
-          inputId: 'dailyEndHour',
-          extraKey: 'dailyEndHour',
-          icon: 'bi-hourglass-split',
-          labelKh: 'ម៉ោងប្រតិបត្តិការចុងក្រោយ',
-          labelEn: 'End OPHour',
-          value: (s.endHour === '' || s.endHour == null) ? '' : s.endHour,
-          hint: '<i class="bi bi-arrow-right-short"></i> Start: ' + esc(startHour || '—'),
-          photos: extras.dailyEndHour.photos
-        }) +
-        numField({
-          extraKey: 'fuelLevel',
-          icon: 'bi-fuel-pump',
-          labelKh: 'កម្រិតប្រេងម៉ាស៊ូត',
-          labelEn: 'Diesel level',
-          value: extras.fuelLevel.value,
-          optional: true,
-          photos: extras.fuelLevel.photos
-        }) +
-        numField({
-          extraKey: 'fuelAdded',
-          icon: 'bi-droplet-half',
-          labelKh: 'បរិមាណប្រេងបានចាក់',
-          labelEn: 'Fuel added',
-          value: extras.fuelAdded.value,
-          optional: true,
-          photos: extras.fuelAdded.photos
-        }) +
+      '<div class="card-body p-2"><div class="finish-grid">' + finishFields.join('') + '</div>' +
+      '<div class="finish-note"><i class="bi bi-info-circle me-1"></i>' +
+        (isTruck
+          ? 'អូដូម៉ែត្រអាចទុកទទេបាន — សូមបំពេញម៉ោងប្រតិបត្តិការ ឬភ្ជាប់រូបថតកុងទ័រ។ <span class="text-muted">End Odometer is optional.</span>'
+          : 'សូមបំពេញម៉ោងប្រតិបត្តិការចុងក្រោយ ឬភ្ជាប់រូបថតកុងទ័រ។ <span class="text-muted">End OPHour or a meter photo is required.</span>') +
       '</div>' +
-      '<div class="finish-note"><i class="bi bi-info-circle me-1"></i>អូដូម៉ែត្រអាចទុកទទេបាន — សូមបំពេញម៉ោងប្រតិបត្តិការ ឬភ្ជាប់រូបថតកុងទ័រ។ <span class="text-muted">End Odometer is optional.</span></div>' +
       '</div>' +
     '</div>';
 
@@ -9131,6 +9152,10 @@ function dailyMissionIsActive(m){
 window.openDailyMissionForm = function(checkId){
   const s = (APP.dailySubmissions || []).find(x => x.checkId === checkId);
   if (!s) { showAlert('រកមិនឃើញ (Checklist not found)', 'warning'); return; }
+  if (!dailyIsTruckGroup(s.group)) {
+    showAlert('Mission/Outside is available for the រថយន្ត group only.', 'warning');
+    return;
+  }
   const op = dailyNormOp(s.opStatus);
   if (!dailyIsOpenOp(op)) {
     showAlert('This shift is already finished — a mission can only be added to an open shift.', 'warning');
@@ -9312,7 +9337,7 @@ function dailyMissionItemStatusBadge(status){
   return '<span class="status-badge ' + cls + '" style="min-width:auto;padding:2px 8px;font-size:.62rem;">' + label + '</span>';
 }
 
-function dailyMissionCardHtml(m, isAdmin, isManager){
+function dailyMissionCardHtml(m, isAdmin, isManager, allowFinish){
   const id = escAttr(m.missionId);
   const items = Array.isArray(m.items) ? m.items : [];
   const photos = (Array.isArray(m.photoIds) ? m.photoIds : []).map(idv => ({ fileId: idv }));
@@ -9321,7 +9346,7 @@ function dailyMissionCardHtml(m, isAdmin, isManager){
   const active      = dailyMissionIsActive(m);
   const sub         = (APP.dailySubmissions || []).find(x => x.checkId === m.checkId) || null;
   const isOwner     = !!sub && sub.username === (currentUser && currentUser.username);
-  const canFinish   = active && isOwner && !!sub && dailyIsOpenOp(dailyNormOp(sub.opStatus));
+  const canFinish   = allowFinish === true && active && isOwner && !!sub && dailyIsOpenOp(dailyNormOp(sub.opStatus));
   const endDate     = dailyMissionEndDate(m);
   const duration    = dailyMissionDurationLabel(m);
 
@@ -9408,6 +9433,8 @@ function dailyMissionCardHtml(m, isAdmin, isManager){
 }
 
 function dailyMissionSectionHtml(s){
+  // Mission/Outside is a truck feature; other groups never show this block.
+  if (!dailyIsTruckGroup(s.group)) return '';
   const list = Array.isArray(s.missions) ? s.missions : [];
   // No mission on this checklist → no Mission block at all
   if (!list.length) return '';
@@ -9415,7 +9442,7 @@ function dailyMissionSectionHtml(s){
   const isManager = currentUser.role === 'manager';
 
   let body = '';
-  list.slice().reverse().forEach(m => { body += dailyMissionCardHtml(m, isAdmin, isManager); });
+  list.slice().reverse().forEach(m => { body += dailyMissionCardHtml(m, isAdmin, isManager, true); });
 
   return '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
     '<span><i class="bi bi-signpost-split me-2"></i>Mission / Outside</span>' +
@@ -9665,7 +9692,9 @@ function updateDailyListResults() {
         '<i class="bi bi-' + ci.icon + ' me-1"></i>' + esc(ci.label) +
       '</span></div>';
 
-    const trailerShort = dailyTrailerShort(s.trailerId || (APP.equipmentMap[s.equipmentId] || {}).trailerId);
+    const trailerShort = dailyIsTruckGroup(s.group)
+      ? dailyTrailerShort(s.trailerId || (APP.equipmentMap[s.equipmentId] || {}).trailerId)
+      : '';
 
     return '<div class="card mb-2 clickable-card" onclick="viewDailyCheck(\''+escAttr(s.checkId)+'\')">' +
       '<div class="group-header d-flex justify-content-between align-items-center">' +
@@ -9901,8 +9930,9 @@ function renderDailyDetailModal(s) {
   const drv = (APP.users || []).find(u => u.username === s.username) || {};
   const rawRemarkPhotos = Array.isArray(s.photoIds) ? s.photoIds : String(s.photoIds || '').split(',');
   const remarkPhotos = rawRemarkPhotos.map(x => String(x || '').trim()).filter(Boolean).map(id => ({ fileId: id }));
-  const trailerId = String(s.trailerId || (APP.equipmentMap[s.equipmentId] || {}).trailerId || '');
-  const trl = (APP.trailers || []).find(t => t.trailerId && String(t.trailerId) === trailerId);
+  const isTruck = dailyIsTruckGroup(s.group);
+  const trailerId = isTruck ? String(s.trailerId || (APP.equipmentMap[s.equipmentId] || {}).trailerId || '') : '';
+  const trl = isTruck ? (APP.trailers || []).find(t => t.trailerId && String(t.trailerId) === trailerId) : null;
 
   const info =
     '<div class="p-3">' +
