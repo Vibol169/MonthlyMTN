@@ -910,6 +910,30 @@ body.dark-mode .daily-info-card .form-control { background: #101722; color: #e9e
 .check-grid.is-single .photo-tile.photo-add-tile,
 .check-grid.is-single .photo-tile.photo-loading { width: 66px; }
 
+/* Template Header rows (daily / weekly / finished form / mission):
+   a full-width section title, never an answerable checklist item */
+.daily-check-header {
+  grid-column: 1 / -1;
+  margin: 10px 0 2px 0;
+  padding: 9px 12px;
+  border-left: 4px solid var(--tab-active);
+  border-radius: 8px;
+  background: var(--header-bg);
+}
+.daily-check-header:first-child { margin-top: 0; }
+.daily-check-header-title {
+  font-weight: 700;
+  font-size: .9rem;
+  line-height: 1.35;
+  color: var(--text-color);
+}
+.daily-check-header-en {
+  margin-top: 1px;
+  font-size: .7rem;
+  line-height: 1.3;
+  color: var(--tab-text);
+}
+
 /* Read-only item units (daily detail / finished form / handover / mission):
    the whole card can be tapped to reveal that item's photos */
 .check-item.is-tappable { cursor: pointer; }
