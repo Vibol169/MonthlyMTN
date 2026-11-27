@@ -5,14 +5,14 @@
    - Clears previous cache versions on activate, so a stale build cannot
      keep showing the old checklist/header code.
    ========================================================= */
-const SW_VERSION = '20261127e';
+const SW_VERSION = '20261127g';
 const CACHE_NAME = 'pe-checklist-shell-' + SW_VERSION;
 const SHELL = [
   './',
   './index.html',
   './syles.css',
   './gas-api.js?v=20261127c',
-  './app.js?v=20261127e'
+  './app.js?v=20261127g'
 ];
 
 self.addEventListener('install', event => {
