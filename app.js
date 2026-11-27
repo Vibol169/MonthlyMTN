@@ -19,6 +19,127 @@ function createSafeSessionStorage(prefix) {
 const LS = createSafeStorage('proj2_');
 const SS = createSafeSessionStorage('proj2_');
 
+/* =========================================================
+   ON-DEMAND SCRIPT LOADING
+   The first paint must not wait for libraries that are only used
+   when the user prints a report or generates a PDF/QR code.
+   ========================================================= */
+const _lazyScripts = Object.create(null);
+function loadScriptOnce(url){
+  if (_lazyScripts[url]) return _lazyScripts[url];
+  _lazyScripts[url] = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => {
+      delete _lazyScripts[url];
+      reject(new Error('Could not load ' + url));
+    };
+    document.head.appendChild(s);
+  });
+  return _lazyScripts[url];
+}
+
+const _lazyStyles = Object.create(null);
+function loadStylesheetOnce(href){
+  if (_lazyStyles[href]) return _lazyStyles[href];
+  _lazyStyles[href] = new Promise((resolve, reject) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.onload = () => resolve();
+    link.onerror = () => {
+      delete _lazyStyles[href];
+      reject(new Error('Could not load ' + href));
+    };
+    // Insert before the app's inline theme so its dark-mode rules still win
+    // over the vendor stylesheet (the old <head> order did this naturally).
+    const theme = document.getElementById('custom-css-inline');
+    if (theme && theme.parentNode) theme.parentNode.insertBefore(link, theme);
+    else document.head.appendChild(link);
+  });
+  return _lazyStyles[href];
+}
+
+let _flatpickrPromise = null;
+function ensureFlatpickr(){
+  if (typeof flatpickr !== 'undefined') return Promise.resolve();
+  if (!_flatpickrPromise) {
+    _flatpickrPromise = loadStylesheetOnce('https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css')
+      .then(() => loadScriptOnce('https://cdn.jsdelivr.net/npm/flatpickr'))
+      .catch(err => { _flatpickrPromise = null; throw err; });
+  }
+  return _flatpickrPromise;
+}
+
+function ensureHtml2Canvas(){
+  if (typeof html2canvas !== 'undefined') return Promise.resolve();
+  return loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+}
+
+function ensureJsPdf(){
+  if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
+  return loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+    .then(() => {
+      if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('jsPDF did not initialise');
+    });
+}
+
+/* =========================================================
+   BOOT TIMING (visible in DevTools; add ?perf=1 for resource details)
+   ========================================================= */
+const BOOT_T0 = (window.performance && performance.now) ? performance.now() : Date.now();
+const BOOT_PERF_ON = /(?:^|[?&])perf=1(?:&|$)/.test(location.search);
+function bootMark(label, detail){
+  try {
+    const ms = Math.round(((window.performance && performance.now) ? performance.now() : Date.now()) - BOOT_T0);
+    if (detail !== undefined) console.info('[boot] ' + label + ' +' + ms + 'ms', detail);
+    else console.info('[boot] ' + label + ' +' + ms + 'ms');
+  } catch (e) {}
+}
+
+/* Add ?perf=1 to the URL to print a resource table (download time + bytes). */
+window.addEventListener('load', function(){
+  if (!BOOT_PERF_ON) return;
+  setTimeout(function(){
+    try {
+      const rows = performance.getEntriesByType('resource')
+        .filter(function(e){ return /app\.js|gas-api|jquery|flatpickr|bootstrap|html2canvas|jspdf|qrcode|syles\.css|fonts\.(googleapis|gstatic)/.test(e.name); })
+        .map(function(e){
+          return {
+            resource: e.name.replace(/^https?:\/\//, '').slice(0, 90),
+            ms: Math.round(e.duration),
+            transferKB: e.transferSize ? Math.round(e.transferSize / 1024) : '(cached/cors)'
+          };
+        });
+      console.table(rows);
+      const nav = performance.getEntriesByType('navigation')[0];
+      if (nav) console.info('[boot] navigation', {
+        domContentLoadedMs: Math.round(nav.domContentLoadedEventEnd),
+        loadMs: Math.round(nav.loadEventEnd),
+        transferKB: Math.round((nav.transferSize || 0) / 1024)
+      });
+    } catch (e) {}
+  }, 800);
+});
+
+/* =========================================================
+   DAILY BOOTSTRAP WINDOW
+   The first request reads only the newest N shifts. Older history is
+   loaded on demand from the Daily list ("Load older history").
+   ========================================================= */
+const DAILY_BOOTSTRAP_MAX_ROWS = 1500;
+let dailyBootstrapRowLimit = DAILY_BOOTSTRAP_MAX_ROWS;
+let dailyHasOlder = false;
+let dailyFullLoaded = false;
+function dailyRowLimit(){ return dailyBootstrapRowLimit; }
+function resetDailyHistoryWindow(){
+  dailyBootstrapRowLimit = DAILY_BOOTSTRAP_MAX_ROWS;
+  dailyHasOlder = false;
+  dailyFullLoaded = false;
+}
+
 const APP = {
   user: null, scope: {}, users: [], equipment: [], equipmentMap: {},
   trailers: [], 
@@ -492,7 +613,14 @@ function applyZoom(){
 function applyFont(){ $('body').removeClass('font-xsmall font-small font-medium font-large').addClass('font-'+fontSizeMap[fontSizeLevel]); $('#fontSize').text(fontSizeKhmer[fontSizeLevel]); }
 
 function initDatePickers(scope){
-  if (typeof flatpickr === 'undefined') return;
+  if (typeof flatpickr === 'undefined') {
+    // The library is loaded on demand; once it arrives, initialise whatever
+    // date inputs are currently on screen.
+    ensureFlatpickr().then(() => initDatePickers(scope)).catch(err => {
+      console.warn('[DatePicker] could not load flatpickr:', err);
+    });
+    return;
+  }
   const root = typeof scope === 'string' ? document.querySelector(scope) : (scope || document);
   if (!root) return;
   const locale = {
@@ -611,6 +739,8 @@ window.doLogout = async function(){
 };
 
 function showLogin(){ 
+  hideLoading();
+  resetDailyHistoryWindow();
   $('#app').hide(); $('#bottomNav').hide(); $('#topHeader').hide(); 
   $('#sideNav').removeClass('open'); $('#sideNavBackdrop').removeClass('show'); $('body').removeClass('sidebar-open');
   $('#loginContainer').css('display', 'flex'); $('#settingsPanel').removeClass('visible'); 
@@ -657,6 +787,7 @@ function showApp(){
   // otherwise the cached fast-load leaves the spinner on screen forever.
   hideLoading();
   clearBootWatchdog();
+  bootMark('app-visible');
 
   // Drivers land on the Daily Check tab by default; an explicit switch is remembered
   const savedApp = String(LS.get('appChoice', '') || '');
@@ -724,8 +855,8 @@ function showPage(page){
   updateLastSyncDisplay();
 }
 
-const BOOTSTRAP_CACHE_KEY = 'bootstrapCache_v2';
-const BOOTSTRAP_CACHE_TTL = 5 * 60 * 1000;
+const BOOTSTRAP_CACHE_KEY = 'bootstrapCache_v3';
+const BOOTSTRAP_CACHE_TTL = 10 * 60 * 1000;
 
 /* Safety net: the boot spinner must never hang forever. If the initial load
    does not finish (slow network, dead request, worker timeout), drop the
@@ -748,8 +879,19 @@ function armBootWatchdog(ms){
   }, ms || 45000);
 }
 
+let _extendedTimer = null;
+function scheduleExtendedData(delay){
+  if (_extendedTimer) return;
+  _extendedTimer = setTimeout(() => {
+    _extendedTimer = null;
+    if (!authToken || !APP.loaded) return;
+    fetchExtendedData(true);
+  }, delay || 5000);
+}
+
 function bootLoad(){
   if (!authToken) { showLogin(); return; } // ★ ADD THIS LINE
+  bootMark('boot-start');
   
   let cached = null;
   try {
@@ -771,7 +913,11 @@ function bootLoad(){
       applyBootstrap(cached.monthly, cached.daily);
       hideLoading();          // cached data is on screen — never keep the spinner
       showApp();              // (showApp clears the overlay + the watchdog too)
-      fetchBothDatasets(true).then(() => { fetchExtendedData(true); });
+      // Freshness refresh runs after the first screen is interactive; the
+      // heavy 365-day "extended" history waits even longer so it cannot
+      // compete with the initial paint on a slow mobile connection.
+      setTimeout(() => { fetchBothDatasets(true); }, 1500);
+      scheduleExtendedData(8000);
       return;
     } catch (e) {
       // A cache that cannot be applied must not block the load
@@ -783,7 +929,7 @@ function bootLoad(){
   showLoading('កំពុងផ្ទុកទិន្នន័យ...');
   armBootWatchdog();        // never leave the user on a dead spinner
   fetchBothDatasets(false)
-    .then(() => { hideLoading(); fetchExtendedData(true); })
+    .then(() => { hideLoading(); scheduleExtendedData(5000); })
     .catch(() => { hideLoading(); });
 }
 
@@ -812,9 +958,9 @@ function updateNotifBadge() {
   if (unread > 0) { $badge.text(unread).show(); } else { $badge.hide(); }
 }
 
-/* How many of the newest daily submission rows the client asks for. Keeps the
-   minute-by-minute sync fast even when the Daily sheet has years of history. */
-const DAILY_BOOTSTRAP_MAX_ROWS = 3000;
+/* How many of the newest daily submission rows the client asks for.
+   The first load uses the window defined near the top of this file
+   (DAILY_BOOTSTRAP_MAX_ROWS); "Load older history" expands it to all rows. */
 
 function fetchBothDatasets(silent){
   if (!authToken) return Promise.resolve();
@@ -830,20 +976,50 @@ function fetchBothDatasets(silent){
   const getMonthly = () => new Promise(r => {
     try {
       google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false }))
-        .getBootstrapData(tokenAtStart, { _ts: Date.now() });
+        .getBootstrapData(tokenAtStart, { _ts: Date.now(), skipLogos: !!silent });
     } catch (e) { console.error('[Boot] getBootstrapData call failed', e); r({ success: false }); }
   });
   const getDaily = () => new Promise(r => {
     try {
       google.script.run.withSuccessHandler(r).withFailureHandler(() => r({ success: false }))
-        .getDailyBootstrapData(tokenAtStart, { _ts: Date.now(), maxRows: DAILY_BOOTSTRAP_MAX_ROWS });
+        .getDailyBootstrapData(tokenAtStart, { _ts: Date.now(), maxRows: dailyRowLimit() });
     } catch (e) { console.error('[Boot] getDailyBootstrapData call failed', e); r({ success: false }); }
   });
 
+  /* One server round-trip for user + monthly + daily. Apps Script calls have a
+     noticeable fixed cost, so the old "monthly then daily" chain made the first
+     screen wait twice. If this endpoint is missing (older deployment) or fails,
+     loadPair() falls back to the two-call path. */
+  const getBundle = () => new Promise(r => {
+    try {
+      google.script.run.withSuccessHandler(r).withFailureHandler(() => r(null))
+        .getAppBootstrap(tokenAtStart, { _ts: Date.now(), maxRows: dailyRowLimit(), skipLogos: !!silent });
+    } catch (e) { console.error('[Boot] getAppBootstrap call failed', e); r(null); }
+  });
+
+  const loadPair = () => getBundle().then(bundle => {
+    if (bundle && bundle.monthly && bundle.daily) {
+      if (!APP.loaded || BOOT_PERF_ON) {
+        bootMark('bootstrap-response', {
+          serverMs: bundle._ms,
+          timings: bundle._timings,
+          monthlyRows: Array.isArray(bundle.monthly.submissions) ? bundle.monthly.submissions.length : 0,
+          dailyRows: Array.isArray(bundle.daily.dailySubmissions) ? bundle.daily.dailySubmissions.length : 0
+        });
+      }
+      return { resM: bundle.monthly, resD: bundle.daily };
+    }
+    if (bundle && /invalid session/i.test(String(bundle.message || ''))) {
+      return { resM: bundle, resD: null };
+    }
+    // Fallback for an older Code.js deployment or a bundle failure
+    return getMonthly().then(resM => getDaily().then(resD => ({ resM, resD })));
+  });
+
   return new Promise((resolve) => {
-    // Serial on purpose: two google.script.run calls in flight at the same time
-    // can deliver their responses to the wrong handler, and the daily payload
-    // used to overwrite / wipe the monthly (or daily) cache.
+    // getAppBootstrap returns both halves from one request. The fallback path
+    // still runs the two calls serially, because two google.script.run calls in
+    // flight at the same time can deliver their responses to the wrong handler.
     let settled = false;
     // Every exit path ends here, so the overlay can never be left behind.
     const done = () => {
@@ -894,22 +1070,20 @@ function fetchBothDatasets(silent){
       done();
     };
 
-    getMonthly().then(resM => {
+    loadPair().then(({ resM, resD }) => {
       if (!authToken || tokenAtStart !== authToken) { done(); return; }
 
       // Version cache short-circuit → ask once more for the real payload
       if (resM && resM.unchanged && !isMonthlyPayload(resM)) {
         localStorage.removeItem('_gVersion');
-        return getMonthly().then(retry => getDaily().then(resD => finish(retry, resD)));
+        return getMonthly().then(retry => getDaily().then(resD2 => finish(retry, resD2)));
       }
-      getDaily().then(resD => {
-        // Daily side did not arrive / was a "no change" stub → retry it once
-        if (!isDailyPayload(resD)) {
-          localStorage.removeItem('_gVersion');
-          return getDaily().then(retryD => finish(resM, isDailyPayload(retryD) ? retryD : null));
-        }
-        finish(resM, resD);
-      });
+      // Daily side did not arrive / was a "no change" stub → retry it once
+      if (!isDailyPayload(resD)) {
+        localStorage.removeItem('_gVersion');
+        return getDaily().then(retryD => finish(resM, isDailyPayload(retryD) ? retryD : null));
+      }
+      finish(resM, resD);
     }).catch(() => { if (!silent) hideLoading(); done(); });
   });
 }
@@ -1031,7 +1205,7 @@ function syncDailyOnly(cb){
         console.error('[Sync] Daily fetch failed:', err);
         if (cb) cb(false);
       })
-      .getDailyBootstrapData(authToken, { _ts: Date.now(), maxRows: DAILY_BOOTSTRAP_MAX_ROWS });
+      .getDailyBootstrapData(authToken, { _ts: Date.now(), maxRows: dailyRowLimit() });
   };
   attempt(1);
 }
@@ -1055,7 +1229,7 @@ function syncMonthlyOnly(cb){
       }
     })
     .withFailureHandler(() => { if (cb) cb(); })
-    .getBootstrapData(authToken, { _ts: Date.now() });
+    .getBootstrapData(authToken, { _ts: Date.now(), skipLogos: true });
 }
 
 window.syncAllData = function(silent) {
@@ -1135,7 +1309,20 @@ function isDailyPayload(res){
    missing template without touching the monthly data). */
 function applyDailyBootstrap(resD){
   if (!isDailyPayload(resD)) return false;
-  APP.dailySubmissions = resD.dailySubmissions;
+
+  if (dailyFullLoaded) {
+    // The user loaded the older history once. Background sync only sends the
+    // newest window, so merge it into the full list instead of shrinking it.
+    const byId = new Map();
+    (APP.dailySubmissions || []).forEach(s => { if (s && s.checkId) byId.set(s.checkId, s); });
+    resD.dailySubmissions.forEach(s => { if (s && s.checkId) byId.set(s.checkId, s); });
+    APP.dailySubmissions = Array.from(byId.values()).sort((a, b) => subMs(b) - subMs(a));
+    dailyHasOlder = false;
+  } else {
+    APP.dailySubmissions = resD.dailySubmissions;
+    dailyHasOlder = !!resD.dailyHasOlder;
+  }
+
   APP.dailyTemplates   = resD.dailyTemplates;
   if (resD.dailySettings) APP.dailySettings = resD.dailySettings;
   return true;
@@ -1149,8 +1336,10 @@ function applyBootstrap(resM, resD){
   APP.users = resM.users || []; 
   APP.equipment = resM.equipment || []; APP.trailers = resM.trailers || [];
   APP.templates = resM.templates || {}; APP.submissions = resM.submissions || [];
-  APP.logoDataUrl = resM.logoDataUrl || '';
-  APP.logoFCCDataUrl = resM.logoFCCDataUrl || '';  
+  // Background syncs pass skipLogos, so an empty value must not wipe the
+  // logo already cached in memory from the first load.
+  if (resM.logoDataUrl)    APP.logoDataUrl    = resM.logoDataUrl;
+  if (resM.logoFCCDataUrl) APP.logoFCCDataUrl = resM.logoFCCDataUrl;
   APP.signaturesByUser = resM.signaturesByUser || {};
   APP.drivers = resM.drivers || []; APP.technicians = resM.technicians || [];
   APP.assignments = resM.assignments || [];
@@ -1166,7 +1355,15 @@ function applyBootstrap(resM, resD){
 
   APP.equipmentMap = {};
   APP.equipment.forEach(e => { APP.equipmentMap[e.equipmentId] = e; });
+  const firstLoad = !APP.loaded;
   APP.loaded = true;
+  if (firstLoad) {
+    bootMark('data-applied', {
+      monthlyRows: (APP.submissions || []).length,
+      dailyRows: (APP.dailySubmissions || []).length,
+      dailyHasOlder: dailyHasOlder
+    });
+  }
   
   currentUser = { 
     username: APP.user.username, role: normRole(APP.user.role), 
@@ -1207,8 +1404,8 @@ function dailySyncNow(){
   const seq = ++_dailySyncSeq;
   const tokenAtStart = authToken;
 
-  const getMonthly = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r(null)).getBootstrapData(tokenAtStart, { _ts: Date.now() }));
-  const getDaily   = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r(null)).getDailyBootstrapData(tokenAtStart, { _ts: Date.now(), maxRows: DAILY_BOOTSTRAP_MAX_ROWS }));
+  const getMonthly = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r(null)).getBootstrapData(tokenAtStart, { _ts: Date.now(), skipLogos: true }));
+  const getDaily   = () => new Promise(r => google.script.run.withSuccessHandler(r).withFailureHandler(() => r(null)).getDailyBootstrapData(tokenAtStart, { _ts: Date.now(), maxRows: dailyRowLimit() }));
 
   return new Promise(resolve => {
     const stale = () => !authToken || seq !== _dailySyncSeq;
@@ -1239,7 +1436,15 @@ function dailySyncNow(){
       lastSyncTime = Date.now();
       LS.set('lastSyncTime', lastSyncTime);
       if (okM && isDailyPayload(resD) && resM && !resM.unchanged) {
-        try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: tokenAtStart, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+        try {
+          // This sync explicitly skips logos, so keep the ones already in
+          // memory when refreshing the local bootstrap cache.
+          const cacheMonthly = Object.assign({}, resM, {
+            logoDataUrl: APP.logoDataUrl || '',
+            logoFCCDataUrl: APP.logoFCCDataUrl || ''
+          });
+          LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: tokenAtStart, monthly: cacheMonthly, daily: resD, savedAt: Date.now() }));
+        } catch(e) {}
       }
       repaintCurrentPage();
       updateLastSyncDisplay();
@@ -1255,7 +1460,7 @@ function reloadDailyData(cb){
   google.script.run
     .withSuccessHandler(res => { const ok = applyDailyBootstrap(res); if (cb) cb(ok); })
     .withFailureHandler(() => { if (cb) cb(false); })
-    .getDailyBootstrapData(authToken, { _ts: Date.now(), maxRows: DAILY_BOOTSTRAP_MAX_ROWS });
+    .getDailyBootstrapData(authToken, { _ts: Date.now(), maxRows: dailyRowLimit() });
 }
 
 function safeToRefresh(){
@@ -1293,6 +1498,7 @@ function askRemark(opts, callback){
    DOCUMENT READY
    ========================================================= */
 $(document).ready(function(){
+  bootMark('dom-ready');
   applyDarkMode(); applyZoom(); applyFont();
   try { 
     currentDetailModal = new bootstrap.Modal(document.getElementById('detailModal')); 
@@ -1325,27 +1531,13 @@ $(document).ready(function(){
   $('#fontIncrease').click(()=>{ fontSizeLevel=Math.min(3,fontSizeLevel+1); LS.set('fontSizeLevel',fontSizeLevel); applyFont(); });
   $('#fontDecrease').click(()=>{ fontSizeLevel=Math.max(0,fontSizeLevel-1); LS.set('fontSizeLevel',fontSizeLevel); applyFont(); });
 
-      if (authToken) {
-    showLoading('កំពុងផ្ទៀងផ្ទាត់...'); 
-    armBootWatchdog();          // token check must never hang forever either
-    google.script.run.withSuccessHandler(user => {
-      if (user) {
-        currentUser = user;
-        currentUser.role = normRole(currentUser.role);
-        currentUser.equipment = currentUser.equipment || [];
-        
-        // ★ ADD THIS LINE: Hide login form immediately
-        $('#loginContainer').hide(); 
-        
-        bootLoad(); 
-      } else { 
-        hideLoading(); 
-        authToken = null; LS.del('authToken'); showLogin(); 
-      }
-    }).withFailureHandler(() => { 
-      hideLoading(); 
-      authToken = null; LS.del('authToken'); showLogin(); 
-    }).getUserFromToken(authToken);
+  if (authToken) {
+    // No separate getUserFromToken round-trip: getAppBootstrap validates the
+    // token and returns the user together with both datasets.
+    showLoading('កំពុងផ្ទុក...');
+    armBootWatchdog();
+    bootMark('auth-token-found');
+    bootLoad();
   } else showLogin();
 
      $('#loginForm').submit(function(e){
@@ -1363,17 +1555,16 @@ $(document).ready(function(){
         
         $('#loginContainer').hide(); 
         
-        // ★ NEW: Wait 1.5 seconds for Google Sheets to finish saving the token
-        showLoading('កំពុងចូល...');
-        armBootWatchdog();       // a stuck login load must not trap the user either
-        setTimeout(() => {
-          try { bootLoad(); }
-          catch (e) {
-            console.error('[Boot] load after login failed', e);
-            hideLoading();
-            showAlert('ការផ្ទុកទិន្នន័យបរាជ័យ សូមព្យាយាមម្តងទៀត', 'danger');
-          }
-        }, 1500);
+        // validateLogin() flushes the token to the sheet before returning, so
+        // the old 1.5 s "wait for Sheets" delay is no longer needed.
+        showLoading('កំពុងផ្ទុក...');
+        armBootWatchdog();
+        try { bootLoad(); }
+        catch (e) {
+          console.error('[Boot] load after login failed', e);
+          hideLoading();
+          showAlert('ការផ្ទុកទិន្នន័យបរាជ័យ សូមព្យាយាមម្តងទៀត', 'danger');
+        }
         
       } else {
         hideLoading();
@@ -6768,6 +6959,8 @@ let dailyListFilters = {
   group: 'all', equipmentId: 'all', driver: 'all',
   dateFrom: '', dateTo: '', search: '', nokItemIds: [], nokItemLabel: ''
 };
+/* The list renders a page of cards instead of every row in memory. */
+let dailyListDisplayLimit = 30;
 
 /* =========================================================
    DRILL DOWN & ROUTING
@@ -9108,6 +9301,7 @@ function dailyListTabBar(id, key, items, current) {
 }
 
 window.renderDailyList = function() {
+  dailyListDisplayLimit = 30;
   const groups    = APP.filterOptions.groups;
   const isDriver  = currentUser.role === 'driver';
 
@@ -9258,7 +9452,8 @@ function applyDailyListFilters(list) {
 
 function updateDailyListResults() {
   const filtered = applyDailyListFilters(APP.dailySubmissions || []);
-  const rows = filtered.map((s, i) => {
+  const visible = filtered.slice(0, dailyListDisplayLimit);
+  const rows = visible.map((s, i) => {
     const cls = s.overall === 'Issues' ? 'nok' : 'ok';
     const ci = dailyConfirmInfo(s);
     let confirmLine = '<div class="small mt-1 d-flex gap-1 align-items-center flex-wrap">' +
@@ -9286,9 +9481,55 @@ function updateDailyListResults() {
     '</div>';
   }).join('');
   
-  $('#dailyListResults').html(rows || '<p class="text-muted text-center py-4">គ្មានទិន្នន័យ</p>');
+  let html = rows || '<p class="text-muted text-center py-4">គ្មានទិន្នន័យ</p>';
+  if (filtered.length > dailyListDisplayLimit) {
+    html += '<div class="text-center my-3">' +
+      '<button class="btn btn-sm btn-outline-secondary" onclick="showMoreDailyList()">' +
+        '<i class="bi bi-chevron-down me-1"></i> បង្ហាញបន្ថែម / Show more (' + (filtered.length - dailyListDisplayLimit) + ')' +
+      '</button>' +
+    '</div>';
+  }
+  if (dailyHasOlder) {
+    html += '<div class="text-center my-3">' +
+      '<button class="btn btn-sm btn-outline-primary" onclick="loadOlderDailyHistory()">' +
+        '<i class="bi bi-clock-history me-1"></i> បង្ហាញប្រវត្តិចាស់ / Load older history' +
+      '</button>' +
+      '<div class="small text-muted mt-1">The first load shows the newest ' + DAILY_BOOTSTRAP_MAX_ROWS + ' shifts.</div>' +
+    '</div>';
+  }
+  $('#dailyListResults').html(html);
   $('#dailyListCount').text(filtered.length + ' ករណី');
 }
+
+window.showMoreDailyList = function(){
+  dailyListDisplayLimit += 30;
+  updateDailyListResults();
+};
+
+/* Older daily history is intentionally not part of the first payload. When
+   the user asks for it, fetch the whole sheet once and then keep merging the
+   normal (smaller) background sync into that full list. */
+window.loadOlderDailyHistory = function(){
+  if (!authToken) return;
+  showLoading('កំពុងផ្ទុកប្រវត្តិចាស់...');
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoading();
+      if (!applyDailyBootstrap(res)) {
+        showAlert('ប្រវត្តិចាស់មិនអាចផ្ទុកបានទេ សូមព្យាយាមម្តងទៀត', 'warning');
+        return;
+      }
+      dailyFullLoaded = true;
+      dailyHasOlder = false;
+      updateDailyListResults();
+      updateLastSyncDisplay();
+    })
+    .withFailureHandler(() => {
+      hideLoading();
+      showAlert('ប្រវត្តិចាស់មិនអាចផ្ទុកបានទេ សូមព្យាយាមម្តងទៀត', 'warning');
+    })
+    .getDailyBootstrapData(authToken, { _ts: Date.now(), maxRows: 0 });
+};
 
 window.setDailyListFilter = function(key, value) {
   dailyListFilters[key] = value;
@@ -9318,12 +9559,14 @@ window.onDailyListSearch = function(el) {
   const val = el.value;
   clearTimeout(_dailySearchTmr);
   _dailySearchTmr = setTimeout(() => {
+    dailyListDisplayLimit = 30;
     dailyListFilters.search = val;
     updateDailyListResults();
   }, 300);
 };
 
 window.onDailyListDateChange = function() {
+  dailyListDisplayLimit = 30;
   dailyListFilters.dateFrom = $('#fDailyFrom').val() || '';
   dailyListFilters.dateTo = $('#fDailyTo').val() || '';
   applyDailyDatePresetActive();
@@ -9346,6 +9589,7 @@ window.setDailyDatePreset = function(preset) {
   setDateInput('fDailyFrom', dailyListFilters.dateFrom);
   setDateInput('fDailyTo', dailyListFilters.dateTo);
   applyDailyDatePresetActive(preset);
+  dailyListDisplayLimit = 30;
   updateDailyListResults();
 };
 
@@ -10677,6 +10921,10 @@ function pageItemsToHTML(ctx, items, pageNum) {
 }
 
 function renderPageToCanvas(ctx, pageItems, pageNum) {
+  return ensureHtml2Canvas().then(() => renderPageToCanvasNow(ctx, pageItems, pageNum));
+}
+
+function renderPageToCanvasNow(ctx, pageItems, pageNum) {
   const {
     styleContent, PAGE_W, PAGE_H, PAD_TOP, PAD_BOTTOM, PAD_X, CONTENT_W,
     SCALE, FOREIGN_OBJECT_OK
@@ -10789,7 +11037,8 @@ async function outputPrint(sub) {
 
 async function outputImage(sub, format) {
   format = (format || 'png').toLowerCase();
-  if (typeof html2canvas === 'undefined') { showAlert('html2canvas not loaded — please refresh the page.', 'danger'); return; }
+  try { await ensureHtml2Canvas(); }
+  catch (e) { showAlert('html2canvas could not be loaded — check your connection.', 'danger'); return; }
 
   showAlert('កំពុងបង្កើតរូបភាព...', 'info');
   await new Promise(r => setTimeout(r, 30));
@@ -10824,8 +11073,8 @@ async function outputImage(sub, format) {
 }
 
 async function outputPDF(sub) {
-  if (typeof html2canvas === 'undefined') { showAlert('html2canvas not loaded — please refresh the page.', 'danger'); return; }
-  if (!window.jspdf || !window.jspdf.jsPDF) { showAlert('jsPDF not loaded — please refresh the page.', 'danger'); return; }
+  try { await ensureHtml2Canvas(); await ensureJsPdf(); }
+  catch (e) { showAlert('PDF libraries could not be loaded — check your connection.', 'danger'); return; }
 
   showAlert('កំពុងបង្កើត PDF...', 'info');
   await new Promise(r => setTimeout(r, 30));
@@ -10870,7 +11119,8 @@ async function outputPDF(sub) {
 }
 
 async function generateChecklistPdfBase64(sub) {
-  if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('jsPDF not loaded');
+  await ensureHtml2Canvas();
+  await ensureJsPdf();
   await new Promise(resolve => loadSignaturesForReport(sub, resolve));
   if (document.fonts) { try { await Promise.all([document.fonts.load('400 16px Hanuman'), document.fonts.load('700 16px Hanuman'), document.fonts.load('900 16px Hanuman')]); await document.fonts.ready; } catch (e) {} }
   
@@ -12360,12 +12610,11 @@ function buildMonthlyReportHTML(ym){
 }
 
 async function generateMonthlyReportOutput(ym, mode) {
-  if (typeof html2canvas === 'undefined') {
-    showAlert('html2canvas not loaded — please refresh.', 'danger');
-    return;
-  }
-  if (mode === 'pdf' && (!window.jspdf || !window.jspdf.jsPDF)) {
-    showAlert('PDF libraries not loaded — please refresh.', 'danger');
+  try {
+    await ensureHtml2Canvas();
+    if (mode === 'pdf') await ensureJsPdf();
+  } catch (e) {
+    showAlert('PDF libraries could not be loaded — check your connection.', 'danger');
     return;
   }
 
