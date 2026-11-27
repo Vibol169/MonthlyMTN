@@ -106,21 +106,17 @@
          if (res && res.success === false && res.code === 'AUTH_EXPIRED') {
           console.warn('Session expired. Logging out...');
           
-          // Clear all local storage and cache
+          // Clear only the expired session. Keep v3/v4 and the static app-shell
+          // cache: the login handler reuses the data only for the same username,
+          // then refreshes it in the background. This keeps re-login fast.
           localStorage.removeItem('authToken');
           localStorage.removeItem('_gVersion');
           localStorage.removeItem('bootstrapCache_v2'); // older cache
-          localStorage.removeItem('bootstrapCache_v3'); // current cache
+          // Keep v3/v4 here: the login handler reuses them only when the same
+          // username signs in again, then refreshes them in the background.
           _memoryToken = null;
           sessionStorage.clear();
           
-          // Clear Service Worker Cache to prevent stale reloads
-          if ('caches' in window) {
-            caches.keys().then((names) => {
-              for (let name of names) caches.delete(name);
-            });
-          }
-
           // Call the frontend function to show login form (No page reload!)
           if (typeof window.handleSessionExpired === 'function') {
             window.handleSessionExpired();
