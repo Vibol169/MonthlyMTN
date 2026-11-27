@@ -855,7 +855,7 @@ function showPage(page){
   updateLastSyncDisplay();
 }
 
-const BOOTSTRAP_CACHE_KEY = 'bootstrapCache_v3';
+const BOOTSTRAP_CACHE_KEY = 'bootstrapCache_v4';
 const BOOTSTRAP_CACHE_TTL = 10 * 60 * 1000;
 
 /* Safety net: the boot spinner must never hang forever. If the initial load
@@ -7119,17 +7119,51 @@ function dailyTplItems(group, freq){
   if (!keys.length) keys = Object.keys(all).filter(k => k.trim().toLowerCase() === 'all');
   let list = [];
   keys.forEach(k => { list = list.concat(all[k] || []); });
-  return list
+
+  // Keep the server/sheet sequence. It is the fallback when Order cells are
+  // missing, duplicated, or set to 0 for every header.
+  const rows = list
     .filter(it => dailyNormFreq(it.frequency) === want)
-    .sort((a, b) => {
-      const ao = parseFloat(a.sortOrder != null ? a.sortOrder : a.order) || 0;
-      const bo = parseFloat(b.sortOrder != null ? b.sortOrder : b.order) || 0;
-      if (ao !== bo) return ao - bo;
-      // Same effective order → keep the original Checklist_Template row order.
-      const ar = parseFloat(a.sheetRow) || 0;
-      const br = parseFloat(b.sheetRow) || 0;
-      return ar - br;
-    });
+    .map((it, idx) => ({ it: it, idx: idx }));
+
+  const orderOf = (it) => {
+    const sortRaw = it && it.sortOrder;
+    const sortNum = parseFloat(sortRaw);
+    if (sortRaw != null && String(sortRaw).trim() !== '' && isFinite(sortNum) && sortNum > 0) return sortNum;
+    const orderRaw = it && it.order;
+    const orderNum = parseFloat(orderRaw);
+    if (orderRaw != null && String(orderRaw).trim() !== '' && isFinite(orderNum)) return orderNum;
+    return NaN;
+  };
+
+  const pos = rows.map(row => {
+    const n = orderOf(row.it);
+    return isFinite(n) ? n : (row.idx + 1);
+  });
+
+  /* A section header must sit immediately before the first real item of its
+     section. Ignore a duplicated/zero header Order here too, otherwise older
+     saved bootstrap data still places every header at the top. */
+  for (let i = 0; i < rows.length; i++) {
+    if (!dailyIsHeaderItem(rows[i].it)) continue;
+    let anchor = -1;
+    for (let j = i + 1; j < rows.length; j++) {
+      if (dailyIsHeaderItem(rows[j].it)) continue;
+      anchor = j;
+      break;
+    }
+    if (anchor !== -1) pos[i] = pos[anchor] - 0.0001;
+  }
+
+  rows.sort((a, b) => {
+    const d = pos[a.idx] - pos[b.idx];
+    if (d) return d;
+    // Same effective order → keep the original Checklist_Template row order.
+    const ar = parseFloat(a.it.sheetRow) || (a.idx + 1);
+    const br = parseFloat(b.it.sheetRow) || (b.idx + 1);
+    return ar - br;
+  });
+  return rows.map(row => row.it);
 }
 
 // A template "Header" row is a display-only section title (InputType = Header
