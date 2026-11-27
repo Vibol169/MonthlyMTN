@@ -129,7 +129,7 @@ window.addEventListener('load', function(){
    The first request reads only the newest N shifts. Older history is
    loaded on demand from the Daily list ("Load older history").
    ========================================================= */
-const DAILY_BOOTSTRAP_MAX_ROWS = 1500;
+const DAILY_BOOTSTRAP_MAX_ROWS = 600;
 let dailyBootstrapRowLimit = DAILY_BOOTSTRAP_MAX_ROWS;
 let dailyHasOlder = false;
 let dailyFullLoaded = false;
@@ -728,7 +728,9 @@ window.doLogout = async function(){
 
   const done = () => { 
     LS.del('authToken'); 
-    LS.del(BOOTSTRAP_CACHE_KEY); 
+    // Explicit logout removes every cached user dataset. Session expiry keeps
+    // it so the same user's next login can paint immediately from cache.
+    BOOTSTRAP_CACHE_KEYS.forEach(k => { try { LS.del(k); } catch (_) {} });
     currentUser = null; 
     APP.loaded = false; 
     hideLoading(); 
@@ -751,7 +753,8 @@ window.handleSessionExpired = function() {
   authToken = null;
   currentUser = null;
   APP.loaded = false;
-  try { LS.del(BOOTSTRAP_CACHE_KEY); } catch (e) {}
+  // Keep the cache on screen-less session expiry; keepBootstrapCacheForUser()
+  // only reuses it after the same username logs in again.
   if (APP.submissions) APP.submissions = [];
   if (APP.dailySubmissions) APP.dailySubmissions = [];
   if (window.pendingChecklist) window.pendingChecklist = null;
@@ -856,7 +859,58 @@ function showPage(page){
 }
 
 const BOOTSTRAP_CACHE_KEY = 'bootstrapCache_v4';
-const BOOTSTRAP_CACHE_TTL = 10 * 60 * 1000;
+/* Read v3 as a migration fallback: that was the cache key used right before
+   this build. Reusing it avoids a completely cold first load after an update. */
+const BOOTSTRAP_CACHE_KEYS = [BOOTSTRAP_CACHE_KEY, 'bootstrapCache_v3'];
+/* The cache is rendered immediately and refreshed in the background, so age
+   is only a safety limit — not a reason to sit on the spinner for 10 seconds. */
+const BOOTSTRAP_CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+
+function readBootstrapCache(){
+  const now = Date.now();
+  for (let i = 0; i < BOOTSTRAP_CACHE_KEYS.length; i++) {
+    const key = BOOTSTRAP_CACHE_KEYS[i];
+    let obj = null;
+    try {
+      const raw = LS.get(key, '');
+      if (!raw) continue;
+      obj = JSON.parse(raw);
+    } catch (e) { continue; }
+
+    if (!obj || obj.token !== authToken) continue;
+    if (!isMonthlyPayload(obj.monthly) || !isDailyPayload(obj.daily)) continue;
+    const savedAt = parseFloat(obj.savedAt) || 0;
+    if (!savedAt || (now - savedAt) > BOOTSTRAP_CACHE_MAX_AGE) continue;
+    return { key: key, obj: obj };
+  }
+  return null;
+}
+
+/* Keep the cached dataset when the same user signs in again with a new token.
+   Deleting it on every login made each new session a cold, slow bootstrap. */
+function keepBootstrapCacheForUser(username){
+  const who = String(username || '').trim().toLowerCase();
+  if (!who) return;
+  for (let i = 0; i < BOOTSTRAP_CACHE_KEYS.length; i++) {
+    const key = BOOTSTRAP_CACHE_KEYS[i];
+    try {
+      const raw = LS.get(key, '');
+      if (!raw) continue;
+      const obj = JSON.parse(raw);
+      const owner = String(
+        (obj && obj.username) ||
+        (obj && obj.monthly && obj.monthly.user && obj.monthly.user.username) || ''
+      ).trim().toLowerCase();
+      if (owner !== who) continue;
+      obj.token = authToken;
+      obj.username = who;
+      if (!obj.savedAt) obj.savedAt = Date.now();
+      LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify(obj));
+      return;
+    } catch (e) { /* try the next cache key */ }
+  }
+  try { BOOTSTRAP_CACHE_KEYS.forEach(k => LS.del(k)); } catch (_) {}
+}
 
 /* Safety net: the boot spinner must never hang forever. If the initial load
    does not finish (slow network, dead request, worker timeout), drop the
@@ -885,30 +939,31 @@ function scheduleExtendedData(delay){
   _extendedTimer = setTimeout(() => {
     _extendedTimer = null;
     if (!authToken || !APP.loaded) return;
-    fetchExtendedData(true);
-  }, delay || 5000);
+    const run = () => { if (authToken && APP.loaded) fetchExtendedData(true); };
+    // The 365-day history is optional. Run it while the browser is idle so it
+    // cannot compete with the first screen or the user's first tap.
+    if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 10000 });
+    else run();
+  }, delay || 20000);
 }
 
 function bootLoad(){
   if (!authToken) { showLogin(); return; } // ★ ADD THIS LINE
   bootMark('boot-start');
   
-  let cached = null;
-  try {
-    const raw = LS.get(BOOTSTRAP_CACHE_KEY, '');
-    if (raw) {
-      const obj = JSON.parse(raw);
-      if (obj && obj.token === authToken && isMonthlyPayload(obj.monthly) && isDailyPayload(obj.daily) && obj.savedAt && (Date.now() - obj.savedAt < BOOTSTRAP_CACHE_TTL)) {
-        cached = obj;
-      } else if (obj && obj.token && obj.token !== authToken) {
-        // Cache belongs to a different sign-in (or a previous user) — never reuse it
-        LS.del(BOOTSTRAP_CACHE_KEY);
-      }
-    }
-  } catch (e) { cached = null; }
+  const cacheHit = readBootstrapCache();
 
-  if (cached) {
+  if (cacheHit && cacheHit.obj) {
+    const cached = cacheHit.obj;
     try {
+      const cachedAt = parseFloat(cached.savedAt) || 0;
+      if (BOOT_PERF_ON) {
+        bootMark('cache-hit', { key: cacheHit.key, ageSec: cachedAt ? Math.round((Date.now() - cachedAt) / 1000) : 0 });
+      }
+      // Promote a v3 hit to v4 before removing savedAt from the object.
+      if (cacheHit.key !== BOOTSTRAP_CACHE_KEY) {
+        try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify(cached)); } catch (_) {}
+      }
       delete cached.savedAt;
       applyBootstrap(cached.monthly, cached.daily);
       hideLoading();          // cached data is on screen — never keep the spinner
@@ -916,20 +971,28 @@ function bootLoad(){
       // Freshness refresh runs after the first screen is interactive; the
       // heavy 365-day "extended" history waits even longer so it cannot
       // compete with the initial paint on a slow mobile connection.
-      setTimeout(() => { fetchBothDatasets(true); }, 1500);
-      scheduleExtendedData(8000);
+      setTimeout(() => {
+        // The template sheet can be edited manually (no global version bump).
+        // Bypass the server's "unchanged" shortcut for an old cache so new
+        // Weekly headers/items arrive in the background.
+        if (!cachedAt || Date.now() - cachedAt > 60000) {
+          try { localStorage.removeItem('_gVersion'); } catch (_) {}
+        }
+        fetchBothDatasets(true);
+      }, 1200);
+      scheduleExtendedData(20000);
       return;
     } catch (e) {
       // A cache that cannot be applied must not block the load
       console.warn('[Boot] cached bootstrap could not be applied — refetching', e);
-      try { LS.del(BOOTSTRAP_CACHE_KEY); } catch (_) {}
+      BOOTSTRAP_CACHE_KEYS.forEach(k => { try { LS.del(k); } catch (_) {} });
     }
   }
 
   showLoading('កំពុងផ្ទុកទិន្នន័យ...');
   armBootWatchdog();        // never leave the user on a dead spinner
   fetchBothDatasets(false)
-    .then(() => { hideLoading(); scheduleExtendedData(5000); })
+    .then(() => { hideLoading(); scheduleExtendedData(15000); })
     .catch(() => { hideLoading(); });
 }
 
@@ -1061,7 +1124,7 @@ function fetchBothDatasets(silent){
 
       if (!silent) {
         if (isDailyPayload(resD)) {
-          try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: authToken, monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
+          try { LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: authToken, username: (resM.user && resM.user.username) || '', monthly: resM, daily: resD, savedAt: Date.now() })); } catch(e) {}
         }
         showApp();
       } else {
@@ -1443,7 +1506,7 @@ function dailySyncNow(){
             logoDataUrl: APP.logoDataUrl || '',
             logoFCCDataUrl: APP.logoFCCDataUrl || ''
           });
-          LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: tokenAtStart, monthly: cacheMonthly, daily: resD, savedAt: Date.now() }));
+          LS.set(BOOTSTRAP_CACHE_KEY, JSON.stringify({ token: tokenAtStart, username: (resM && resM.user && resM.user.username) || '', monthly: cacheMonthly, daily: resD, savedAt: Date.now() }));
         } catch(e) {}
       }
       repaintCurrentPage();
@@ -1550,7 +1613,7 @@ $(document).ready(function(){
       if (res.success) {
         authToken = res.token; 
         LS.set('authToken', authToken);
-        try { LS.del(BOOTSTRAP_CACHE_KEY); } catch (e) {}
+        try { keepBootstrapCacheForUser(res.username); } catch (e) {}
         currentUser = { username: res.username };
         
         $('#loginContainer').hide(); 
@@ -7136,32 +7199,90 @@ function dailyTplItems(group, freq){
     return NaN;
   };
 
+  /* Recover the real Checklist_Template sequence. `sheetRow` is present in
+     the API payload; the trailing number in Item ID is a fallback for older
+     cached payloads. This matters because an older API sorted by Order puts
+     ALL section headers before the items, so "next item in the array" would
+     anchor every header to the same first item and leave them stacked on top. */
+  const seqOf = (it, idx) => {
+    const sr = parseFloat(it && it.sheetRow);
+    if (isFinite(sr) && sr > 0) return sr;
+    const m = String((it && it.itemId) || '').match(/(\d+)\s*$/);
+    if (m) return parseFloat(m[1]);
+    return idx + 1;
+  };
+
   const pos = rows.map(row => {
     const n = orderOf(row.it);
-    return isFinite(n) ? n : (row.idx + 1);
+    return (isFinite(n) && n > 0) ? n : seqOf(row.it, row.idx);
   });
 
-  /* A section header must sit immediately before the first real item of its
-     section. Ignore a duplicated/zero header Order here too, otherwise older
-     saved bootstrap data still places every header at the top. */
-  for (let i = 0; i < rows.length; i++) {
-    if (!dailyIsHeaderItem(rows[i].it)) continue;
-    let anchor = -1;
-    for (let j = i + 1; j < rows.length; j++) {
-      if (dailyIsHeaderItem(rows[j].it)) continue;
-      anchor = j;
-      break;
+  /* A section header must sit immediately before the first real item that
+     follows it in the SHEET, not merely the next object in the JSON array. */
+  const bySheet = rows.slice().sort((a, b) => {
+    const d = seqOf(a.it, a.idx) - seqOf(b.it, b.idx);
+    return d || (a.idx - b.idx);
+  });
+
+  /* If the sheet really has every header above every item, there is no
+     next-item-in-sheet to anchor to. In that layout use the header's own
+     Order (when all header Orders are valid/unique), then the numeric suffix
+     of the Item ID (W-day-5 → W-day-6), so the app can still recover sections
+     from the old sheet until the CSV is imported. */
+  const headerRows = bySheet.filter(r => dailyIsHeaderItem(r.it));
+  const realRows   = bySheet.filter(r => !dailyIsHeaderItem(r.it));
+  const firstRealSeq = realRows.length ? seqOf(realRows[0].it, realRows[0].idx) : Infinity;
+  const lastHeaderSeq = headerRows.length ? seqOf(headerRows[headerRows.length - 1].it, headerRows[headerRows.length - 1].idx) : -Infinity;
+  const headersClustered = headerRows.length > 1 && lastHeaderSeq < firstRealSeq;
+
+  const headerOrders = headerRows.map(h => parseFloat(h.it.order));
+  const useHeaderOrder = headersClustered && headerRows.length > 0 &&
+    headerOrders.every(n => isFinite(n) && n > 0) &&
+    new Set(headerOrders).size === headerOrders.length;
+
+  const trailingNumber = it => {
+    const m = String((it && it.itemId) || '').match(/(\d+)\s*$/);
+    return m ? parseFloat(m[1]) : NaN;
+  };
+  const anchorById = h => {
+    const hn = trailingNumber(h.it);
+    if (!isFinite(hn)) return null;
+    let best = null, bestNum = Infinity;
+    realRows.forEach(r => {
+      const n = trailingNumber(r.it);
+      if (isFinite(n) && n > hn && n < bestNum) { best = r; bestNum = n; }
+    });
+    return best;
+  };
+
+  for (let i = 0; i < bySheet.length; i++) {
+    if (!dailyIsHeaderItem(bySheet[i].it)) continue;
+    let anchor = null;
+    if (headersClustered) {
+      if (useHeaderOrder) {
+        const ho = parseFloat(bySheet[i].it.order);
+        for (let j = 0; j < realRows.length; j++) {
+          const ro = orderOf(realRows[j].it);
+          if (isFinite(ro) && ro >= ho) { anchor = realRows[j]; break; }
+        }
+      }
+      if (!anchor) anchor = anchorById(bySheet[i]);
     }
-    if (anchor !== -1) pos[i] = pos[anchor] - 0.0001;
+    if (!anchor) {
+      for (let j = i + 1; j < bySheet.length; j++) {
+        if (dailyIsHeaderItem(bySheet[j].it)) continue;
+        anchor = bySheet[j];
+        break;
+      }
+    }
+    if (anchor) pos[bySheet[i].idx] = pos[anchor.idx] - 0.0001;
   }
 
   rows.sort((a, b) => {
     const d = pos[a.idx] - pos[b.idx];
     if (d) return d;
     // Same effective order → keep the original Checklist_Template row order.
-    const ar = parseFloat(a.it.sheetRow) || (a.idx + 1);
-    const br = parseFloat(b.it.sheetRow) || (b.idx + 1);
-    return ar - br;
+    return seqOf(a.it, a.idx) - seqOf(b.it, b.idx) || (a.idx - b.idx);
   });
   return rows.map(row => row.it);
 }
