@@ -1,7 +1,9 @@
 /* =========================================================
    FONTS
+   UI fonts are requested once from <head> with display=swap.
+   Report/PDF fonts are injected with the report markup, so the
+   app shell must not @import them on first load.
    ========================================================= */
-@import url('https://fonts.googleapis.com/css2?family=Battambang:wght@400;700&family=Hanuman:wght@400;700;900&family=Moul&family=Pacifico&family=Roboto+Condensed:wght@400;700&family=Roboto:wght@400;700&display=swap');
 
 /* =========================================================
    BASE UI & VARIABLES
