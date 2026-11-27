@@ -7092,7 +7092,8 @@ function dailyShiftStartValues(prev){
    CHECK FREQUENCY — Daily / Weekly / Finish
    Checklist_Template column H (Frequency) decides which form an item
    belongs to. A blank cell = the normal daily checklist, so existing
-   templates need no migration.
+   templates need no migration. Column I (Header) or InputType = Header
+   marks a display-only section title.
    ========================================================= */
 const DAILY_FREQ_DAILY  = 'Daily';
 const DAILY_FREQ_WEEKLY = 'Weekly';
@@ -7120,7 +7121,34 @@ function dailyTplItems(group, freq){
   keys.forEach(k => { list = list.concat(all[k] || []); });
   return list
     .filter(it => dailyNormFreq(it.frequency) === want)
-    .sort((a, b) => (parseFloat(a.order) || 0) - (parseFloat(b.order) || 0));
+    .sort((a, b) =>
+      (parseFloat(a.sortOrder != null ? a.sortOrder : a.order) || 0) -
+      (parseFloat(b.sortOrder != null ? b.sortOrder : b.order) || 0));
+}
+
+// A template "Header" row is a display-only section title (InputType = Header
+// or the extra Header column after Frequency). It is never an answerable item.
+function dailyIsHeaderItem(it){
+  return !!(it && (it.isHeader === true ||
+    String(it.inputType || '').trim().toLowerCase() === 'header'));
+}
+function dailyRealItems(list){
+  return (list || []).filter(it => !dailyIsHeaderItem(it));
+}
+function dailyTplRealItems(group, freq){
+  return dailyRealItems(dailyTplItems(group, freq));
+}
+
+// Full-width section title above the items that belong to this header row.
+function dailyItemHeaderHtml(it){
+  const kh = String((it && it.itemKhmer) || '').trim();
+  const en = String((it && it.itemEng) || '').trim();
+  const title = kh || en || String((it && it.itemId) || '');
+  const sub = (kh && en) ? en : '';
+  return '<div class="daily-check-header" data-header-item="' + escAttr(it.itemId) + '">' +
+    '<div class="daily-check-header-title"><i class="bi bi-bookmark-fill me-2"></i>' + esc(title) + '</div>' +
+    (sub ? '<div class="daily-check-header-en">' + esc(sub) + '</div>' : '') +
+  '</div>';
 }
 
 function dailyIsWeekly(s){ return !!s && dailyNormFreq(s.checkType) === DAILY_FREQ_WEEKLY; }
@@ -7661,7 +7689,8 @@ window.startWeeklyChecklist = function(equipmentId, group, shortName){
 function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, handoverRemark, prevSub, checkType){
   const type  = dailyNormFreq(checkType || DAILY_FREQ_DAILY);
   const items = dailyTplItems(group, type);
-  if (items.length === 0) {
+  const realItems = dailyRealItems(items);
+  if (realItems.length === 0) {
     const hint = (type === DAILY_FREQ_WEEKLY)
       ? 'No weekly items in the template for group: ' + (group || '—') + '. Add rows with Frequency = Weekly.'
       : (type === DAILY_FREQ_FINISH)
@@ -7672,7 +7701,7 @@ function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, hand
     showLoading('កំពុងផ្ទុក template...');
     reloadDailyData(ok => {
       hideLoading();
-      if (dailyTplItems(group, type).length) {
+      if (dailyTplRealItems(group, type).length) {
         loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, handoverRemark, prevSub, type);
         return;
       }
@@ -7703,9 +7732,9 @@ function loadAndRenderDailyForm(equipmentId, group, shortName, prevCheckId, hand
     checks: {}
   };
   
-  items.forEach(it => { 
+  realItems.forEach(it => {
     // OK is the default answer — the driver only changes the items that are not OK
-    pendingDailyChecklist.checks[it.itemId] = { itemId: it.itemId, status: 'ok', note: '', photos: [] }; 
+    pendingDailyChecklist.checks[it.itemId] = { itemId: it.itemId, status: 'ok', note: '', photos: [] };
   });
   
   renderDailyChecklistForm();
@@ -7988,11 +8017,14 @@ function renderDailyChecklistForm(){
     ? '<span class="badge bg-info text-dark ms-2">Weekly</span>'
     : '<span class="badge bg-primary ms-2">Daily</span>';
 
-  const itemsHtml = c.items.map((it, i) => {
+  let itemNo = 0;
+  const itemsHtml = c.items.map((it) => {
+    if (dailyIsHeaderItem(it)) return dailyItemHeaderHtml(it);
+    itemNo++;
     const sel = c.checks[it.itemId] || { status: 'ok', note: '' };
     const st  = sel.status || 'ok';
     return '<div class="check-item '+st+'" data-item="'+escAttr(it.itemId)+'" data-status="'+escAttr(st)+'">' +
-      '<div class="row-line"><div class="label-part"><span class="item-num">'+(i+1)+'.</span><div class="item-text">' +
+      '<div class="row-line"><div class="label-part"><span class="item-num">'+itemNo+'.</span><div class="item-text">' +
         '<span class="item-name-kh">'+esc(it.itemKhmer)+'</span>' +
         (it.itemEng ? '<span class="item-name-en">'+esc(it.itemEng)+'</span>' : '') +
       '</div></div></div>' +
@@ -8114,7 +8146,7 @@ function renderDailyChecklistForm(){
       dailyCountCards(counts.ok, counts.nok, 'daily') +
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-clipboard-check me-2"></i>' + title + '</span>' +
-        '<small class="text-muted">' + dailyItemWord(c.items.length) + ' · <span id="dailyNaCount">' + counts.na + ' N/A</span></small>' +
+        '<small class="text-muted">' + dailyItemWord(dailyRealItems(c.items).length) + ' · <span id="dailyNaCount">' + counts.na + ' N/A</span></small>' +
       '</div><div class="card-body p-2"><div class="check-grid is-single">' + itemsHtml + '</div></div></div>' +
       '<div class="card mb-3"><div class="card-body">' +
         '<label class="form-label fw-bold">Remark</label>' +
@@ -8364,12 +8396,13 @@ window.submitDailyChecklistForm = function(){
   const c = pendingDailyChecklist;
   const isWeekly = (c.checkType === DAILY_FREQ_WEEKLY);
 
-  const missing = c.items.filter(it => !c.checks[it.itemId].status);
+  const realItems = dailyRealItems(c.items);
+  const missing = realItems.filter(it => !c.checks[it.itemId] || !c.checks[it.itemId].status);
   if (missing.length > 0) { showAlert('សូមជ្រើសរើសគ្រប់ចំណុច ('+missing.length+' ទៀត)', 'warning'); return; }
   if (!c.agreed) { showAlert('Please tick the confirmation box before submitting.', 'warning'); return; }
   if (dailyHasPendingUploads(c)) { showAlert('រូបថតកំពុងផ្ទុកឡើង — សូមរង់ចាំបន្តិច (photos still uploading)', 'warning'); return; }
 
-  const checks = c.items.map(it => {
+  const checks = realItems.map(it => {
     const ans = c.checks[it.itemId] || {};
     const entry = {
       itemId: it.itemId, itemKhmer: it.itemKhmer || '', itemEng: it.itemEng || '',
@@ -8555,9 +8588,10 @@ window.openDailyFinishForm = function(checkId){
   const startHour = (s.startHour === '' || s.startHour == null) ? '' : dailyNumText(s.startHour);
 
   const items = dailyTplItems(s.group, DAILY_FREQ_FINISH);
+  const realItems = dailyRealItems(items);
   const answers = {};
   // OK is the default for every item (same as the daily checklist)
-  items.forEach(it => { answers[it.itemId] = { status: 'ok', note: '', photos: [] }; });
+  realItems.forEach(it => { answers[it.itemId] = { status: 'ok', note: '', photos: [] }; });
   (s.finishChecks || []).forEach(f => {
     if (!answers[f.itemId]) return;
     if (f.status) answers[f.itemId].status = f.status;
@@ -8579,12 +8613,15 @@ window.openDailyFinishForm = function(checkId){
 
   dailyFinishState = { checkId: checkId, items: items, answers: answers, extras: extras };
 
-  const itemsHtml = items.length
-    ? items.map((it, i) => {
+  let finishItemNo = 0;
+  const itemsHtml = realItems.length
+    ? items.map((it) => {
+        if (dailyIsHeaderItem(it)) return dailyItemHeaderHtml(it);
+        finishItemNo++;
         const a = answers[it.itemId] || { status: 'ok', note: '', photos: [] };
         const st = a.status || 'ok';
         return '<div class="check-item '+st+'" data-finish="'+escAttr(it.itemId)+'" data-status="'+escAttr(st)+'">' +
-          '<div class="row-line"><div class="label-part"><span class="item-num">'+(i+1)+'.</span><div class="item-text">' +
+          '<div class="row-line"><div class="label-part"><span class="item-num">'+finishItemNo+'.</span><div class="item-text">' +
             '<span class="item-name-kh">'+esc(it.itemKhmer)+'</span>' +
             (it.itemEng ? '<span class="item-name-en">'+esc(it.itemEng)+'</span>' : '') +
           '</div></div></div>' +
@@ -8700,7 +8737,7 @@ window.openDailyFinishForm = function(checkId){
       '</div>' +
       '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
         '<span><i class="bi bi-clipboard2-check me-2"></i>ការត្រួតពិនិត្យក្រោយប្រតិបត្តិការ</span>' +
-        '<small class="text-muted">' + dailyItemWord(items.length) + ' · <span id="dailyFinishNaCount">' + weekCounts.na + ' N/A</span></small>' +
+        '<small class="text-muted">' + dailyItemWord(realItems.length) + ' · <span id="dailyFinishNaCount">' + weekCounts.na + ' N/A</span></small>' +
       '</div><div class="card-body p-2"><div class="check-grid is-single">' + itemsHtml + '</div></div></div>' +
       '<div class="card mb-3"><div class="card-body">' +
         '<label class="form-label fw-bold">កំណត់សម្គាល់ (Remark)</label>' +
@@ -8762,7 +8799,8 @@ window.submitDailyFinishForm = function(checkId){
   }
 
   // Every configured Finished Form item must be answered (OK / NOT OK / N/A)
-  const unanswered = (st.items || []).filter(it => {
+  const finishItems = dailyRealItems(st.items || []);
+  const unanswered = finishItems.filter(it => {
     const a = st.answers[it.itemId];
     return !a || ['ok', 'nok', 'na'].indexOf(a.status) === -1;
   });
@@ -8773,7 +8811,7 @@ window.submitDailyFinishForm = function(checkId){
     showAlert('រូបថតកំពុងផ្ទុកឡើង — សូមរង់ចាំបន្តិច (photos still uploading)', 'warning'); return;
   }
 
-  const finishChecks = (st.items || []).map(it => {
+  const finishChecks = finishItems.map(it => {
     const a = st.answers[it.itemId] || {};
     const entry = {
       itemId: it.itemId,
@@ -8948,20 +8986,24 @@ window.openDailyMissionForm = function(checkId){
   }
 
   const items = dailyTplItems(s.group, DAILY_FREQ_MISSION);
+  const realItems = dailyRealItems(items);
   const answers = {};
-  items.forEach(it => { answers[it.itemId] = { status: 'ok', note: '', photos: [] }; });
+  realItems.forEach(it => { answers[it.itemId] = { status: 'ok', note: '', photos: [] }; });
 
   dailyMissionState = {
     checkId: checkId, items: items, answers: answers,
     destination: '', remark: '', remarkPhotos: []
   };
 
-  const itemsHtml = items.length
-    ? items.map((it, i) => {
+  let missionItemNo = 0;
+  const itemsHtml = realItems.length
+    ? items.map((it) => {
+        if (dailyIsHeaderItem(it)) return dailyItemHeaderHtml(it);
+        missionItemNo++;
         const a = answers[it.itemId] || { status: 'ok', note: '', photos: [] };
         const st = a.status || 'ok';
         return '<div class="check-item '+st+'" data-msn="'+escAttr(it.itemId)+'" data-status="'+escAttr(st)+'">' +
-          '<div class="row-line"><div class="label-part"><span class="item-num">'+(i+1)+'.</span><div class="item-text">' +
+          '<div class="row-line"><div class="label-part"><span class="item-num">'+missionItemNo+'.</span><div class="item-text">' +
             '<span class="item-name-kh">'+esc(it.itemKhmer)+'</span>' +
             (it.itemEng ? '<span class="item-name-en">'+esc(it.itemEng)+'</span>' : '') +
           '</div></div></div>' +
@@ -9005,7 +9047,7 @@ function dailyMissionRenderModal(s, items, itemsHtml){
     '</div></div>' +
     '<div class="card mb-3"><div class="group-header d-flex justify-content-between align-items-center">' +
       '<span><i class="bi bi-list-check me-2"></i>ការត្រួតពិនិត្យមុនចេញ Mission</span>' +
-      '<small class="text-muted">' + dailyItemWord(items.length) + '</small>' +
+      '<small class="text-muted">' + dailyItemWord(dailyRealItems(items).length) + '</small>' +
     '</div><div class="card-body p-2"><div class="check-grid is-single">' + itemsHtml + '</div></div></div>' +
     '<div class="card mb-0"><div class="card-body">' +
       '<label class="form-label fw-bold">កំណត់សម្គាល់ (Remark)</label>' +
@@ -9037,7 +9079,8 @@ window.submitDailyMissionForm = function(){
     return;
   }
 
-  const unanswered = (st.items || []).filter(it => {
+  const missionItems = dailyRealItems(st.items || []);
+  const unanswered = missionItems.filter(it => {
     const a = st.answers[it.itemId];
     return !a || ['ok', 'nok', 'na'].indexOf(a.status) === -1;
   });
@@ -9050,7 +9093,7 @@ window.submitDailyMissionForm = function(){
     return;
   }
 
-  const items = (st.items || []).map(it => {
+  const items = missionItems.map(it => {
     const a = st.answers[it.itemId] || {};
     const entry = {
       itemId: it.itemId,
