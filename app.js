@@ -7121,9 +7121,15 @@ function dailyTplItems(group, freq){
   keys.forEach(k => { list = list.concat(all[k] || []); });
   return list
     .filter(it => dailyNormFreq(it.frequency) === want)
-    .sort((a, b) =>
-      (parseFloat(a.sortOrder != null ? a.sortOrder : a.order) || 0) -
-      (parseFloat(b.sortOrder != null ? b.sortOrder : b.order) || 0));
+    .sort((a, b) => {
+      const ao = parseFloat(a.sortOrder != null ? a.sortOrder : a.order) || 0;
+      const bo = parseFloat(b.sortOrder != null ? b.sortOrder : b.order) || 0;
+      if (ao !== bo) return ao - bo;
+      // Same effective order → keep the original Checklist_Template row order.
+      const ar = parseFloat(a.sheetRow) || 0;
+      const br = parseFloat(b.sheetRow) || 0;
+      return ar - br;
+    });
 }
 
 // A template "Header" row is a display-only section title (InputType = Header
@@ -9675,25 +9681,67 @@ window.viewDailyCheck = function(checkId) {
   renderDailyDetailModal(s);
 };
 
+/* Merge the saved checks with the ordered template so the detail view shows
+   the same section headers as the form. Submitted rows contain only real
+   items; headers are display-only and come from the template. */
+function dailyDetailRows(s){
+  const freq = dailyIsWeekly(s) ? DAILY_FREQ_WEEKLY : DAILY_FREQ_DAILY;
+  const tpl  = dailyTplItems(s.group, freq);
+  const checks = Array.isArray(s.checks) ? s.checks : [];
+  const byId = {};
+  checks.forEach(c => { if (c && c.itemId) byId[c.itemId] = c; });
+
+  const rows = [];
+  const used = {};
+  const pushHeader = t => rows.push({
+    isHeader: true,
+    itemId: t.itemId || '',
+    itemKhmer: t.itemKhmer || '',
+    itemEng: t.itemEng || '',
+    status: '', note: '', photos: []
+  });
+  const pushCheck = (c, t) => rows.push({
+    itemId: c.itemId,
+    itemKhmer: (t && t.itemKhmer) || c.itemKhmer || c.itemId,
+    itemEng: (t && t.itemEng) || c.itemEng || '',
+    status: c.status || '',
+    note: c.note || '',
+    photos: Array.isArray(c.photos) ? c.photos : []
+  });
+
+  tpl.forEach(t => {
+    if (dailyIsHeaderItem(t)) { pushHeader(t); return; }
+    const c = byId[t.itemId];
+    if (!c) return;
+    used[t.itemId] = true;
+    pushCheck(c, t);
+  });
+
+  // Keep old saved checks that no longer exist in the current template.
+  checks.forEach(c => {
+    if (!c || !c.itemId || used[c.itemId]) return;
+    if (dailyIsHeaderItem(c)) { pushHeader(c); return; }
+    pushCheck(c, null);
+  });
+
+  // Drop a trailing header that has no item after it.
+  let lastItem = -1;
+  rows.forEach((r, i) => { if (!r.isHeader) lastItem = i; });
+  return rows.filter((r, i) => !r.isHeader || i < lastItem);
+}
+
 function renderDailyDetailModal(s) {
   $('#modalTitle').text((dailyIsWeekly(s) ? 'Weekly · ' : '') + s.checkId);
   window.currentDetailCheckId = s.checkId;
   $('#modalActionButtons').addClass('d-none'); // Hide print/pdf buttons for daily
   
-  const tplMap = {};
-  ((APP.dailyTemplates || {})[s.group] || []).forEach(t => { tplMap[t.itemId] = t; });
-  
-  const enriched = (s.checks || []).map(c => ({
-    itemId: c.itemId,
-    itemKhmer: (tplMap[c.itemId] && tplMap[c.itemId].itemKhmer) || c.itemId,
-    itemEng: (tplMap[c.itemId] && tplMap[c.itemId].itemEng) || '',
-    status: c.status, note: c.note || '',
-    photos: Array.isArray(c.photos) ? c.photos : []
-  }));
+  const detailRows = dailyDetailRows(s);
+  const enriched = detailRows.filter(r => !r.isHeader);
 
   const okCount  = enriched.filter(c => c.status === 'ok').length;
   const nokCount = enriched.filter(c => c.status === 'nok').length;
   const naCount  = enriched.filter(c => c.status === 'na').length;
+  let detailItemNo = 0;
 
   const drv = (APP.users || []).find(u => u.username === s.username) || {};
   const rawRemarkPhotos = Array.isArray(s.photoIds) ? s.photoIds : String(s.photoIds || '').split(',');
@@ -9738,14 +9786,16 @@ function renderDailyDetailModal(s) {
         '</div>' +
     
         '<div class="card-body p-2" id="dailyDetailItemsList"><div class="check-grid is-single">' +
-          enriched.map((c, i) => {
+          detailRows.map((c) => {
+            if (c.isHeader) return dailyItemHeaderHtml(c);
             const cls   = c.status === 'ok' ? 'ok' : c.status === 'nok' ? 'nok' : 'na';
             const lbl   = c.status === 'ok' ? 'OK' : c.status === 'nok' ? 'NOT OK' : (c.status === 'na' ? 'N/A' : '—');
             const badge = c.status === 'ok' ? 'status-ok' : c.status === 'nok' ? 'status-nok' : 'status-pending';
             const rv    = dailyItemPhotoReveal(c.photos);
+            detailItemNo++;
             return '<div class="check-item '+cls+rv.cls+'" data-status="'+escAttr(c.status)+'"'+rv.attrs+'>' +
               '<div class="d-flex justify-content-between align-items-start gap-2">' +
-                '<div class="label-part"><span class="item-num">'+(i+1)+'.</span><div class="item-text">' +
+                '<div class="label-part"><span class="item-num">'+detailItemNo+'.</span><div class="item-text">' +
                   '<span class="item-name-kh">'+esc(c.itemKhmer)+'</span>' +
                   (c.itemEng ? '<span class="item-name-en">'+esc(c.itemEng)+'</span>' : '') +
                 '</div></div>' +
@@ -9909,6 +9959,16 @@ window.filterDailyDetailItems = function(status) {
     const s = $(this).data('status');
     if (dailyDetailFilter === 'all' || s === dailyDetailFilter) { $(this).show(); shown++; }
     else $(this).hide();
+  });
+  // Keep a section title only when at least one item below it is visible.
+  $('#dailyDetailItemsList .daily-check-header').each(function(){
+    const $header = $(this);
+    if (dailyDetailFilter === 'all') { $header.show(); return; }
+    let hasVisible = false;
+    $header.nextUntil('.daily-check-header').each(function(){
+      if ($(this).is('.check-item') && $(this).css('display') !== 'none') hasVisible = true;
+    });
+    $header.toggle(hasVisible);
   });
   $('#detailItemCount').text(shown + ' shown');
 };
