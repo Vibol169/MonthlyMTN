@@ -37,7 +37,14 @@
   // 3. Argument Adapters
   const TOKEN_ARG_ACTIONS = new Set([
     'logout', 'getUserFromToken', 'getBootstrapData', 'getDailyBootstrapData', 'getExtendedData',
-    'getNotifications', 'markNotificationsRead' 
+    'getAppBootstrap', 'getNotifications', 'markNotificationsRead'
+  ]);
+
+  // These server functions take a second argument containing options
+  // (row windows, skipLogos, cache-busting _ts, ...). Forward it as payload so
+  // the worker passes it on to Apps Script unchanged.
+  const TOKEN_OPTION_ACTIONS = new Set([
+    'getBootstrapData', 'getDailyBootstrapData', 'getExtendedData', 'getAppBootstrap'
   ]);
 
   const ADAPTERS = {
@@ -58,7 +65,7 @@
 
     if (TOKEN_ARG_ACTIONS.has(action)) {
       token = String(args[0] || '') || localStorage.getItem('authToken') || _memoryToken || null;
-      if (action === 'getExtendedData') payload = args[1] || {};
+      if (TOKEN_OPTION_ACTIONS.has(action)) payload = args[1] || {};
     } else if (action === 'validateLogin') {
       payload = ADAPTERS.validateLogin(args);
     } else {
@@ -69,11 +76,22 @@
 
     if (token) _memoryToken = token;
 
+    /* The Cloudflare worker in front of Apps Script currently only forwards
+       known action names, and getAppBootstrap is newer than that allow-list.
+       getBootstrapData understands includeDaily, so route the bundle call
+       through it: one request, same response shape for the client. If the
+       worker is later updated, this mapping remains harmless. */
+    let wireAction = action;
+    if (action === 'getAppBootstrap') {
+      wireAction = 'getBootstrapData';
+      payload = Object.assign({}, payload, { includeDaily: true });
+    }
+
     fetch(WORKER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
-        action,
+        action: wireAction,
         token,
         clientVersion: localStorage.getItem('_gVersion') || null,
         payload
@@ -91,7 +109,9 @@
           // Clear all local storage and cache
           localStorage.removeItem('authToken');
           localStorage.removeItem('_gVersion');
-          localStorage.removeItem('bootstrapCache_v2'); // Clear cached data
+          localStorage.removeItem('bootstrapCache_v2'); // older cache
+          localStorage.removeItem('bootstrapCache_v3'); // current cache
+          _memoryToken = null;
           sessionStorage.clear();
           
           // Clear Service Worker Cache to prevent stale reloads
@@ -113,6 +133,25 @@
             window.location.href = window.location.pathname; 
           }
           return; // Stop processing further
+        }
+
+        /* getBootstrapData + includeDaily returns the daily half as a
+           property. Re-shape it exactly like getAppBootstrap so app.js does
+           not need a second code path for the proxied deployment. */
+        if (action === 'getAppBootstrap' && res && res.daily) {
+          const monthly = Object.assign({}, res);
+          const daily = monthly.daily;
+          delete monthly.daily;
+          delete monthly._ms;
+          delete monthly._timings;
+          res = {
+            success: res.success !== false,
+            user: res.user,
+            monthly: monthly,
+            daily: daily,
+            _ms: res._ms,
+            _timings: res._timings
+          };
         }
 
         if (successFn) successFn(res);
